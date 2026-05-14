@@ -1,0 +1,182 @@
+[
+  {
+    "id": "curse.slow-walk",
+    "name": "Slow Walk",
+    "tier": "minor",
+    "enforcement": "A",
+    "duration_minutes": 5,
+    "description": "5 min, average speed must stay below 2.5 km/h (warn at 3, penalty at 4)",
+    "params": {
+      "max_speed_kmh": 2.5,
+      "warn_speed_kmh": 3,
+      "penalty_speed_kmh": 4
+    }
+  },
+  {
+    "id": "curse.single-file",
+    "name": "Single File",
+    "tier": "minor",
+    "enforcement": "B",
+    "duration_minutes": 5,
+    "description": "5 min, team must walk in a single file; app prompts twice for group photo from the front",
+    "params": {
+      "prompts_per_curse": 2
+    }
+  },
+  {
+    "id": "curse.photo-tax",
+    "name": "Photo Tax",
+    "tier": "minor",
+    "enforcement": "B",
+    "duration_minutes": 8,
+    "description": "8 min, selfie at any sign every 90 s",
+    "params": {
+      "interval_seconds": 90,
+      "submission_window_seconds": 30
+    }
+  },
+  {
+    "id": "curse.check-in",
+    "name": "Check-in",
+    "tier": "minor",
+    "enforcement": "L",
+    "duration_minutes": 10,
+    "description": "10 min, captain must answer in-app prompts every minute (auto-locks captain actions on miss)",
+    "params": {
+      "interval_seconds": 60
+    }
+  },
+  {
+    "id": "curse.detour",
+    "name": "Detour",
+    "tier": "medium",
+    "enforcement": "A",
+    "duration_minutes": 15,
+    "description": "15 min, banned from one named street (random); auto-flagged on entry",
+    "params": {
+      "banned_street_random": true
+    }
+  },
+  {
+    "id": "curse.buddy-up",
+    "name": "Buddy Up",
+    "tier": "medium",
+    "enforcement": "A",
+    "duration_minutes": 15,
+    "description": "15 min, all team members within 10 m of each other",
+    "params": {
+      "max_pairwise_distance_m": 10
+    }
+  },
+  {
+    "id": "curse.outfit-swap",
+    "name": "Outfit Swap",
+    "tier": "medium",
+    "enforcement": "B",
+    "duration_minutes": 20,
+    "description": "must swap one item of clothing with a teammate, keep it for 20 min; before/after photos",
+    "params": {
+      "before_after_required": true,
+      "dispute_window_seconds": 60
+    }
+  },
+  {
+    "id": "curse.mute",
+    "name": "Mute",
+    "tier": "medium",
+    "enforcement": "C",
+    "duration_minutes": 15,
+    "description": "15 min, may only communicate by typing in the app; app pings \"still muted? ✓\" each minute",
+    "params": {
+      "ping_interval_seconds": 60
+    }
+  },
+  {
+    "id": "curse.backwards",
+    "name": "Backwards",
+    "tier": "medium",
+    "enforcement": "C",
+    "duration_minutes": 10,
+    "description": "10 min, must walk facing backwards (a teammate may guide); honor only",
+    "params": {}
+  },
+  {
+    "id": "curse.pose-patrol",
+    "name": "Pose Patrol",
+    "tier": "medium",
+    "enforcement": "B",
+    "duration_minutes": 12,
+    "description": "12 min, every 2 min the app sends a pose (\"hands on head\") that must be photographed within 30 s",
+    "params": {
+      "interval_seconds": 120,
+      "submission_window_seconds": 30
+    }
+  },
+  {
+    "id": "curse.frozen",
+    "name": "Frozen",
+    "tier": "major",
+    "enforcement": "A",
+    "duration_minutes": 8,
+    "description": "8 min, all team members stay within 10 m of position at curse start",
+    "params": {
+      "max_drift_m": 10
+    }
+  },
+  {
+    "id": "curse.pilgrimage",
+    "name": "Pilgrimage",
+    "tier": "major",
+    "enforcement": "A",
+    "duration_minutes": null,
+    "description": "must walk to a specific neutral landmark before any other action; geofence-gated",
+    "params": {
+      "geofence_required": true
+    }
+  },
+  {
+    "id": "curse.coin-drain",
+    "name": "Coin Drain",
+    "tier": "major",
+    "enforcement": "L",
+    "duration_minutes": null,
+    "description": "lose 50 coins immediately",
+    "params": {
+      "amount": 50
+    }
+  },
+  {
+    "id": "curse.intel-loss",
+    "name": "Intel Loss",
+    "tier": "major",
+    "enforcement": "L",
+    "duration_minutes": null,
+    "description": "discard 1 random intel card",
+    "params": {
+      "count": 1,
+      "random": true
+    }
+  },
+  {
+    "id": "curse.solo-quarantine",
+    "name": "Solo Quarantine",
+    "tier": "major",
+    "enforcement": "A",
+    "duration_minutes": 15,
+    "description": "15 min, team members must each be at least 50 m apart",
+    "params": {
+      "min_pairwise_distance_m": 50
+    }
+  },
+  {
+    "id": "curse.full-stop",
+    "name": "Full Stop",
+    "tier": "major",
+    "enforcement": "L",
+    "duration_minutes": 10,
+    "description": "10 min, no app actions allowed (no purchases, no tags, no challenge submissions)",
+    "params": {
+      "lock_actions": true
+    }
+  }
+]

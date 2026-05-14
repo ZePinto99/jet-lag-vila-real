@@ -1,0 +1,149 @@
+[
+  {
+    "id": "challenge.se-cathedral-date",
+    "location_name": "Sé Catedral",
+    "landmark_ref": "landmark.se-catedral",
+    "task": "Photograph the date carved on the main facade",
+    "reward_coins": 30,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.largo-pelourinho-cardinals",
+    "location_name": "Largo do Pelourinho",
+    "landmark_ref": "landmark.largo-do-pelourinho",
+    "task": "Photograph the full pillory from 3 different cardinal directions",
+    "reward_coins": 40,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.avenida-statue-inscription",
+    "location_name": "Avenida Carvalho Araújo",
+    "landmark_ref": "landmark.avenida-carvalho-araujo",
+    "task": "Find a statue, photograph the inscription",
+    "reward_coins": 30,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.igreja-dos-clerigos-windows",
+    "location_name": "Igreja dos Clérigos (Capela Nova)",
+    "landmark_ref": "landmark.igreja-dos-clerigos",
+    "task": "Count the windows visible from the street, submit number",
+    "reward_coins": 20,
+    "photo_required": false,
+    "notes": "submission is a number, not a photo"
+  },
+  {
+    "id": "challenge.diogo-cao-plaque",
+    "location_name": "Casa de Diogo Cão",
+    "landmark_ref": "landmark.casa-de-diogo-cao",
+    "task": "Photograph the commemorative plaque",
+    "reward_coins": 30,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.palacio-mateus-postcard",
+    "location_name": "Palácio de Mateus",
+    "landmark_ref": "landmark.palacio-de-mateus-main-gate",
+    "task": "Buy a postcard at the gift shop and photograph it",
+    "reward_coins": 50,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.palacio-mateus-gardens-pool",
+    "location_name": "Palácio de Mateus gardens",
+    "landmark_ref": "landmark.palacio-de-mateus-main-gate",
+    "task": "Photograph the central reflecting pool",
+    "reward_coins": 40,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.utad-botanical-latin-name",
+    "location_name": "UTAD Botanical",
+    "landmark_ref": "landmark.utad-jardim-botanico",
+    "task": "Photograph a tree with a Latin name placard, submit the name",
+    "reward_coins": 40,
+    "photo_required": true,
+    "notes": "submission includes both photo and the Latin name as text"
+  },
+  {
+    "id": "challenge.utad-library-entrance",
+    "location_name": "UTAD Library",
+    "landmark_ref": "landmark.utad-main-library",
+    "task": "Photograph the main entrance with a teammate inside",
+    "reward_coins": 30,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.mercado-price-sign",
+    "location_name": "Mercado Municipal",
+    "landmark_ref": "landmark.mercado-municipal",
+    "task": "Photograph a vendor's price sign for any product",
+    "reward_coins": 20,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.train-station-clock",
+    "location_name": "Train Station",
+    "landmark_ref": "landmark.estacao-ferroviaria",
+    "task": "Photograph the station clock and current time",
+    "reward_coins": 30,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.nosso-shopping-storefront",
+    "location_name": "Nosso Shopping",
+    "landmark_ref": "landmark.nosso-shopping",
+    "task": "Photograph any storefront with the team's first letter",
+    "reward_coins": 20,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.ponte-metalica-river",
+    "location_name": "Ponte Metálica",
+    "landmark_ref": "landmark.ponte-metalica-do-corgo",
+    "task": "Photograph the river from mid-bridge",
+    "reward_coins": 40,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.teatro-playbill",
+    "location_name": "Teatro de Vila Real",
+    "landmark_ref": "landmark.teatro-de-vila-real",
+    "task": "Photograph the current playbill",
+    "reward_coins": 30,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.camara-municipal-flag",
+    "location_name": "Câmara Municipal",
+    "landmark_ref": "landmark.camara-municipal",
+    "task": "Photograph the Portuguese flag at the building",
+    "reward_coins": 20,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.pastel-de-nata-quote",
+    "location_name": "Any landmark",
+    "landmark_ref": null,
+    "task": "Ask a local for the best pastel de nata in town, submit a quote",
+    "reward_coins": 60,
+    "photo_required": false,
+    "notes": "submission is a quote (text), not a photo; can be done anywhere"
+  },
+  {
+    "id": "challenge.parque-florestal-birds",
+    "location_name": "Parque Florestal",
+    "landmark_ref": "landmark.parque-florestal",
+    "task": "Photograph two different bird species (any)",
+    "reward_coins": 50,
+    "photo_required": true
+  },
+  {
+    "id": "challenge.igreja-mateus-team",
+    "location_name": "Igreja de Mateus",
+    "landmark_ref": "landmark.igreja-de-mateus",
+    "task": "Photograph the church facade with all team members",
+    "reward_coins": 40,
+    "photo_required": true
+  }
+]

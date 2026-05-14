@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet permanent map labels: tight pill with dark background so they read
+   over both light and dark map tiles. */
+.leaflet-tooltip.map-label {
+  background: rgba(15, 15, 17, 0.85);
+  color: #fafafa;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.leaflet-tooltip.map-label--strong {
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.92);
+}
+
+.leaflet-tooltip.map-label::before {
+  border-right-color: rgba(15, 15, 17, 0.85);
+}
+
+/* Leaflet popups: nicer dark-theme styling that matches the app. */
+.leaflet-popup-content-wrapper {
+  border-radius: 6px;
+}
+.leaflet-popup-content {
+  margin: 10px 12px;
+}
+

@@ -1,0 +1,56 @@
+[
+  {
+    "id": "intel.north-south",
+    "name": "North/South",
+    "reveals": "Whether the real flag is N or S of the city midline",
+    "cost_coins": 30
+  },
+  {
+    "id": "intel.east-west",
+    "name": "East/West",
+    "reveals": "Whether the real flag is E or W of the team's home base",
+    "cost_coins": 30
+  },
+  {
+    "id": "intel.eliminate-one",
+    "name": "Eliminate One",
+    "reveals": "Names one of the 5 candidate landmarks that is not the real flag",
+    "cost_coins": 50
+  },
+  {
+    "id": "intel.eliminate-two",
+    "name": "Eliminate Two",
+    "reveals": "Names two candidate landmarks that are not the real flag",
+    "cost_coins": 80
+  },
+  {
+    "id": "intel.decoy-reveal",
+    "name": "Decoy Reveal",
+    "reveals": "Names one of the two decoys (does not reveal real)",
+    "cost_coins": 60
+  },
+  {
+    "id": "intel.hot-cold",
+    "name": "Hot/Cold",
+    "reveals": "Distance bracket from your current GPS to real flag (<200 m / <500 m / <1 km / further)",
+    "cost_coins": 60
+  },
+  {
+    "id": "intel.surroundings",
+    "name": "Surroundings",
+    "reveals": "One photo of the surroundings within 30 m of the real flag, no marker visible",
+    "cost_coins": 80
+  },
+  {
+    "id": "intel.direction",
+    "name": "Direction",
+    "reveals": "Compass bearing from city center to real flag (8 cardinal directions)",
+    "cost_coins": 50
+  },
+  {
+    "id": "intel.landmark-type",
+    "name": "Landmark Type",
+    "reveals": "Reveals the category of the real flag (church, civic, park, museum, etc.)",
+    "cost_coins": 40
+  }
+]

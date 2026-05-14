@@ -1,0 +1,211 @@
+[
+  {
+    "id": "landmark.utad-main-library",
+    "name": "UTAD Main Library",
+    "lat": 41.28584,
+    "lng": -7.74057,
+    "team_pool": "west",
+    "kind": "university",
+    "approximate": false,
+    "source": "https://eymaps.com/map/biblioteca-central-da-universidade-de-tr%C3%A1s-os-montes-e-alto-douro-216089161/",
+    "notes": "Biblioteca Central, Quinta de Prados; opening hours follow UTAD academic calendar"
+  },
+  {
+    "id": "landmark.utad-jardim-botanico",
+    "name": "UTAD Jardim Botânico (botanical garden)",
+    "lat": 41.286,
+    "lng": -7.738,
+    "team_pool": "west",
+    "kind": "park",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "130 ha garden integrated into UTAD campus; precise entrance not confirmed, estimated within campus polygon"
+  },
+  {
+    "id": "landmark.utad-geosciences-museum",
+    "name": "UTAD Geosciences Museum",
+    "lat": 41.287,
+    "lng": -7.738,
+    "team_pool": "west",
+    "kind": "museum",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Edifício de Geociências, UTAD campus core; address Quinta Prados 5000-696; coords estimated within campus"
+  },
+  {
+    "id": "landmark.parque-florestal",
+    "name": "Parque Florestal de Vila Real",
+    "lat": 41.30017,
+    "lng": -7.73343,
+    "team_pool": "west",
+    "kind": "park",
+    "approximate": false,
+    "source": "https://www.google.pt/maps/place/Parque+Florestal/@41.2995119,-7.7425278,17z",
+    "notes": "Linked to Parque Corgo; ~38,000 sqm; pools and pedestrian circuits"
+  },
+  {
+    "id": "landmark.igreja-da-conceicao",
+    "name": "Igreja da Conceição",
+    "lat": 41.302,
+    "lng": -7.741,
+    "team_pool": "west",
+    "kind": "church",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Parish church of Nossa Senhora da Conceição, Vila Real; precise coords to verify on the ground"
+  },
+  {
+    "id": "landmark.estacao-ferroviaria",
+    "name": "Estação Ferroviária de Vila Real (train station)",
+    "lat": 41.2941,
+    "lng": -7.7386,
+    "team_pool": "west",
+    "kind": "station",
+    "approximate": false,
+    "source": "https://en.wikipedia.org/wiki/Vila_Real_railway_station",
+    "notes": "Closed since 2009; building still standing and used as starting point for Passadiços do Corgo"
+  },
+  {
+    "id": "landmark.mercado-municipal",
+    "name": "Mercado Municipal",
+    "lat": 41.298,
+    "lng": -7.748,
+    "team_pool": "west",
+    "kind": "market",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Address Rua de Santa Sofia 10, 5000-651; closed Sundays; coords estimated from address"
+  },
+  {
+    "id": "landmark.nosso-shopping",
+    "name": "Nosso Shopping",
+    "lat": 41.2998,
+    "lng": -7.7345,
+    "team_pool": "west",
+    "kind": "shopping",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Main shopping centre on Alameda de Grasse, near Teatro Municipal; coords estimated from neighbourhood, verify on the ground"
+  },
+  {
+    "id": "landmark.palacio-de-mateus-main-gate",
+    "name": "Main Gate of Palácio de Mateus",
+    "lat": 41.29709,
+    "lng": -7.71249,
+    "team_pool": "east",
+    "kind": "monument",
+    "approximate": false,
+    "source": "https://latitude.to/articles-by-country/pt/portugal/82382/mateus-palace",
+    "notes": "Iconic baroque gate (the one on the wine label); ticketed access to gardens and palace beyond"
+  },
+  {
+    "id": "landmark.igreja-de-mateus",
+    "name": "Igreja de Mateus",
+    "lat": 41.3,
+    "lng": -7.717,
+    "team_pool": "east",
+    "kind": "church",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Parish church in Mateus village near Palácio de Mateus; precise coords not confirmed online"
+  },
+  {
+    "id": "landmark.se-catedral",
+    "name": "Sé Catedral de Vila Real",
+    "lat": 41.29633,
+    "lng": -7.74633,
+    "team_pool": "east",
+    "kind": "church",
+    "approximate": false,
+    "source": "https://culturaportugal.gov.pt/pt/conhecer/local/_drcnorte/se-de-vila-real-igreja-de-sao-domingos/",
+    "notes": "Igreja de São Domingos; Avenida Carvalho Araújo 89, 5000-657; Gothic, 15th century"
+  },
+  {
+    "id": "landmark.igreja-dos-clerigos",
+    "name": "Igreja dos Clérigos (Capela Nova)",
+    "lat": 41.29735,
+    "lng": -7.74465,
+    "team_pool": "east",
+    "kind": "church",
+    "approximate": false,
+    "source": "https://www.visitarportugal.pt/vila-real/vila-real/vila-real/capela-nova",
+    "notes": "Also known as Igreja de São Paulo or Capela Nova; baroque, attributed to Nicolau Nasoni"
+  },
+  {
+    "id": "landmark.casa-de-diogo-cao",
+    "name": "Casa de Diogo Cão",
+    "lat": 41.2951,
+    "lng": -7.74667,
+    "team_pool": "east",
+    "kind": "monument",
+    "approximate": false,
+    "source": "https://pt.wikipedia.org/wiki/Casa_de_Diogo_C%C3%A3o",
+    "notes": "Renaissance civil architecture, Praça Camilo Castelo Branco; near Câmara Municipal and Sé"
+  },
+  {
+    "id": "landmark.largo-do-pelourinho",
+    "name": "Largo do Pelourinho",
+    "lat": 41.29624,
+    "lng": -7.7458,
+    "team_pool": "east",
+    "kind": "monument",
+    "approximate": false,
+    "source": "https://codigopostalportugal.com/state_vila-real/county_vila-real/city_sao-pedro/place_largo-do-pelourinho",
+    "notes": "Pillory of Vila Real, 1515; in São Pedro parish, 5000-513"
+  },
+  {
+    "id": "landmark.camara-municipal",
+    "name": "Câmara Municipal de Vila Real",
+    "lat": 41.29462,
+    "lng": -7.74622,
+    "team_pool": "east",
+    "kind": "civic",
+    "approximate": false,
+    "source": "https://www.gov.pt/entidades/camara-municipal-de-vila-real",
+    "notes": "Avenida Carvalho Araújo, 5000-657; Portuguese flag flown at facade (challenge C15)"
+  },
+  {
+    "id": "landmark.avenida-carvalho-araujo",
+    "name": "Avenida Carvalho Araújo (midpoint)",
+    "lat": 41.2955,
+    "lng": -7.7461,
+    "team_pool": "neutral",
+    "kind": "other",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Midpoint of avenue running through historic center; coord estimated as midpoint between Sé and Câmara"
+  },
+  {
+    "id": "landmark.ponte-metalica-do-corgo",
+    "name": "Ponte Metálica do Corgo",
+    "lat": 41.298,
+    "lng": -7.737,
+    "team_pool": "neutral",
+    "kind": "bridge",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Metal road bridge over Rio Corgo, inaugurated 1904; in Bairro dos Ferreiros area; precise mid-span coord estimated"
+  },
+  {
+    "id": "landmark.teatro-de-vila-real",
+    "name": "Teatro de Vila Real",
+    "lat": 41.299128,
+    "lng": -7.734694,
+    "team_pool": "neutral",
+    "kind": "theater",
+    "approximate": false,
+    "source": "https://www.google.pt/maps/place/Teatro+Municipal+de+Vila+Real/@41.299128,-7.7368828,17z",
+    "notes": "Alameda de Grasse 15B, 5000-703; ticket office Tue-Sat 14:00-22:00"
+  },
+  {
+    "id": "landmark.estacao-rodoviaria",
+    "name": "Estação Rodoviária",
+    "lat": 41.296,
+    "lng": -7.741,
+    "team_pool": "neutral",
+    "kind": "station",
+    "approximate": true,
+    "source": "estimated",
+    "notes": "Terminal Rodoviário, R. Dom António Valente da Fonseca, 5000-539; coord estimated from address"
+  }
+]
