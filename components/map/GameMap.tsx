@@ -389,7 +389,7 @@ function GameMap({
               weight: 2,
             }}
           >
-            <Tooltip permanent direction="right" offset={[8, 0]} className="map-label">
+            <Tooltip direction="right" offset={[8, 0]} className="map-label">
               {seed.name}
             </Tooltip>
             <Popup>
@@ -417,7 +417,7 @@ function GameMap({
               weight: 4,
             }}
           >
-            <Tooltip permanent direction="top" offset={[0, -10]} className="map-label map-label--strong">
+            <Tooltip direction="top" offset={[0, -10]} className="map-label map-label--strong">
               {myHomeSeed.name} (home)
             </Tooltip>
             <Popup>
@@ -446,7 +446,7 @@ function GameMap({
               dashArray: '4 3',
             }}
           >
-            <Tooltip permanent direction="top" offset={[0, -10]} className="map-label map-label--strong">
+            <Tooltip direction="top" offset={[0, -10]} className="map-label map-label--strong">
               {enemyHomeSeed.name} (enemy home)
             </Tooltip>
             <Popup>
@@ -478,7 +478,7 @@ function GameMap({
                 weight: 2,
               }}
             >
-              <Tooltip permanent direction="right" offset={[8, 0]} className="map-label">
+              <Tooltip direction="right" offset={[8, 0]} className="map-label">
                 {name}
               </Tooltip>
               <Popup>
@@ -517,7 +517,7 @@ function GameMap({
                 weight: isNarrowedOut ? 1 : 2,
               }}
             >
-              <Tooltip permanent direction="right" offset={[8, 0]} className="map-label">
+              <Tooltip direction="right" offset={[8, 0]} className="map-label">
                 {name}
               </Tooltip>
               <Popup>
@@ -574,7 +574,7 @@ function GameMap({
                 weight: 3,
               }}
             >
-              <Tooltip permanent direction="top" offset={[0, -8]} className="map-label map-label--strong">
+              <Tooltip direction="top" offset={[0, -8]} className="map-label map-label--strong">
                 You
               </Tooltip>
             </CircleMarker>
