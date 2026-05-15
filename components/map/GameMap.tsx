@@ -234,7 +234,7 @@ function MapControls({
 
 function MapLegend({ myTeamSide, enemyTeamSide }: { myTeamSide: TeamSide; enemyTeamSide: TeamSide }) {
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-[1000] rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-2 text-[11px] text-neutral-200 shadow-lg backdrop-blur">
+    <div className="pointer-events-none absolute left-3 top-24 z-[1000] rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-2 text-[11px] text-neutral-200 shadow-lg backdrop-blur">
       <div className="font-semibold text-neutral-100 uppercase tracking-wider mb-1">Legend</div>
       <div className="flex items-center gap-2">
         <span className="inline-block h-3 w-3 rounded-full border-2 border-white" style={{ background: TEAM_COLOR[myTeamSide] }} />
