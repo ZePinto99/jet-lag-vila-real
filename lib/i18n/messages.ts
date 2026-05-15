@@ -1,0 +1,292 @@
+// Static translation table for the app UI. Add new keys here in en/pt pairs.
+// Dialect: Portuguese of Portugal (PT-PT). Use informal "tu" for gameplay
+// surfaces — friend-game context, not corporate.
+
+export type Locale = 'en' | 'pt'
+export const LOCALES: ReadonlyArray<Locale> = ['en', 'pt']
+export const DEFAULT_LOCALE: Locale = 'en'
+
+export const LOCALE_LABEL: Record<Locale, string> = {
+  en: 'EN',
+  pt: 'PT',
+}
+
+export const LOCALE_FULL: Record<Locale, string> = {
+  en: 'English',
+  pt: 'Português',
+}
+
+type MessageDict = Record<string, Record<Locale, string>>
+
+export const MESSAGES: MessageDict = {
+  // ---------- landing / form ----------
+  'landing.tagline': {
+    en: 'Walking-only capture the flag. The app is the referee.',
+    pt: 'Captura a bandeira só a pé. A app é o árbitro.',
+  },
+  'landing.create_game': { en: 'Create game', pt: 'Criar jogo' },
+  'landing.create_game_desc': {
+    en: 'Start a new session and invite your team',
+    pt: 'Inicia uma nova sessão e convida a tua equipa',
+  },
+  'landing.join_game': { en: 'Join game', pt: 'Entrar num jogo' },
+  'landing.join_game_desc': {
+    en: 'Enter a 4-letter code to join an existing session',
+    pt: 'Introduz um código de 4 letras para entrar numa sessão',
+  },
+
+  // ---------- common buttons / state ----------
+  'common.ready': { en: 'Ready', pt: 'Pronto' },
+  'common.not_ready': { en: 'Not ready', pt: 'Não pronto' },
+  'common.saving': { en: 'Saving…', pt: 'A guardar…' },
+  'common.cancel': { en: 'Cancel', pt: 'Cancelar' },
+  'common.confirm': { en: 'Confirm', pt: 'Confirmar' },
+  'common.submit': { en: 'Submit', pt: 'Submeter' },
+  'common.close': { en: 'Close', pt: 'Fechar' },
+  'common.dismiss': { en: 'Dismiss', pt: 'Dispensar' },
+  'common.back_to_home': { en: 'Back to home', pt: 'Voltar ao início' },
+  'common.loading': { en: 'Loading…', pt: 'A carregar…' },
+  'common.you': { en: 'you', pt: 'tu' },
+  'common.team': { en: 'Team', pt: 'Equipa' },
+  'common.west': { en: 'West', pt: 'Oeste' },
+  'common.east': { en: 'East', pt: 'Este' },
+  'common.coins': { en: 'coins', pt: 'moedas' },
+  'common.real': { en: 'Real', pt: 'Verdadeira' },
+  'common.decoy': { en: 'Decoy', pt: 'Engano' },
+  'common.empty': { en: 'Empty', pt: 'Vazia' },
+  'common.host': { en: 'host', pt: 'anfitrião' },
+  'common.expired': { en: 'expired', pt: 'expirada' },
+  'common.unknown_error': { en: 'unknown error', pt: 'erro desconhecido' },
+
+  // ---------- lobby ----------
+  'lobby.title': { en: 'Lobby', pt: 'Sala de espera' },
+  'lobby.share_hint': {
+    en: 'Share the code with the other players. Game starts when everyone is ready.',
+    pt: 'Partilha o código com os outros jogadores. O jogo começa quando todos estiverem prontos.',
+  },
+  'lobby.team_west_full': { en: 'Team West (UTAD)', pt: 'Equipa Oeste (UTAD)' },
+  'lobby.team_east_full': { en: 'Team East (Mateus)', pt: 'Equipa Este (Mateus)' },
+  'lobby.no_players': { en: 'No players yet.', pt: 'Ainda sem jogadores.' },
+  'lobby.team_not_initialised': { en: 'Team not initialised yet…', pt: 'Equipa ainda não inicializada…' },
+  'lobby.players_one': { en: '1 player', pt: '1 jogador' },
+  'lobby.players_many': { en: '{n} players', pt: '{n} jogadores' },
+  'lobby.you_are': { en: 'You are', pt: 'Tu és' },
+  'lobby.on_side_west': { en: 'On West', pt: 'No Oeste' },
+  'lobby.on_side_east': { en: 'On East', pt: 'no Este' },
+  'lobby.switch_team': { en: 'Switch to other team', pt: 'Mudar de equipa' },
+  'lobby.switching': { en: 'Switching…', pt: 'A mudar…' },
+  'lobby.start_game': { en: 'Start game', pt: 'Começar jogo' },
+  'lobby.starting': { en: 'Starting…', pt: 'A começar…' },
+  'lobby.need_both_teams': { en: 'Both teams need at least one player.', pt: 'Ambas as equipas precisam de pelo menos um jogador.' },
+  'lobby.need_all_ready': { en: 'All players must mark ready.', pt: 'Todos os jogadores têm de marcar pronto.' },
+  'lobby.leave': { en: 'Leave game', pt: 'Sair do jogo' },
+  'lobby.leaving': { en: 'Leaving…', pt: 'A sair…' },
+  'lobby.kick_confirm': { en: 'Remove this player from the game?', pt: 'Remover este jogador do jogo?' },
+  'lobby.leave_confirm': { en: 'Leave this game?', pt: 'Sair deste jogo?' },
+  'lobby.not_in_game': { en: 'You are not in this game.', pt: 'Não estás neste jogo.' },
+  'lobby.join_this_game': { en: 'Join this game', pt: 'Entrar neste jogo' },
+
+  // ---------- setup ----------
+  'setup.title': { en: 'Setup phase', pt: 'Fase de preparação' },
+  'setup.waiting_other': { en: 'Waiting for the other team…', pt: 'À espera da outra equipa…' },
+  'setup.assignment_locked': {
+    en: "Your team's flag assignment is locked in.",
+    pt: 'A escolha da tua equipa está fechada.',
+  },
+  'setup.intro_pt1': { en: 'You are Team', pt: 'Tu és da Equipa' },
+  'setup.intro_pt2': {
+    en: '. Walk to your home base with your team. When you are all there, decide together: 5 candidate landmarks — 1 real flag, 2 decoys, 2 empty.',
+    pt: '. Caminhem até à base da equipa. Quando estiverem todos lá, decidam em conjunto: 5 marcos candidatos — 1 bandeira real, 2 enganos, 2 vazios.',
+  },
+  'setup.counter': {
+    en: 'Selected: {real} real (need 1) · {decoy} decoys (need 2) · {empty} empty (need 2) — {unused} unused',
+    pt: 'Selecionados: {real} real (precisas 1) · {decoy} enganos (precisas 2) · {empty} vazios (precisas 2) — {unused} por usar',
+  },
+  'setup.submit_assignment': { en: 'Submit assignment', pt: 'Submeter escolha' },
+  'setup.role_none': { en: '—', pt: '—' },
+
+  // ---------- live: header + tabs ----------
+  'live.tab_map': { en: 'Map', pt: 'Mapa' },
+  'live.tab_actions': { en: 'Actions', pt: 'Ações' },
+  'live.tab_status': { en: 'Status', pt: 'Estado' },
+  'live.enable_gps': { en: 'Enable GPS', pt: 'Ativar GPS' },
+  'live.disable_gps': { en: 'Disable GPS', pt: 'Desativar GPS' },
+  'live.gps_on': { en: 'GPS: ON', pt: 'GPS: LIGADO' },
+  'live.gps_off': { en: 'GPS: OFF', pt: 'GPS: DESLIGADO' },
+  'live.loading_live': { en: 'Loading live state…', pt: 'A carregar estado do jogo…' },
+
+  // ---------- map controls ----------
+  'map.fit_vila_real': { en: 'Fit Vila Real', pt: 'Centrar Vila Real' },
+  'map.recenter_on_me': { en: 'Recenter on me', pt: 'Centrar em mim' },
+  'map.intel_filter_off': { en: 'Intel filter OFF', pt: 'Filtro de intel DESL.' },
+  'map.intel_filter_on': { en: 'Intel filter ON ({n})', pt: 'Filtro de intel LIG. ({n})' },
+  'map.legend_title': { en: 'Legend', pt: 'Legenda' },
+  'map.legend_your_team': { en: 'Your team', pt: 'A tua equipa' },
+  'map.legend_enemy_team': { en: 'Enemy team', pt: 'Equipa adversária' },
+  'map.legend_neutral': { en: 'Neutral', pt: 'Neutro' },
+  'map.legend_you': { en: 'You', pt: 'Tu' },
+  'map.walking_directions': { en: 'Walking directions', pt: 'Direções a pé' },
+  'map.your_candidate': { en: 'your candidate', pt: 'tua candidata' },
+  'map.enemy_candidate': { en: 'enemy candidate', pt: 'candidata adversária' },
+  'map.your_home': { en: 'your home base', pt: 'tua base' },
+  'map.enemy_home': { en: 'enemy home base', pt: 'base adversária' },
+  'map.neutral_landmark': { en: 'Neutral landmark', pt: 'Marco neutro' },
+  'map.unknown_attempt': { en: 'Unknown — attempt to discover', pt: 'Desconhecido — tenta descobrir' },
+  'map.ruled_out': { en: 'Ruled out by intel', pt: 'Excluído por intel' },
+  'map.confirmed': { en: 'Confirmed: {kind}', pt: 'Confirmado: {kind}' },
+
+  // ---------- tag + respawn ----------
+  'tag.button_enabled': { en: 'TAG ({n} within 5 m)', pt: 'APANHAR ({n} a menos de 5 m)' },
+  'tag.button_disabled': { en: 'TAG', pt: 'APANHAR' },
+  'tag.reason_no_gps': { en: 'Enable GPS to tag', pt: 'Ativa o GPS para apanhar' },
+  'tag.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
+  'tag.reason_out_of_zone': { en: 'Not in defense zone', pt: 'Fora da zona de defesa' },
+  'tag.reason_no_enemies': { en: 'No enemies within 5 m', pt: 'Sem adversários a menos de 5 m' },
+  'tag.reason_camping': { en: 'Camping locked', pt: 'Bloqueado por camping' },
+  'tag.confirm': { en: 'Tag {n} player(s)?', pt: 'Apanhar {n} jogador(es)?' },
+  'tag.success': { en: 'Tagged {n} player(s)', pt: 'Apanhaste {n} jogador(es)' },
+  'respawn.title': { en: 'You were tagged.', pt: 'Foste apanhado.' },
+  'respawn.body': {
+    en: 'Walk to a NEUTRAL landmark (Sé, Pelourinho, Teatro, Rodoviária) and tap below when you arrive.',
+    pt: 'Caminha até um marco NEUTRO (Sé, Pelourinho, Teatro, Rodoviária) e toca abaixo quando lá chegares.',
+  },
+  'respawn.button': { en: "I'm at a neutral landmark", pt: 'Estou num marco neutro' },
+  'respawn.checking': { en: 'Checking…', pt: 'A verificar…' },
+  'respawn.need_gps': { en: 'Enable GPS to confirm position', pt: 'Ativa o GPS para confirmar a posição' },
+  'respawn.too_far': { en: "You're {m} m from the nearest neutral — keep walking.", pt: 'Estás a {m} m do marco neutro mais próximo — continua a andar.' },
+
+  // ---------- flag attempt / carrier / found ----------
+  'flag_attempt.button_enabled': { en: 'ATTEMPT FLAG · {name} ({m} m)', pt: 'TENTAR BANDEIRA · {name} ({m} m)' },
+  'flag_attempt.button_disabled': { en: 'ATTEMPT FLAG', pt: 'TENTAR BANDEIRA' },
+  'flag_attempt.reason_no_gps': { en: 'Enable GPS to attempt', pt: 'Ativa o GPS para tentar' },
+  'flag_attempt.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
+  'flag_attempt.reason_not_live': { en: 'Available during live game', pt: 'Disponível durante o jogo' },
+  'flag_attempt.reason_out_of_range': { en: 'No enemy landmark within 20 m', pt: 'Sem marco adversário a menos de 20 m' },
+  'flag_attempt.reason_discovered': { en: 'Already discovered', pt: 'Já descoberto' },
+  'flag_attempt.confirm': { en: 'Attempt flag at {name}?', pt: 'Tentar bandeira em {name}?' },
+  'flag_attempt.toast_real': { en: 'REAL FLAG — RUN HOME!', pt: 'BANDEIRA REAL — CORRE PARA CASA!' },
+  'flag_attempt.toast_decoy': { en: 'Decoy! All intel lost.', pt: 'Engano! Perdeste toda a intel.' },
+  'flag_attempt.toast_empty': { en: 'Empty. Nothing here.', pt: 'Vazio. Nada aqui.' },
+  'flag_carrier.title': { en: 'YOU HAVE THE FLAG', pt: 'TENS A BANDEIRA' },
+  'flag_carrier.run_to': { en: 'Run to {name}', pt: 'Corre para {name}' },
+  'flag_carrier.distance': { en: '~{m} m away', pt: 'a ~{m} m' },
+  'flag_carrier.submitting': { en: 'Submitting…', pt: 'A submeter…' },
+  'flag_found.team_msg': { en: 'Your team found the flag! {name} is running to home base.', pt: 'A tua equipa encontrou a bandeira! {name} corre para a base.' },
+  'flag_found.enemy_msg': { en: 'Enemy found your flag! {name} is running to {home}. Intercept them!', pt: 'O adversário encontrou a vossa bandeira! {name} corre para {home}. Intercetem-no!' },
+
+  // ---------- game over ----------
+  'gameover.tag': { en: 'Game over', pt: 'Fim de jogo' },
+  'gameover.wins': { en: '{team} wins!', pt: '{team} ganhou!' },
+  'gameover.tie': { en: 'Tie game', pt: 'Empate' },
+  'gameover.reason_flag_returned': { en: 'Flag returned to home base', pt: 'Bandeira entregue na base' },
+  'gameover.reason_timeout_points': { en: 'Won on points after 3-hour timeout', pt: 'Vencedor por pontos após 3 horas' },
+  'gameover.reason_timeout_tiebreaker': { en: 'Won on tiebreaker after 3-hour timeout', pt: 'Vencedor por desempate após 3 horas' },
+  'gameover.reason_timeout_tied': { en: 'Tied — all tiebreakers exhausted', pt: 'Empate — todos os desempates esgotados' },
+  'gameover.you_won': { en: 'Congratulations.', pt: 'Parabéns.' },
+  'gameover.you_lost': { en: 'Better luck next round.', pt: 'Para a próxima.' },
+  'gameover.row_real_flag': { en: 'Real flag photographed', pt: 'Bandeira fotografada' },
+  'gameover.row_challenges': { en: 'Challenges completed', pt: 'Desafios completados' },
+  'gameover.row_tags': { en: 'Tags made', pt: 'Apanhas' },
+  'gameover.row_curses': { en: 'Curses cast', pt: 'Maldições lançadas' },
+  'gameover.row_coins': { en: 'Coins remaining', pt: 'Moedas restantes' },
+  'gameover.row_total': { en: 'Total', pt: 'Total' },
+  'gameover.winner_badge': { en: 'winner', pt: 'vencedor' },
+  'gameover.recent_events': { en: 'Last 20 events', pt: 'Últimos 20 eventos' },
+  'gameover.view_timeline': { en: 'View full timeline', pt: 'Ver cronologia completa' },
+
+  // ---------- actions tab: intel ----------
+  'intel.panel_title': { en: 'Buy Intel', pt: 'Comprar Intel' },
+  'intel.cap': { en: '{used}/{cap} cards used', pt: '{used}/{cap} cartas usadas' },
+  'intel.buy': { en: 'Buy', pt: 'Comprar' },
+  'intel.buying': { en: 'Buying…', pt: 'A comprar…' },
+  'intel.confirm': { en: 'Buy {name} for {cost} coins?', pt: 'Comprar {name} por {cost} moedas?' },
+  'intel.reason_not_live': { en: 'Available during live game', pt: 'Disponível durante o jogo' },
+  'intel.reason_already_purchased': { en: 'Already purchased', pt: 'Já comprado' },
+  'intel.reason_cap_reached': { en: 'Intel cap reached (4)', pt: 'Limite de intel atingido (4)' },
+  'intel.reason_insufficient': { en: 'Need {n} more coins', pt: 'Faltam {n} moedas' },
+  'intel.reason_needs_gps': { en: 'Enable GPS to buy', pt: 'Ativa o GPS para comprar' },
+  'intel.acquired': { en: 'Intel acquired — see Status tab', pt: 'Intel adquirida — vê o separador Estado' },
+
+  // ---------- actions tab: curses ----------
+  'curse.panel_title': { en: 'Cast a Curse', pt: 'Lançar Maldição' },
+  'curse.panel_hint': {
+    en: 'Cost: 50 coins per die. Higher rolls = stronger curse.',
+    pt: 'Custo: 50 moedas por dado. Lançamentos mais altos = maldição mais forte.',
+  },
+  'curse.dice': { en: '{n} {dice_word}', pt: '{n} {dice_word}' },
+  'curse.die_singular': { en: 'die', pt: 'dado' },
+  'curse.die_plural': { en: 'dice', pt: 'dados' },
+  'curse.cast_button': { en: 'Cast Curse · {cost} coins', pt: 'Lançar maldição · {cost} moedas' },
+  'curse.casting': { en: 'Casting…', pt: 'A lançar…' },
+  'curse.confirm': { en: 'Cast a curse using {dice}? Cost: {cost} coins.', pt: 'Lançar maldição com {dice}? Custo: {cost} moedas.' },
+  'curse.reason_not_live': { en: 'Available during live game', pt: 'Disponível durante o jogo' },
+  'curse.reason_insufficient': { en: 'Need {n} more coins', pt: 'Faltam {n} moedas' },
+  'curse.rolled': { en: 'Rolled: {rolls} = {total} ({tier})', pt: 'Lançamento: {rolls} = {total} ({tier})' },
+  'curse.tier_minor': { en: 'minor', pt: 'menor' },
+  'curse.tier_medium': { en: 'medium', pt: 'média' },
+  'curse.tier_major': { en: 'major', pt: 'maior' },
+  'curse.dismiss': { en: 'Dismiss', pt: 'Dispensar' },
+  'curse.banner_title': { en: 'Curses on us', pt: 'Maldições em nós' },
+  'curse.expired_hint': { en: '(expired — refreshing…)', pt: '(expirada — a atualizar…)' },
+
+  // ---------- actions tab: challenges ----------
+  'challenge.panel_title': { en: 'Challenges', pt: 'Desafios' },
+  'challenge.reward': { en: '+{n} coins', pt: '+{n} moedas' },
+  'challenge.available_anywhere': { en: 'Available anywhere', pt: 'Disponível em qualquer lugar' },
+  'challenge.distance': { en: '~{m} m away', pt: 'a ~{m} m' },
+  'challenge.out_of_range': { en: 'Out of range', pt: 'Fora de alcance' },
+  'challenge.submit': { en: 'Submit', pt: 'Submeter' },
+  'challenge.submitting': { en: 'Submitting…', pt: 'A submeter…' },
+  'challenge.reason_not_live': { en: 'Available during live game', pt: 'Disponível durante o jogo' },
+  'challenge.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
+  'challenge.reason_no_gps': { en: 'Enable GPS', pt: 'Ativa o GPS' },
+  'challenge.reason_too_far': { en: 'Get closer (currently {m} m)', pt: 'Aproxima-te (atualmente a {m} m)' },
+  'challenge.toast_reward': { en: '+{n} coins', pt: '+{n} moedas' },
+  'challenge.toast_first_blood': { en: ' (+30 first blood!)', pt: ' (+30 primeiro sangue!)' },
+  'challenge.history_title': { en: 'Challenge history', pt: 'Histórico de desafios' },
+  'challenge.history_empty': { en: 'No challenges completed yet.', pt: 'Nenhum desafio completado ainda.' },
+
+  // ---------- status tab ----------
+  'status.coins': { en: 'Team coins', pt: 'Moedas da equipa' },
+  'status.intel_title': { en: 'Intel', pt: 'Intel' },
+  'status.intel_empty': { en: 'No intel cards yet.', pt: 'Sem cartas de intel.' },
+  'status.curses_on_us': { en: 'Curses on us', pt: 'Maldições em nós' },
+  'status.curses_empty': { en: 'No active curses.', pt: 'Sem maldições ativas.' },
+  'status.curse_history': { en: 'Curse history', pt: 'Histórico de maldições' },
+  'status.curse_history_empty': { en: 'No curse activity yet.', pt: 'Sem atividade de maldições.' },
+  'status.timeline': { en: 'Event timeline', pt: 'Cronologia de eventos' },
+  'status.timeline_empty': { en: 'No events yet.', pt: 'Sem eventos ainda.' },
+  'status.harden_button': { en: 'Harden flag (150 coins)', pt: 'Reforçar bandeira (150 moedas)' },
+  'status.harden_confirm': {
+    en: 'Spend 150 coins to harden your real flag? You can only do this once.',
+    pt: 'Gastar 150 moedas para reforçar a bandeira real? Só podes fazer isto uma vez.',
+  },
+  'status.hardening': { en: 'Hardening…', pt: 'A reforçar…' },
+}
+
+export type MessageKey = keyof typeof MESSAGES
+
+/**
+ * Translate a key, with optional `{name}` token replacement. Falls back to
+ * English if the key has no translation in the requested locale, or to the
+ * key itself if no entry exists.
+ */
+export function translate(
+  key: string,
+  locale: Locale,
+  tokens?: Record<string, string | number>,
+): string {
+  const entry = MESSAGES[key]
+  let text: string
+  if (!entry) {
+    text = key
+  } else {
+    text = entry[locale] ?? entry.en ?? key
+  }
+  if (tokens) {
+    for (const [k, v] of Object.entries(tokens)) {
+      text = text.replaceAll(`{${k}}`, String(v))
+    }
+  }
+  return text
+}

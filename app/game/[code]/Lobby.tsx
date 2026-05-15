@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
+import { useT } from '@/lib/i18n/context'
 import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
 import { useGameStore } from '@/store/gameStore'
@@ -31,6 +33,7 @@ interface LobbyProps {
 
 export function Lobby({ initial, code }: LobbyProps) {
   const router = useRouter()
+  const t = useT()
   const setSnapshot = useGameStore((s) => s.setSnapshot)
   const setMe = useGameStore((s) => s.setMe)
   const game = useGameStore((s) => s.game)
@@ -154,8 +157,8 @@ export function Lobby({ initial, code }: LobbyProps) {
   async function removePlayer(targetId: string) {
     if (!game) return
     const isSelf = targetId === me?.id
-    if (isSelf && !confirm('Leave this game?')) return
-    if (!isSelf && !confirm('Remove this player from the game?')) return
+    if (isSelf && !confirm(t('lobby.leave_confirm'))) return
+    if (!isSelf && !confirm(t('lobby.kick_confirm'))) return
     setError(null)
     setPendingAction(isSelf ? 'leave' : `kick:${targetId}`)
     try {
@@ -180,7 +183,7 @@ export function Lobby({ initial, code }: LobbyProps) {
   if (!game) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-16">
-        <p className="text-sm text-neutral-400">Loading lobby…</p>
+        <p className="text-sm text-neutral-400">{t('common.loading')}</p>
       </main>
     )
   }
@@ -190,17 +193,17 @@ export function Lobby({ initial, code }: LobbyProps) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-6 py-16 text-center">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Game {game.code}</h1>
-          <p className="text-sm text-neutral-400">You are not in this game.</p>
+          <h1 className="text-2xl font-semibold">{game.code}</h1>
+          <p className="text-sm text-neutral-400">{t('lobby.not_in_game')}</p>
         </header>
         <Link
           href={`/game/join?code=${encodeURIComponent(game.code)}`}
           className="inline-flex items-center justify-center rounded-lg bg-neutral-100 px-5 py-3 text-sm font-medium text-neutral-900 transition hover:bg-black hover:text-neutral-100"
         >
-          Join this game
+          {t('lobby.join_this_game')}
         </Link>
         <Link href="/" className="text-sm text-neutral-400 hover:text-neutral-200">
-          Home
+          {t('common.back_to_home')}
         </Link>
       </main>
     )
@@ -219,21 +222,22 @@ export function Lobby({ initial, code }: LobbyProps) {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-10">
-      <header className="flex flex-col gap-1">
+      <header className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Lobby</h1>
-          <code className="rounded-md bg-neutral-900 px-3 py-1 text-lg font-mono tracking-[0.3em] text-neutral-100">
-            {game.code ?? code}
-          </code>
+          <h1 className="text-2xl font-semibold">{t('lobby.title')}</h1>
+          <div className="flex items-center gap-2">
+            <code className="rounded-md bg-neutral-900 px-3 py-1 text-lg font-mono tracking-[0.3em] text-neutral-100">
+              {game.code ?? code}
+            </code>
+            <LanguageSwitcher />
+          </div>
         </div>
-        <p className="text-sm text-neutral-400">
-          Share the code with the other players. Game starts when everyone is ready.
-        </p>
+        <p className="text-sm text-neutral-400">{t('lobby.share_hint')}</p>
       </header>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TeamColumn
-          title="Team West (UTAD)"
+          title={t('lobby.team_west_full')}
           team={teamsBySide.west}
           players={teamsBySide.west ? playersByTeam.get(teamsBySide.west.id) ?? [] : []}
           meId={me?.id ?? null}
@@ -242,7 +246,7 @@ export function Lobby({ initial, code }: LobbyProps) {
           pendingAction={pendingAction}
         />
         <TeamColumn
-          title="Team East (Mateus)"
+          title={t('lobby.team_east_full')}
           team={teamsBySide.east}
           players={teamsBySide.east ? playersByTeam.get(teamsBySide.east.id) ?? [] : []}
           meId={me?.id ?? null}
@@ -256,14 +260,16 @@ export function Lobby({ initial, code }: LobbyProps) {
         <section className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-sm text-neutral-400">You are</p>
+              <p className="text-sm text-neutral-400">{t('lobby.you_are')}</p>
               <p className="text-lg font-medium">{me.display_name}</p>
             </div>
             <div className="text-right text-sm text-neutral-400">
               <p>
-                On {teams.find((t) => t.id === me.team_id)?.side === 'east' ? 'East' : 'West'}
+                {teams.find((tm) => tm.id === me.team_id)?.side === 'east'
+                  ? t('lobby.on_side_east')
+                  : t('lobby.on_side_west')}
               </p>
-              <p>{me.ready ? 'Ready' : 'Not ready'}</p>
+              <p>{me.ready ? t('common.ready') : t('common.not_ready')}</p>
             </div>
           </div>
 
@@ -275,10 +281,10 @@ export function Lobby({ initial, code }: LobbyProps) {
               className="flex-1 py-4 text-base"
             >
               {pendingAction === 'ready'
-                ? 'Saving…'
+                ? t('common.saving')
                 : me.ready
-                  ? 'Not ready'
-                  : 'Ready'}
+                  ? t('common.not_ready')
+                  : t('common.ready')}
             </Button>
             <Button
               variant="secondary"
@@ -286,7 +292,7 @@ export function Lobby({ initial, code }: LobbyProps) {
               disabled={me.ready || pendingAction !== null || game.status !== 'lobby'}
               className="flex-1 py-4 text-base"
             >
-              {pendingAction === 'switch' ? 'Switching…' : 'Switch to other team'}
+              {pendingAction === 'switch' ? t('lobby.switching') : t('lobby.switch_team')}
             </Button>
           </div>
           <button
@@ -294,7 +300,7 @@ export function Lobby({ initial, code }: LobbyProps) {
             disabled={pendingAction !== null}
             className="self-end text-xs text-neutral-500 underline-offset-2 hover:text-red-300 hover:underline disabled:opacity-50"
           >
-            {pendingAction === 'leave' ? 'Leaving…' : 'Leave game'}
+            {pendingAction === 'leave' ? t('lobby.leaving') : t('lobby.leave')}
           </button>
         </section>
       )}
@@ -305,14 +311,14 @@ export function Lobby({ initial, code }: LobbyProps) {
           disabled={!canStart || pendingAction !== null}
           className="w-full py-4 text-base"
         >
-          {pendingAction === 'start' ? 'Starting…' : 'Start game'}
+          {pendingAction === 'start' ? t('lobby.starting') : t('lobby.start_game')}
         </Button>
         {!canStart && (
           <p className="text-xs text-neutral-500">
             {!bothTeamsManned
-              ? 'Both teams need at least one player.'
+              ? t('lobby.need_both_teams')
               : !allReady
-                ? 'All players must mark ready.'
+                ? t('lobby.need_all_ready')
                 : null}
           </p>
         )}

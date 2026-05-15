@@ -7,6 +7,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/Button'
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
+import { useT } from '@/lib/i18n/context'
 import { apiGet, apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
@@ -58,6 +60,7 @@ type Tab = 'map' | 'actions' | 'status'
 const DEFAULT_DURATION_MIN = 180 // 3 hours per RULEBOOK §4.2
 
 export function Live() {
+  const t = useT()
   const game = useGameStore((s) => s.game)
   const teams = useGameStore((s) => s.teams)
   const players = useGameStore((s) => s.players)
@@ -257,7 +260,7 @@ export function Live() {
   if (snapshotLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-400">
-        Loading live state…
+        {t('live.loading_live')}
       </main>
     )
   }
@@ -274,7 +277,7 @@ export function Live() {
     )
   }
 
-  const sideLabel = myTeam.side === 'east' ? 'East' : 'West'
+  const sideLabel = myTeam.side === 'east' ? t('common.east') : t('common.west')
   const sideColorClass =
     myTeam.side === 'east' ? 'text-pink-300' : 'text-blue-300'
 
@@ -291,12 +294,13 @@ export function Live() {
             {game.code}
           </code>
           <span className={cn('text-xs font-medium', sideColorClass)}>
-            Team {sideLabel}
+            {t('common.team')} {sideLabel}
           </span>
         </div>
-        <div className="flex items-baseline gap-3 text-xs text-neutral-400">
-          <span>{myTeam.coins} coins</span>
+        <div className="flex items-center gap-3 text-xs text-neutral-400">
+          <span>{myTeam.coins} {t('common.coins')}</span>
           <Countdown endsAtMs={endsAtMs} nowMs={now} />
+          <LanguageSwitcher />
         </div>
       </header>
 
@@ -420,9 +424,9 @@ export function Live() {
 
       {/* Bottom tab bar */}
       <nav className="grid grid-cols-3 border-t border-neutral-800 bg-neutral-950">
-        <TabButton label="Map" active={tab === 'map'} onClick={() => setTab('map')} />
-        <TabButton label="Actions" active={tab === 'actions'} onClick={() => setTab('actions')} />
-        <TabButton label="Status" active={tab === 'status'} onClick={() => setTab('status')} />
+        <TabButton label={t('live.tab_map')} active={tab === 'map'} onClick={() => setTab('map')} />
+        <TabButton label={t('live.tab_actions')} active={tab === 'actions'} onClick={() => setTab('actions')} />
+        <TabButton label={t('live.tab_status')} active={tab === 'status'} onClick={() => setTab('status')} />
       </nav>
 
       {/* Game-over screen — fixed/full-screen, sits over everything else. */}
@@ -515,6 +519,7 @@ function MapOverlay({
   accuracy: number | null
   error: string | null
 }) {
+  const t = useT()
   return (
     <div className="pointer-events-none absolute left-3 top-3 z-[400] flex flex-col items-start gap-2">
       <Button
@@ -522,7 +527,7 @@ function MapOverlay({
         onClick={onToggleGps}
         className="pointer-events-auto py-2 text-xs"
       >
-        {gpsEnabled ? 'GPS: ON' : 'Enable GPS'}
+        {gpsEnabled ? t('live.gps_on') : t('live.enable_gps')}
       </Button>
       {gpsEnabled && (
         <div className="pointer-events-none rounded bg-neutral-950/80 px-2 py-1 text-[11px] text-neutral-300">
