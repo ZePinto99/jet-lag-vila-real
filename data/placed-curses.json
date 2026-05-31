@@ -1,0 +1,23 @@
+[
+  {
+    "id": "placed.snare",
+    "name": "Snare",
+    "cost_coins": 120,
+    "casts_curse_ref": "curse.frozen",
+    "description": "Trap an enemy who enters this landmark — their team is frozen in place for 8 minutes."
+  },
+  {
+    "id": "placed.slow-trap",
+    "name": "Slow Trap",
+    "cost_coins": 120,
+    "casts_curse_ref": "curse.slow-walk",
+    "description": "An enemy who enters here drags their team to a crawl (slow walk) for 5 minutes."
+  },
+  {
+    "id": "placed.quarantine-field",
+    "name": "Quarantine Field",
+    "cost_coins": 120,
+    "casts_curse_ref": "curse.solo-quarantine",
+    "description": "An enemy who enters here scatters their team — each member must stay 50 m apart for 15 minutes."
+  }
+]

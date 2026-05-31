@@ -160,14 +160,6 @@ function IntelAnswerLine({ card }: { card: Card }) {
         </Fragment>
       )
     }
-    case 'intel.landmark-type': {
-      const a = answerFor(card, 'intel.landmark-type')
-      return (
-        <Fragment>
-          Real flag is a <strong>{a.category}</strong> landmark.
-        </Fragment>
-      )
-    }
     default:
       return <span className="text-neutral-500">(unknown intel)</span>
   }

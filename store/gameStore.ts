@@ -13,6 +13,7 @@ import type {
   GpsPosition,
   Landmark,
   LiveStateResponse,
+  PlacedCurse,
   Player,
   PresencePayload,
   Team,
@@ -40,6 +41,7 @@ export interface GameStoreState {
   enemyLandmarks: EnemyLandmark[]
   activeCurses: ActiveCurse[] // curses targeting my team
   myCards: Card[]              // my team's cards (challenge/curse/intel, any state)
+  myPlacedCurses: PlacedCurse[] // my team's armed placements (hidden from enemy)
   events: GameEvent[]          // append-only; capped at MAX_EVENTS_KEPT client-side
 
   // local-only realtime state
@@ -66,6 +68,8 @@ export interface GameStoreActions {
   removeActiveCurse: (id: string) => void
   upsertCard: (card: Card) => void
   removeCard: (id: string) => void
+  addPlacedCurse: (placed: PlacedCurse) => void
+  removePlacedCurseByLandmark: (landmarkRef: string) => void
 }
 
 export type GameStore = GameStoreState & GameStoreActions
@@ -81,6 +85,7 @@ const initialState: GameStoreState = {
   enemyLandmarks: [],
   activeCurses: [],
   myCards: [],
+  myPlacedCurses: [],
   events: [],
 
   myGps: null,
@@ -153,6 +158,7 @@ export const useGameStore = create<GameStore>((set) => ({
         enemyLandmarks: snapshot.enemy_landmarks,
         activeCurses: snapshot.active_curses,
         myCards: snapshot.my_cards,
+        myPlacedCurses: snapshot.my_placed_curses ?? [],
         events: cappedEvents,
       }
     }),
@@ -202,5 +208,18 @@ export const useGameStore = create<GameStore>((set) => ({
   removeCard: (id) =>
     set((state) => ({
       myCards: state.myCards.filter((c) => c.id !== id),
+    })),
+
+  addPlacedCurse: (placed) =>
+    set((state) => {
+      if (state.myPlacedCurses.some((p) => p.id === placed.id)) return {}
+      return { myPlacedCurses: [...state.myPlacedCurses, placed] }
+    }),
+
+  removePlacedCurseByLandmark: (landmarkRef) =>
+    set((state) => ({
+      myPlacedCurses: state.myPlacedCurses.filter(
+        (p) => p.landmark_ref !== landmarkRef,
+      ),
     })),
 }))

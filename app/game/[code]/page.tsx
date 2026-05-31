@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { Lobby } from './Lobby'
+import { RememberGameCode } from '@/components/game/RememberGameCode'
 import type { GameByCodeResponse } from '@/lib/types'
 
 interface PageProps {
@@ -26,5 +27,10 @@ export default async function GamePage({ params }: PageProps) {
   if (!snapshot) {
     notFound()
   }
-  return <Lobby initial={snapshot} code={normalised} />
+  return (
+    <>
+      <RememberGameCode code={normalised} />
+      <Lobby initial={snapshot} code={normalised} />
+    </>
+  )
 }

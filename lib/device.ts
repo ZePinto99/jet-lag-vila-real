@@ -3,6 +3,7 @@
 // existing Player record after a refresh.
 
 const STORAGE_KEY = 'device_id'
+const LAST_GAME_KEY = 'jl_last_game'
 
 /**
  * Returns the persisted device id for this browser, generating a new one on
@@ -23,5 +24,28 @@ export function getDeviceId(): string {
     // Fall back to a fresh per-call UUID so the request still has *something*
     // — reconnect won't work in that case but joining still will.
     return crypto.randomUUID()
+  }
+}
+
+/**
+ * Remember the single most-recently-entered game code so the landing page can
+ * offer a "Rejoin last game" button (PLAYTEST_TRIAGE P3-3). No history, no auth.
+ */
+export function setLastGameCode(code: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(LAST_GAME_KEY, code.toUpperCase())
+  } catch {
+    /* localStorage unavailable — rejoin just won't be offered */
+  }
+}
+
+export function getLastGameCode(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const code = window.localStorage.getItem(LAST_GAME_KEY)
+    return code && code.length > 0 ? code : null
+  } catch {
+    return null
   }
 }

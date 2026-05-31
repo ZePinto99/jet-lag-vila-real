@@ -29,6 +29,9 @@ interface TagButtonProps {
     reason: TagDisabledReason
     inDefenseZone: boolean
   }
+  /** When set (e.g. Full Stop curse active), the button is forced off and this
+   *  label is shown as the reason. */
+  lockedLabel?: string | null
   onTagSuccess?: (result: TagResponse) => void
 }
 
@@ -55,22 +58,24 @@ export function TagButton({
   myPlayerId,
   myGpsPos,
   meState,
+  lockedLabel,
   onTagSuccess,
 }: TagButtonProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<TagResponse | null>(null)
 
-  const { enabled, targets, reason } = meState
+  const locked = Boolean(lockedLabel)
+  const { targets, reason } = meState
+  const enabled = meState.enabled && !locked
   const targetCount = targets.length
 
   async function handleTap() {
     if (!enabled || !myGpsPos || busy) return
-    const confirmMsg =
-      targetCount === 1
-        ? 'Tag 1 player?'
-        : `Tag ${targetCount} players?`
-    if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) return
+    // No confirm dialog: tagging is a reflex action (the button only lights up
+    // when a valid enemy is inside the 5 m radius, and the server re-validates
+    // proximity), and native window.confirm is unreliable in installed PWAs —
+    // it silently returned false and ate the tap. See PLAYTEST_TRIAGE P0-3.
 
     setBusy(true)
     setError(null)
@@ -123,7 +128,7 @@ export function TagButton({
       </button>
       {!enabled && (
         <p className="rounded bg-neutral-950/80 px-2 py-0.5 text-[11px] text-neutral-400">
-          {reasonLabel(reason)}
+          {locked ? lockedLabel : reasonLabel(reason)}
         </p>
       )}
       {lastResult && (

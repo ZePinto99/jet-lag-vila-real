@@ -91,6 +91,8 @@ interface GameMapProps {
   myIntelCards?: IntelCard[]
   /** Caller's home base longitude — required for the E/W overlay. */
   myTeamHomeLng?: number | null
+  /** During the 30-min protection window, enemy candidates render "locked". */
+  attemptsLocked?: boolean
 }
 
 interface MapPoint {
@@ -270,6 +272,7 @@ function GameMap({
   onToggleIntelFilter,
   myIntelCards = [],
   myTeamHomeLng = null,
+  attemptsLocked = false,
 }: GameMapProps) {
   const outOfBoundsOverlay: MapOverlay = useMemo(() => getOutOfBoundsOverlay(), [])
   const intelOverlays: MapOverlay[] = useMemo(
@@ -505,8 +508,15 @@ function GameMap({
           const name = seed?.name ?? lm.ref
           const discovered = discoveredEnemyKinds[lm.ref]
           const isNarrowedOut = filterActive && narrowedOutRefs!.has(lm.ref)
+          // During the 30-min protection window, undiscovered enemy candidates
+          // render "locked" (amber dashed ring).
+          const locked = attemptsLocked && !discovered && !isNarrowedOut
           const fill = isNarrowedOut ? '#404040' : enemyColor
-          const stroke = isNarrowedOut ? '#525252' : '#ffffff'
+          const stroke = isNarrowedOut
+            ? '#525252'
+            : locked
+              ? '#f59e0b'
+              : '#ffffff'
           return (
             <CircleMarker
               key={`enemy-${lm.id}`}
@@ -517,6 +527,7 @@ function GameMap({
                 fillColor: fill,
                 fillOpacity: isNarrowedOut ? 0.4 : 0.85,
                 weight: isNarrowedOut ? 1 : 2,
+                dashArray: locked ? '3 3' : undefined,
               }}
             >
               <Tooltip direction="right" offset={[8, 0]} className="map-label">
@@ -533,7 +544,9 @@ function GameMap({
                       ? `Confirmed: ${kindHumanLabel(discovered)}`
                       : isNarrowedOut
                         ? 'Ruled out by intel'
-                        : 'Unknown — attempt to discover'
+                        : locked
+                          ? '🔒 Attempts locked (first 30 min)'
+                          : 'Unknown — attempt to discover'
                   }
                   statusTone="enemy"
                 />

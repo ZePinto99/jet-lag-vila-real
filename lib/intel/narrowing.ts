@@ -131,15 +131,6 @@ export function computeNarrowedRefs(input: NarrowingInput): Set<string> {
         }
         break
       }
-      case 'intel.landmark-type': {
-        for (const e of enemyLandmarks) {
-          const seed = seedLookup(e.ref)
-          if (!seed || seed.kind !== payload.category) {
-            narrowed.add(e.ref)
-          }
-        }
-        break
-      }
     }
   }
 

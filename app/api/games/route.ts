@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         name: 'Team East',
         side: 'east',
         coins: 100,
-        home_landmark_id: 'landmark.palacio-de-mateus-main-gate',
+        home_landmark_id: 'landmark.biblioteca-municipal',
       },
     ])
     .select()

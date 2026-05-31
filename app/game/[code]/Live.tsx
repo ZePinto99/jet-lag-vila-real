@@ -20,6 +20,11 @@ import { useCamping } from '@/lib/hooks/useCamping'
 import { useTagButton } from '@/lib/hooks/useTagButton'
 import { useFlagAttemptButton } from '@/lib/hooks/useFlagAttemptButton'
 import { useCurseExpiryPoll } from '@/lib/hooks/useCurseExpiryPoll'
+import { useCurseEnforcement } from '@/lib/hooks/useCurseEnforcement'
+import { useGameToasts } from '@/lib/hooks/useGameToasts'
+import { usePlacedCurseTrigger } from '@/lib/hooks/usePlacedCurseTrigger'
+import { ToastLayer } from '@/components/game/ToastLayer'
+import { PlacedCursePanel } from '@/components/game/PlacedCursePanel'
 import { computeNarrowedRefs } from '@/lib/intel/narrowing'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { useDiscoveredEnemyKinds } from '@/lib/hooks/useDiscoveredEnemyKinds'
@@ -58,6 +63,7 @@ const GameMap = dynamic(() => import('@/components/map/GameMap'), {
 type Tab = 'map' | 'actions' | 'status'
 
 const DEFAULT_DURATION_MIN = 180 // 3 hours per RULEBOOK §4.2
+const ATTEMPT_PROTECTION_MIN = 30 // RULEBOOK §5.2 — no flag attempts in first 30 min
 
 export function Live() {
   const t = useT()
@@ -70,6 +76,7 @@ export function Live() {
   const enemyLandmarks = useGameStore((s) => s.enemyLandmarks)
   const activeCurses = useGameStore((s) => s.activeCurses)
   const myCards = useGameStore((s) => s.myCards)
+  const myPlacedCurses = useGameStore((s) => s.myPlacedCurses)
   const events = useGameStore((s) => s.events)
   const myGps = useGameStore((s) => s.myGps)
   const presence = useGameStore((s) => s.presence)
@@ -202,6 +209,40 @@ export function Live() {
   // curses are active on our team. Idempotent on the server.
   useCurseExpiryPoll(game?.id ?? null, activeCurses.length)
 
+  // Curse enforcement (P2-6) — Full Stop locks all actions; [A]/[B]/[L] curses
+  // get live readouts / timed prompts in the banner.
+  const curseEnforcement = useCurseEnforcement({
+    activeCurses,
+    myGps,
+    myTeamId,
+    presence,
+    nowMs: now,
+    t,
+  })
+  const actionsLocked = curseEnforcement.actionsLocked
+  const lockedLabel = actionsLocked ? t('curse.actions_locked') : null
+
+  // In-app discovery toasts (P2-5): attempt start/resolve + enemy-proximity.
+  const { toasts, dismiss: dismissToast } = useGameToasts({
+    events,
+    myTeamId,
+    myPlayerId: me?.id ?? null,
+    players,
+    presence,
+    myTeamLandmarks,
+    t,
+  })
+
+  // Placed-curse trigger (P2-2): fire a hidden enemy placement when I enter its
+  // zone. Server-authoritative; silent if no trap.
+  usePlacedCurseTrigger(
+    game?.id ?? null,
+    me?.id ?? null,
+    myGps,
+    enemyLandmarks,
+    game?.status === 'live' || game?.status === 'flag_found',
+  )
+
   const myTeam = useMemo<Team | null>(() => {
     if (!me) return null
     return teams.find((t) => t.id === me.team_id) ?? null
@@ -226,6 +267,13 @@ export function Live() {
     const minutes = game.config?.duration_minutes ?? DEFAULT_DURATION_MIN
     return new Date(game.started_at).getTime() + minutes * 60_000
   }, [game?.started_at, game?.config?.duration_minutes])
+
+  // 30-min flag-attempt protection window (P2-3). Server-derived from
+  // started_at so it survives refresh / late join.
+  const attemptsUnlockAtMs = useMemo<number | null>(() => {
+    if (!game?.started_at) return null
+    return new Date(game.started_at).getTime() + ATTEMPT_PROTECTION_MIN * 60_000
+  }, [game?.started_at])
 
   // Auto-end on 3-hour timeout. Fire-once guarded by a ref so the 1 Hz
   // clock tick doesn't spam the endpoint. The server route is idempotent
@@ -285,6 +333,16 @@ export function Live() {
   const isFlagFound = game.status === 'flag_found'
   const isGameOver = game.status === 'finished'
 
+  // 30-min flag-attempt protection window: lock the Attempt button and show a
+  // header countdown while the window is open.
+  const withinProtection =
+    attemptsUnlockAtMs != null && now < attemptsUnlockAtMs
+  const flagAttemptLockedLabel = actionsLocked
+    ? lockedLabel
+    : withinProtection
+      ? t('attempt.locked_window', { time: mmss(attemptsUnlockAtMs! - now) })
+      : null
+
   return (
     <main className="flex min-h-screen flex-col bg-neutral-950 text-neutral-100">
       {/* Header */}
@@ -323,9 +381,21 @@ export function Live() {
         />
       )}
 
+      {/* Flag-attempt protection window countdown (first 30 min). */}
+      {withinProtection && !isGameOver && (
+        <div className="border-b border-sky-800/60 bg-sky-950/40 px-4 py-1.5 text-center text-[11px] font-medium text-sky-200">
+          🔒 {t('attempt.window_header', { time: mmss(attemptsUnlockAtMs! - now) })}
+        </div>
+      )}
+
       {/* Active curses banner — sits below carrier/flag-found banners so the
           most game-critical state stays on top, and above the respawn banner. */}
-      <ActiveCursesBanner activeCurses={activeCurses} nowMs={now} />
+      <ActiveCursesBanner
+        activeCurses={activeCurses}
+        nowMs={now}
+        actionsLocked={actionsLocked}
+        byCurseId={curseEnforcement.byCurseId}
+      />
 
       {/* Respawn banner — shows above tabs whenever the local player is
           respawning. Visible from any tab so the player can't miss it. */}
@@ -354,6 +424,7 @@ export function Live() {
               onToggleIntelFilter={() => setIntelFilterEnabled((v) => !v)}
               myIntelCards={myIntelCards}
               myTeamHomeLng={myTeamHomeLng}
+              attemptsLocked={withinProtection}
             />
             <MapOverlay
               gpsEnabled={gpsEnabled}
@@ -381,12 +452,14 @@ export function Live() {
                 myPlayerId={me.id}
                 myGpsPos={myGps}
                 meState={tagState}
+                lockedLabel={lockedLabel}
               />
               <FlagAttemptButton
                 gameId={game.id}
                 myPlayerId={me.id}
                 myGpsPos={myGps}
                 meState={flagAttemptState}
+                lockedLabel={flagAttemptLockedLabel}
               />
             </div>
           </div>
@@ -402,6 +475,9 @@ export function Live() {
             myCards={myCards}
             myGps={myGps}
             respawning={me.respawning}
+            actionsLocked={actionsLocked}
+            myTeamLandmarks={myTeamLandmarks}
+            placedCurses={myPlacedCurses}
           />
         )}
 
@@ -418,6 +494,7 @@ export function Live() {
             players={players}
             teams={teams}
             nowMs={now}
+            actionsLocked={actionsLocked}
           />
         )}
       </div>
@@ -428,6 +505,9 @@ export function Live() {
         <TabButton label={t('live.tab_actions')} active={tab === 'actions'} onClick={() => setTab('actions')} />
         <TabButton label={t('live.tab_status')} active={tab === 'status'} onClick={() => setTab('status')} />
       </nav>
+
+      {/* In-app discovery toasts (top-center, foregrounded only). */}
+      <ToastLayer toasts={toasts} onDismiss={dismissToast} />
 
       {/* Game-over screen — fixed/full-screen, sits over everything else. */}
       {isGameOver && (
@@ -508,6 +588,13 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`
 }
 
+function mmss(remainingMs: number): string {
+  const rem = Math.max(0, remainingMs)
+  const m = Math.floor(rem / 60_000)
+  const s = Math.floor((rem % 60_000) / 1000)
+  return `${m}:${pad2(s)}`
+}
+
 function MapOverlay({
   gpsEnabled,
   onToggleGps,
@@ -551,6 +638,9 @@ function ActionsTab({
   myCards,
   myGps,
   respawning,
+  actionsLocked,
+  myTeamLandmarks,
+  placedCurses,
 }: {
   gameId: string
   myPlayerId: string
@@ -560,6 +650,9 @@ function ActionsTab({
   myCards: Card[]
   myGps: import('@/lib/types').GpsPosition | null
   respawning: boolean
+  actionsLocked: boolean
+  myTeamLandmarks: import('@/lib/types').Landmark[]
+  placedCurses: import('@/lib/types').PlacedCurse[]
 }) {
   const myIntelCards = myCards.filter((c) => c.kind === 'intel')
   return (
@@ -579,6 +672,7 @@ function ActionsTab({
         teamCoins={coins}
         myIntelCards={myIntelCards}
         myGps={myGps}
+        actionsLocked={actionsLocked}
       />
 
       <CursePurchasePanel
@@ -586,6 +680,16 @@ function ActionsTab({
         gameStatus={gameStatus}
         teamCoins={coins}
         myPlayerId={myPlayerId}
+        actionsLocked={actionsLocked}
+      />
+
+      <PlacedCursePanel
+        gameId={gameId}
+        myPlayerId={myPlayerId}
+        teamCoins={coins}
+        myCandidateLandmarks={myTeamLandmarks}
+        placedCurses={placedCurses}
+        actionsLocked={actionsLocked}
       />
 
       <ChallengesPanel
@@ -594,6 +698,7 @@ function ActionsTab({
         myPlayerId={myPlayerId}
         myGps={myGps}
         respawning={respawning}
+        actionsLocked={actionsLocked}
       />
     </section>
   )
@@ -611,6 +716,7 @@ function StatusTab({
   players,
   teams,
   nowMs,
+  actionsLocked,
 }: {
   gameId: string
   gameStatus: import('@/lib/types').GameStatus
@@ -623,6 +729,7 @@ function StatusTab({
   players: Player[]
   teams: Team[]
   nowMs: number
+  actionsLocked: boolean
 }) {
   return (
     <section className="mx-auto flex h-full max-w-2xl flex-col gap-4 overflow-y-auto px-6 py-6">
@@ -640,6 +747,7 @@ function StatusTab({
         gameStatus={gameStatus}
         myTeamLandmarks={myTeamLandmarks}
         teamCoins={myTeam.coins}
+        actionsLocked={actionsLocked}
       />
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">

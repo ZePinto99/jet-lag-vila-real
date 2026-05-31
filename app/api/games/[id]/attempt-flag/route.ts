@@ -13,10 +13,29 @@ import type {
   Team,
 } from '@/lib/types'
 
-// Server-side geofence radius for flag attempts. Matches RULEBOOK §5.2: raider
-// must be within 20 m of the candidate landmark. Clients typically display a
-// slightly larger buffer to account for GPS jitter.
-const ATTEMPT_RANGE_M = 20
+// Server-side geofence radius for flag attempts. RULEBOOK §5.2 sets the
+// attempt geofence at 20 m, and the client lights the button at 20 m
+// (FLAG_ATTEMPT_RADIUS_M). But urban GPS drift in Vila Real's narrow, densely
+// clustered streets routinely adds 5–10 m of error — so a raider who is plainly
+// at the landmark when the button lit can read 22–25 m by the time the POST
+// lands, producing intermittent out_of_geofence rejections. Mirroring the Tag
+// route's 5 m→10 m buffer, the server accepts up to 28 m. See PLAYTEST_TRIAGE
+// P1-2.
+const ATTEMPT_RANGE_M = 28
+
+// A hardened landmark (team spent 150 coins) is harder to capture: the raider
+// must be more precisely on the spot. We tighten the radius rather than swap
+// the visible challenge text, so hardening never leaks which enemy candidate is
+// the real flag (only the real flag can be hardened). See PLAYTEST_TRIAGE P2-1.
+const HARDENED_RANGE_M = 12
+
+// No flag attempts in the first 30 minutes (P2-3). Server-derived from
+// game.started_at so it survives refresh / late join.
+const PROTECTION_WINDOW_MS = 30 * 60_000
+
+// After a failed attempt (decoy/empty), the team is locked out of THAT landmark
+// for 15 minutes (P2-4).
+const LANDMARK_LOCKOUT_MS = 15 * 60_000
 
 const GpsPositionSchema = z.object({
   lat: z.number(),
@@ -30,7 +49,8 @@ const AttemptFlagRequestSchema = z.object({
   player_id: z.string().uuid(),
   landmark_ref: z.string().min(1).max(128),
   pos: GpsPositionSchema,
-  photo_url: z.string().min(1).max(2048).optional(),
+  photo_url: z.string().min(1).max(2048),
+  answer: z.string().max(2048).optional(),
 })
 
 const KIND_TO_RESULT: Partial<Record<LandmarkKind, FlagAttemptResult>> = {
@@ -68,7 +88,8 @@ export async function POST(
       { status: 400 },
     )
   }
-  const { device_id, player_id, landmark_ref, pos } = parsed.data
+  const { device_id, player_id, landmark_ref, pos, photo_url, answer } =
+    parsed.data
 
   const supabase = createAdminClient()
 
@@ -93,6 +114,21 @@ export async function POST(
   // 2. Status must be 'live'. No attempts during flag_found / paused / finished.
   if (game.status !== 'live') {
     return NextResponse.json({ error: 'game_not_in_live' }, { status: 409 })
+  }
+
+  // 2b. 30-minute protection window (P2-3): no attempts in the first 30 min.
+  if (game.started_at) {
+    const unlocksAtMs =
+      new Date(game.started_at).getTime() + PROTECTION_WINDOW_MS
+    if (Date.now() < unlocksAtMs) {
+      return NextResponse.json(
+        {
+          error: 'attempts_locked',
+          details: { unlocks_at: new Date(unlocksAtMs).toISOString() },
+        },
+        { status: 409 },
+      )
+    }
   }
 
   // 3. Identify caller via device_id, assert player_id match, scoped to this game.
@@ -165,14 +201,59 @@ export async function POST(
     )
   }
 
-  // 6. Geofence: within 20 m.
+  // 6. Geofence: within range (tighter for hardened landmarks).
+  const rangeM = landmark.hardened ? HARDENED_RANGE_M : ATTEMPT_RANGE_M
   const distance_m = haversineMeters(pos, {
     lat: landmark.lat,
     lng: landmark.lng,
   })
-  if (distance_m > ATTEMPT_RANGE_M) {
+  if (distance_m > rangeM) {
     return NextResponse.json(
       { error: 'out_of_geofence', details: { distance_m } },
+      { status: 409 },
+    )
+  }
+
+  // 6b. 15-minute per-landmark lockout (P2-4): if this team failed an attempt
+  // (decoy/empty) at THIS landmark in the last 15 min, block the re-attempt.
+  // Derived from the append-only flag_attempt event log — no new table.
+  const lockoutCutoffIso = new Date(
+    Date.now() - LANDMARK_LOCKOUT_MS,
+  ).toISOString()
+  const { data: recentAttemptRows, error: recentAttemptError } = await supabase
+    .from('events')
+    .select('payload, created_at')
+    .eq('game_id', game.id)
+    .eq('type', 'flag_attempt')
+    .gte('created_at', lockoutCutoffIso)
+
+  if (recentAttemptError) {
+    return NextResponse.json(
+      { error: 'events_lookup_failed', details: recentAttemptError.message },
+      { status: 500 },
+    )
+  }
+  const lockingAttempt = (
+    (recentAttemptRows ?? []) as Array<{
+      payload: Record<string, unknown>
+      created_at: string
+    }>
+  ).find((e) => {
+    const p = e.payload
+    return (
+      p.team_id === caller.team_id &&
+      p.landmark_ref === landmark_ref &&
+      (p.result === 'decoy' || p.result === 'empty')
+    )
+  })
+  if (lockingAttempt) {
+    const unlocksAtMs =
+      new Date(lockingAttempt.created_at).getTime() + LANDMARK_LOCKOUT_MS
+    return NextResponse.json(
+      {
+        error: 'landmark_locked_out',
+        details: { unlocks_at: new Date(unlocksAtMs).toISOString() },
+      },
       { status: 409 },
     )
   }
@@ -184,6 +265,24 @@ export async function POST(
     return NextResponse.json(
       { error: 'cannot_attempt_own_landmark' },
       { status: 409 },
+    )
+  }
+
+  // 7b. Persist the submitted photo (stored for the opposing team to eyeball /
+  // dispute). Best-effort: a photo failure shouldn't block the game outcome.
+  const { error: photoError } = await supabase.from('photos').insert({
+    game_id: game.id,
+    player_id: caller.id,
+    url: photo_url,
+    lat: pos.lat,
+    lng: pos.lng,
+    taken_at: new Date(pos.updated_at).toISOString(),
+    kind: 'flag_attempt',
+  })
+  if (photoError) {
+    return NextResponse.json(
+      { error: 'photo_insert_failed', details: photoError.message },
+      { status: 500 },
     )
   }
 
@@ -228,6 +327,8 @@ export async function POST(
         landmark_ref,
         result,
         team_id: caller.team_id,
+        photo_url,
+        ...(answer ? { answer } : {}),
       },
     })
     if (attemptEventError) {
@@ -296,6 +397,8 @@ export async function POST(
         landmark_ref,
         result,
         team_id: caller.team_id,
+        photo_url,
+        ...(answer ? { answer } : {}),
       },
     })
     if (attemptEventError) {
@@ -314,6 +417,8 @@ export async function POST(
         landmark_ref,
         result,
         team_id: caller.team_id,
+        photo_url,
+        ...(answer ? { answer } : {}),
       },
     })
     if (attemptEventError) {

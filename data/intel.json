@@ -27,7 +27,7 @@
     "id": "intel.decoy-reveal",
     "name": "Decoy Reveal",
     "reveals": "Names one of the two decoys (does not reveal real)",
-    "cost_coins": 60
+    "cost_coins": 100
   },
   {
     "id": "intel.hot-cold",
@@ -46,11 +46,5 @@
     "name": "Direction",
     "reveals": "Compass bearing from city center to real flag (8 cardinal directions)",
     "cost_coins": 50
-  },
-  {
-    "id": "intel.landmark-type",
-    "name": "Landmark Type",
-    "reveals": "Reveals the category of the real flag (church, civic, park, museum, etc.)",
-    "cost_coins": 40
   }
 ]

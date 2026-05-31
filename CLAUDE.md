@@ -36,24 +36,28 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 ├── package.json           ← Next.js 15, Supabase SSR, Leaflet, Zustand, Zod
 │
 ├── app/
-│   ├── layout.tsx         ← root layout, PWA manifest link
-│   ├── globals.css        ← Tailwind base
+│   ├── layout.tsx         ← root layout, PWA manifest link, i18n provider
+│   ├── globals.css        ← Tailwind base + map-label styles
 │   ├── page.tsx           ← landing: create / join game
 │   ├── game/
 │   │   ├── new/page.tsx           ← create form
 │   │   ├── join/page.tsx          ← join-by-code form
 │   │   └── [code]/
-│   │       ├── page.tsx           ← server-side snapshot fetch
-│   │       └── Lobby.tsx          ← client lobby view
-│   ├── observer/          ← will become end-game results view
+│   │       ├── page.tsx           ← server-side snapshot fetch + phase router
+│   │       ├── Lobby.tsx          ← client lobby view
+│   │       ├── Setup.tsx          ← flag setup phase view
+│   │       └── Live.tsx           ← live game view (map/actions/status tabs)
+│   ├── observer/          ← placeholder for future results view
 │   └── api/games/
 │       ├── route.ts                       ← POST  /api/games (create)
 │       ├── by-code/[code]/route.ts        ← GET   /api/games/by-code/[code]
-│       └── [id]/
-│           ├── join/route.ts              ← POST  /api/games/[id]/join
-│           ├── switch-team/route.ts       ← POST  /api/games/[id]/switch-team
-│           ├── ready/route.ts             ← POST  /api/games/[id]/ready
-│           └── start/route.ts             ← POST  /api/games/[id]/start
+│       └── [id]/                          ← 22 routes covering all phases (incl. attempt-start, place-curse, trigger-placed-curse):
+│           ├── join, switch-team, ready, start, remove-player
+│           ├── flag-setup, setup-state, harden-flag
+│           ├── live-state, tag, attempt-flag, complete-run, respawn-clear
+│           ├── buy-intel, buy-curse, expire-curses
+│           ├── challenges, submit-challenge
+│           └── end-by-timeout
 │
 ├── lib/
 │   ├── cn.ts              ← clsx + tailwind-merge helper
@@ -61,31 +65,64 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │   ├── device.ts          ← localStorage device_id management
 │   ├── api.ts             ← apiGet / apiPost fetch wrappers
 │   ├── types.ts           ← shared DB and API contract types
+│   ├── landmarks.ts       ← landmark seed lookup helpers
 │   ├── supabase/
 │   │   ├── client.ts      ← browser Supabase client
 │   │   ├── server.ts      ← SSR server client (cookie stub — needs auth wiring later)
 │   │   └── admin.ts       ← service-role client for server-side mutations
-│   ├── hooks/
-│   │   └── useLobbyRealtime.ts    ← postgres_changes subscription for lobby
+│   ├── hooks/             ← 9 client hooks:
+│   │   ├── useLobbyRealtime.ts          ← postgres_changes for lobby
+│   │   ├── useLiveGameRealtime.ts       ← postgres_changes for live phase
+│   │   ├── usePresence.ts               ← Realtime Presence for GPS
+│   │   ├── useGPS.ts                    ← Geolocation API wrapper
+│   │   ├── useTagButton.ts              ← Tag eligibility + cooldown
+│   │   ├── useFlagAttemptButton.ts      ← Flag attempt eligibility
+│   │   ├── useDiscoveredEnemyKinds.ts   ← derive enemy-kind reveals from events
+│   │   ├── useCamping.ts                ← 50 m / 2 min camping detector
+│   │   └── useCurseExpiryPoll.ts        ← 20 s poll → /expire-curses
 │   ├── geo/
 │   │   ├── haversine.ts   ← great-circle distance in metres
 │   │   └── zones.ts       ← defense-zone proximity helper (200 m around own candidates)
-│   ├── game/              ← NOT YET BUILT: state derivation, coin calc, intel compute
-│   └── realtime/          ← NOT YET BUILT: presence + event subscription helpers (Live phase)
+│   ├── intel/
+│   │   ├── narrowing.ts   ← compute ruled-out enemy refs from intel cards
+│   │   └── overlays.ts    ← intel filter map overlays + out-of-bounds polygon
+│   ├── i18n/
+│   │   ├── context.tsx    ← React context + useT() hook (EN / PT-PT)
+│   │   └── messages.ts    ← string catalog
+│   └── results/
+│       └── scoring.ts     ← end-game score / timeline derivation
 │
 ├── components/
-│   └── ui/                ← Button, Input primitives (more to come)
+│   ├── ui/                ← Button, Input, LanguageSwitcher
+│   ├── map/
+│   │   └── GameMap.tsx    ← Leaflet map, dynamic-imported (no SSR)
+│   └── game/              ← 14 phase-specific components:
+│       ├── TagButton, FlagAttemptButton, HardenFlagButton
+│       ├── IntelPurchasePanel, IntelCardDisplay
+│       ├── CursePurchasePanel, ActiveCursesBanner, CurseHistoryList
+│       ├── ChallengesPanel, ChallengeHistoryList
+│       ├── RespawnBanner, FlagCarrierBanner, FlagFoundBanner
+│       └── GameOverOverlay
 │
 ├── store/
 │   └── gameStore.ts       ← Zustand store for game/teams/players/me
 │
 ├── data/                  ← static seed JSON (see above)
 │
-└── supabase/migrations/
-    ├── 0001_init.sql      ← initial schema (9 tables, append-only events trigger)
-    └── 0002_*.sql         ← NOT YET WRITTEN: add game_code, flag_carrier,
-                              remove captain role, add setup + flag_found statuses
+└── supabase/migrations/   ← 10 migrations (0001–0010):
+    ├── 0001_init.sql              ← initial schema (9 tables, append-only events trigger)
+    ├── 0002_adjustments.sql       ← game_code, flag_carrier, captain→host, setup status
+    ├── 0003_realtime_publication.sql
+    ├── 0004_host_role.sql
+    ├── 0005_events_allow_actor_cascade.sql
+    ├── 0006_events_allow_cascade_delete.sql
+    ├── 0007_player_respawning.sql
+    ├── 0008_rls_baseline.sql      ← RLS enabled on all tables
+    ├── 0009_flag_attempt_photos.sql ← public `flag-attempts` Storage bucket + policies
+    └── 0010_placed_curses.sql     ← hidden placed_curses table (no anon RLS, not broadcast)
 ```
+
+> ⚠️ **Migrations `0009` + `0010` may not be applied yet** — flag-attempt photo upload and placed curses fail without them. Run `supabase db push` locally and on hosted Supabase.
 
 ---
 
@@ -120,11 +157,12 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | DB / Auth | Supabase (Postgres + anon auth) | Anonymous sign-in, no passwords |
 | Realtime | Supabase Realtime | Presence for GPS, postgres_changes for events |
 | Storage | Supabase Storage | Photo uploads (flag attempts, challenge proofs, curse proofs) |
-| Maps | Leaflet + react-leaflet | Dynamic import (no SSR). Remember: `import 'leaflet/dist/leaflet.css'` |
+| Maps | Leaflet + react-leaflet | Dynamic import (no SSR). Tiles: **Carto Voyager** (gamified look). Remember: `import 'leaflet/dist/leaflet.css'` |
 | Validation | Zod | All API route inputs |
 | Geo math | Custom (`lib/geo/`) | haversine, midline half detection, geofence radius |
+| i18n | Custom React context (`lib/i18n/`) | EN + PT-PT (Portugal). `useT()` hook. Toggle in lobby and live header. |
 | Deploy | Vercel | Free tier sufficient |
-| DB jobs | pg_cron (Supabase) | Curse expiry every 30 s |
+| DB jobs | pg_cron (Supabase) | Curse expiry every 30 s — currently replaced by client poll, see backlog item 12 |
 
 ---
 
@@ -145,14 +183,20 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 ### Done
 - Game rules fully documented (`RULEBOOK.md`, `PLAYER_GUIDE.md`)
 - Architecture fully documented (`ARCHITECTURE.md`)
-- Database migrations 0001 + 0002 (9 tables, append-only events trigger, `code`/`ready`/`flag_carrier`/`side`)
+- Database migrations `0001`–`0010` (9 base tables + placed_curses, append-only events trigger, host role, respawning flag, RLS baseline, flag-attempt Storage bucket)
 - Static seed data (`data/`)
 - Next.js scaffold (config, Tailwind, Supabase clients, PWA manifest)
-- **Step 1 — Lobby flow** (create game → join by code → ready toggle → start)
-  - 6 API routes under `app/api/games/`
-  - 3 client pages (`new`, `join`, `[code]/Lobby`)
-  - Realtime subscription via `lib/hooks/useLobbyRealtime`
-  - Zustand store, device_id, fetch wrapper
+- **Full game flow** — lobby → setup → live → results (see backlog steps 1–11 below)
+- **i18n** — EN + PT-PT via `lib/i18n/`, language toggle in lobby and live header (commit `4fe06f2`)
+- **Map polish** — Carto Voyager basemap, tooltips on click only, legend at `top-24 left-3` to clear the GPS toggle and bottom action stack (commits `8da6921`, `8fe574b`, `aa71835`)
+- Live game view tabs: map / actions / status
+- **Post-playtest fixes & mechanics (2026-05-31)** — see git history; PLAYTEST_TRIAGE.md was the working doc (deleted on completion):
+  - Bug fixes: `useLiveGameRealtime` now subscribes to `teams`+`players` (respawn/coins/flag-carrier propagate); flag-attempt geofence drift buffer (28 m; 12 m hardened); replaced PWA-unreliable `window.confirm`/`prompt` with inline UI across Tag/Attempt/Challenge/Curse/Harden/Intel.
+  - Curse enforcement: `lib/hooks/useCurseEnforcement.ts` — Full Stop action-lock, check-in/photo prompts, [A] movement readouts.
+  - Flag attempt → structured mini-challenge (`data/flag-attempt-challenges.json`, real photo upload to the `flag-attempts` bucket) + 30-min protection window + 15-min per-landmark lockout. Hardening = tighter GPS radius (no info leak).
+  - Discovery notifications: `useGameToasts` + `ToastLayer` (two-stage attempt toasts + enemy-proximity ping); new `flag_attempt_started` event + `/attempt-start` route.
+  - Placed curses (3rd category): `placed_curses` hidden table, `/place-curse` + `/trigger-placed-curse` routes, `data/placed-curses.json`, `PlacedCursePanel` (setup + live), `usePlacedCurseTrigger`.
+  - Map redesign: Mateus removed, East home → Biblioteca Municipal, out-of-bounds disk recentred on the avenue (1.5 km), `SetupMap` planning view, intel I9 removed + decoy-reveal repriced to 100, "Rejoin last game" button.
 
 ### Implementation backlog (ordered)
 See `ARCHITECTURE.md §9` for the full ordered backlog. Headline:

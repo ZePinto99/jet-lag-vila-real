@@ -41,22 +41,6 @@
     "photo_required": true
   },
   {
-    "id": "challenge.palacio-mateus-postcard",
-    "location_name": "Palácio de Mateus",
-    "landmark_ref": "landmark.palacio-de-mateus-main-gate",
-    "task": "Buy a postcard at the gift shop and photograph it",
-    "reward_coins": 50,
-    "photo_required": true
-  },
-  {
-    "id": "challenge.palacio-mateus-gardens-pool",
-    "location_name": "Palácio de Mateus gardens",
-    "landmark_ref": "landmark.palacio-de-mateus-main-gate",
-    "task": "Photograph the central reflecting pool",
-    "reward_coins": 40,
-    "photo_required": true
-  },
-  {
     "id": "challenge.utad-botanical-latin-name",
     "location_name": "UTAD Botanical",
     "landmark_ref": "landmark.utad-jardim-botanico",
@@ -136,14 +120,6 @@
     "landmark_ref": "landmark.parque-florestal",
     "task": "Photograph two different bird species (any)",
     "reward_coins": 50,
-    "photo_required": true
-  },
-  {
-    "id": "challenge.igreja-mateus-team",
-    "location_name": "Igreja de Mateus",
-    "landmark_ref": "landmark.igreja-de-mateus",
-    "task": "Photograph the church facade with all team members",
-    "reward_coins": 40,
     "photo_required": true
   }
 ]

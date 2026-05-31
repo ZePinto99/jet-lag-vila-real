@@ -4,11 +4,16 @@
 // curses currently affecting MY team. Stacks vertically, amber/orange theme
 // to distinguish from RespawnBanner (red/amber) and FlagFoundBanner.
 //
-// Each entry shows: curse name + enforcement tag, one-line description, and
-// a live countdown to expiry. Curses past their expiry render dimmed with a
-// "(expired — refreshing…)" hint; the expiry poll cleans them up shortly.
+// Each entry shows: curse name + enforcement tag, one-line description, a live
+// countdown to expiry, and (P2-6) the enforcement extras from
+// useCurseEnforcement: a live readout for [A] movement curses and a timed
+// prompt for [B] photo curses / [L] check-in. A Full Stop curse adds an
+// "actions locked" notice. Curses past their expiry render dimmed; the expiry
+// poll cleans them up shortly.
 
 import cursesSeed from '@/data/curses.json'
+import { useT } from '@/lib/i18n/context'
+import type { CurseEnforcementEntry } from '@/lib/hooks/useCurseEnforcement'
 import type {
   ActiveCurse,
   CurseEnforcement,
@@ -29,22 +34,37 @@ const CURSE_CATALOG: CurseSeed[] = cursesSeed as CurseSeed[]
 interface ActiveCursesBannerProps {
   activeCurses: ActiveCurse[]
   nowMs: number
+  actionsLocked?: boolean
+  byCurseId?: Record<string, CurseEnforcementEntry>
 }
 
 export function ActiveCursesBanner({
   activeCurses,
   nowMs,
+  actionsLocked = false,
+  byCurseId = {},
 }: ActiveCursesBannerProps) {
+  const t = useT()
   if (activeCurses.length === 0) return null
 
   return (
     <div className="flex flex-col gap-1 border-b border-orange-700/70 bg-orange-950/40 px-4 py-2">
       <p className="text-[11px] font-medium uppercase tracking-wider text-orange-200">
-        Active curses on your team
+        {t('curse.banner_title')}
       </p>
+      {actionsLocked && (
+        <p className="rounded bg-red-900/60 px-2 py-1 text-[11px] font-semibold text-red-100">
+          {t('curse.actions_locked')}
+        </p>
+      )}
       <ul className="flex flex-col gap-1.5">
         {activeCurses.map((curse) => (
-          <ActiveCurseRow key={curse.id} curse={curse} nowMs={nowMs} />
+          <ActiveCurseRow
+            key={curse.id}
+            curse={curse}
+            nowMs={nowMs}
+            enforcement={byCurseId[curse.id]}
+          />
         ))}
       </ul>
     </div>
@@ -54,13 +74,16 @@ export function ActiveCursesBanner({
 function ActiveCurseRow({
   curse,
   nowMs,
+  enforcement,
 }: {
   curse: ActiveCurse
   nowMs: number
+  enforcement?: CurseEnforcementEntry
 }) {
+  const t = useT()
   const seed = CURSE_CATALOG.find((c) => c.id === curse.curse_ref)
   const name = seed?.name ?? curse.curse_ref
-  const enforcement = seed?.enforcement ?? 'C'
+  const enforcementTag = seed?.enforcement ?? 'C'
   const description = seed?.description ?? ''
 
   const expiresMs = curse.expires_at
@@ -78,7 +101,7 @@ function ActiveCurseRow({
       <div className="flex items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-1.5 min-w-0">
           <span className="rounded bg-orange-700/40 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-orange-200">
-            [{enforcement}]
+            [{enforcementTag}]
           </span>
           <span className="truncate text-sm font-semibold text-orange-50">
             {name}
@@ -86,15 +109,35 @@ function ActiveCurseRow({
         </div>
         <span className="shrink-0 font-mono text-[11px] tabular-nums text-orange-200">
           {expiresMs == null
-            ? 'no timer'
+            ? t('curse.no_timer')
             : expired
-              ? '(expired — refreshing…)'
+              ? t('curse.expired_hint')
               : formatTimeRemaining(expiresMs, nowMs)}
         </span>
       </div>
       {description && (
         <p className="mt-0.5 text-[11px] leading-snug text-orange-200/90">
           {description}
+        </p>
+      )}
+      {enforcement?.prompt && !expired && (
+        <p className="mt-1 rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-100">
+          {enforcement.prompt.secondsLeft > 0
+            ? t('curse.prompt_window', {
+                label: enforcement.prompt.label,
+                s: enforcement.prompt.secondsLeft,
+              })
+            : enforcement.prompt.label}
+        </p>
+      )}
+      {enforcement?.readout && !expired && (
+        <p
+          className={
+            'mt-1 font-mono text-[11px] tabular-nums ' +
+            (enforcement.readout.ok ? 'text-emerald-300' : 'text-red-300')
+          }
+        >
+          {enforcement.readout.text}
         </p>
       )}
     </li>

@@ -29,6 +29,11 @@ export const MESSAGES: MessageDict = {
     en: 'Start a new session and invite your team',
     pt: 'Inicia uma nova sessão e convida a tua equipa',
   },
+  'landing.rejoin_game': { en: 'Rejoin last game', pt: 'Voltar ao último jogo' },
+  'landing.rejoin_game_desc': {
+    en: 'Continue game {code}',
+    pt: 'Continuar o jogo {code}',
+  },
   'landing.join_game': { en: 'Join game', pt: 'Entrar num jogo' },
   'landing.join_game_desc': {
     en: 'Enter a 4-letter code to join an existing session',
@@ -262,6 +267,119 @@ export const MESSAGES: MessageDict = {
     pt: 'Gastar 150 moedas para reforçar a bandeira real? Só podes fazer isto uma vez.',
   },
   'status.hardening': { en: 'Hardening…', pt: 'A reforçar…' },
+
+  // ---------- curse enforcement (banner + prompts) ----------
+  // (reuses existing curse.banner_title / curse.expired_hint above)
+  'curse.no_timer': { en: 'no timer', pt: 'sem cronómetro' },
+  'curse.actions_locked': {
+    en: 'Actions locked — Full Stop in effect',
+    pt: 'Ações bloqueadas — Paragem Total em vigor',
+  },
+  'curse.checkin_prompt': { en: 'Check in now', pt: 'Faz check-in já' },
+  'curse.checkin_ack': { en: '✓ Checked in', pt: '✓ Check-in feito' },
+  // Live readouts for [A] movement curses — informational, no auto-penalty.
+  'curse.readout_speed': { en: 'Speed {kmh} km/h', pt: 'Velocidade {kmh} km/h' },
+  'curse.readout_drift': { en: 'Drift {m} m from start', pt: 'Desvio {m} m do início' },
+  'curse.readout_spread': { en: 'Team spread {m} m', pt: 'Dispersão da equipa {m} m' },
+  // Timed prompt labels for [B] photo curses.
+  'curse.prompt_window': { en: '{label} · {s}s', pt: '{label} · {s}s' },
+  'curse.prompt.single-file': {
+    en: 'Group photo from the front',
+    pt: 'Foto de grupo pela frente',
+  },
+  'curse.prompt.photo-tax': { en: 'Selfie at any sign', pt: 'Selfie junto a uma placa' },
+  'curse.prompt.outfit-swap': {
+    en: 'Before/after outfit photo',
+    pt: 'Foto antes/depois da troca de roupa',
+  },
+  'curse.prompt.pose-patrol': {
+    en: 'Strike the pose, then photograph',
+    pt: 'Faz a pose e fotografa',
+  },
+
+  // ---------- flag attempt window / lockout (P2-1 / P2-3 / P2-4) ----------
+  'attempt.locked_window': {
+    en: 'Attempts unlock in {time}',
+    pt: 'Capturas abrem em {time}',
+  },
+  'attempt.window_header': {
+    en: 'Flag attempts unlock in {time}',
+    pt: 'Capturas de bandeira abrem em {time}',
+  },
+  'attempt.err_attempts_locked': {
+    en: 'Flag attempts are locked for the first 30 minutes.',
+    pt: 'As capturas estão bloqueadas nos primeiros 30 minutos.',
+  },
+  'attempt.err_landmark_locked_out': {
+    en: 'This landmark is locked for 15 min after a failed attempt.',
+    pt: 'Este local fica bloqueado 15 min após uma tentativa falhada.',
+  },
+  'attempt.err_out_of_geofence': {
+    en: 'Get closer to the landmark and try again.',
+    pt: 'Aproxima-te do local e tenta de novo.',
+  },
+  'attempt.err_photo_required': {
+    en: 'Add a photo first.',
+    pt: 'Adiciona primeiro uma foto.',
+  },
+  'attempt.err_photo_upload_failed': {
+    en: 'Photo upload failed — try again.',
+    pt: 'Falha ao enviar a foto — tenta de novo.',
+  },
+
+  // ---------- discovery notifications / toasts (P2-5) ----------
+  'toast.defender_attempt_start': {
+    en: 'Enemy is attempting your landmark — {name}',
+    pt: 'Inimigo a atacar o teu local — {name}',
+  },
+  'toast.teammate_attempt_start': {
+    en: '{player} is attempting {name}',
+    pt: '{player} está a atacar {name}',
+  },
+  'toast.defender_discovered': {
+    en: 'Your flag was discovered at {name}!',
+    pt: 'A tua bandeira foi descoberta em {name}!',
+  },
+  'toast.defender_failed': {
+    en: 'Flag still hidden — attack failed at {name}',
+    pt: 'Bandeira ainda escondida — ataque falhou em {name}',
+  },
+  'toast.teammate_found_real': {
+    en: 'Flag found at {name} — it was the real flag!',
+    pt: 'Bandeira encontrada em {name} — era a verdadeira!',
+  },
+  'toast.teammate_attempt_failed': {
+    en: 'Flag attempt at {name} failed',
+    pt: 'Tentativa em {name} falhou',
+  },
+  'toast.enemy_near': {
+    en: 'Enemy near {name}',
+    pt: 'Inimigo perto de {name}',
+  },
+  'toast.placed_curse_hit': {
+    en: 'You walked into a trap — a curse hit your team!',
+    pt: 'Caíste numa armadilha — uma maldição atingiu a tua equipa!',
+  },
+
+  // ---------- placed curses (P2-2) ----------
+  'placed.title': { en: 'Place a curse', pt: 'Colocar maldição' },
+  'placed.hint': {
+    en: 'Arm one of your own landmarks. It triggers when an enemy enters its zone — hidden until then.',
+    pt: 'Arma um dos teus locais. Dispara quando um inimigo entra na zona — invisível até lá.',
+  },
+  'placed.select_landmark': { en: 'Choose your landmark', pt: 'Escolhe o teu local' },
+  'placed.place_button': { en: 'Place · {cost}', pt: 'Colocar · {cost}' },
+  'placed.placing': { en: 'Placing…', pt: 'A colocar…' },
+  'placed.armed_label': {
+    en: 'Armed on {landmark}',
+    pt: 'Armada em {landmark}',
+  },
+  'placed.armed_header': { en: 'Your armed placements', pt: 'As tuas armadilhas' },
+  'placed.none_available': {
+    en: 'All your landmarks are already armed.',
+    pt: 'Todos os teus locais já estão armados.',
+  },
+  'placed.need_coins': { en: 'Need {n} more coins', pt: 'Faltam {n} moedas' },
 }
 
 export type MessageKey = keyof typeof MESSAGES

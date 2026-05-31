@@ -14,11 +14,13 @@
 
 import type { Card, IntelAnswer } from '@/lib/types'
 
-// Vila Real "action centre" and play-area radius. The out-of-play overlay
-// is the world MINUS this disk. 2.5 km comfortably covers every seed
-// landmark (the farthest is Mercado Municipal at ~1.9 km from this centre).
-export const PLAY_AREA_CENTRE = { lat: 41.295, lng: -7.726 }
-export const PLAY_AREA_RADIUS_M = 2500
+// Vila Real "action centre" and play-area radius. The out-of-play overlay is
+// the world MINUS this disk. Centred on Avenida Carvalho Araújo after the
+// Mateus-free map redesign (PLAYTEST_TRIAGE P3-1); 1.5 km comfortably covers
+// every remaining seed landmark (the farthest is Parque Florestal at ~1.18 km
+// from this centre).
+export const PLAY_AREA_CENTRE = { lat: 41.2955, lng: -7.7461 }
+export const PLAY_AREA_RADIUS_M = 1500
 
 // Used for I1 N/S half-plane split.
 const CITY_CENTRE_LAT = 41.295

@@ -18,6 +18,7 @@ import intelSeed from '@/data/intel.json'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
+import { useT } from '@/lib/i18n/context'
 import type {
   BuyIntelRequest,
   BuyIntelResponse,
@@ -45,6 +46,7 @@ interface IntelPurchasePanelProps {
   teamCoins: number
   myIntelCards: Card[]
   myGps: GpsPosition | null
+  actionsLocked?: boolean
 }
 
 export function IntelPurchasePanel({
@@ -54,7 +56,9 @@ export function IntelPurchasePanel({
   teamCoins,
   myIntelCards,
   myGps,
+  actionsLocked = false,
 }: IntelPurchasePanelProps) {
+  const t = useT()
   const [busyRef, setBusyRef] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -63,14 +67,14 @@ export function IntelPurchasePanel({
   const intelCount = myIntelCards.length
   const capReached = intelCount >= INTEL_CAP
   const gameNotLive = gameStatus !== 'live' && gameStatus !== 'flag_found'
+  const lockedLabel = actionsLocked ? t('curse.actions_locked') : null
 
   async function handleBuy(intel: IntelSeed) {
+    // No window.confirm — unreliable in installed PWAs (P0-3). Buying intel is
+    // a deliberate per-card tap with the cost shown on the button, and it's
+    // capped at 4 per game, so a second confirm step isn't worth the friction.
     setError(null)
     setSuccess(null)
-    const ok =
-      typeof window === 'undefined' ||
-      window.confirm(`Buy ${intel.name} for ${intel.cost_coins} coins?`)
-    if (!ok) return
 
     setBusyRef(intel.id)
     const body: BuyIntelRequest = {
@@ -118,6 +122,7 @@ export function IntelPurchasePanel({
             myGps={myGps}
             busy={busyRef === intel.id}
             anyBusy={busyRef !== null}
+            lockedLabel={lockedLabel}
             onBuy={handleBuy}
           />
         ))}
@@ -146,6 +151,7 @@ function IntelRow({
   myGps,
   busy,
   anyBusy,
+  lockedLabel,
   onBuy,
 }: {
   intel: IntelSeed
@@ -156,6 +162,7 @@ function IntelRow({
   myGps: GpsPosition | null
   busy: boolean
   anyBusy: boolean
+  lockedLabel: string | null
   onBuy: (intel: IntelSeed) => void
 }) {
   const needsGps = intel.id === HOT_COLD_REF && !myGps
@@ -163,7 +170,9 @@ function IntelRow({
   const coinShortfall = Math.max(0, intel.cost_coins - teamCoins)
 
   // Priority order for the disabled reason message.
-  const disabledReason: string | null = gameNotLive
+  const disabledReason: string | null = lockedLabel
+    ? lockedLabel
+    : gameNotLive
     ? 'Available during live game'
     : owned
       ? 'Already purchased'

@@ -1,0 +1,236 @@
+[
+  {
+    "landmark_ref": "landmark.se-catedral",
+    "pt": {
+      "title": "Confissão na Sé",
+      "task": "Encontra a porta principal da antiga Igreja de São Domingos e fotografa a tua mão a tocar na pedra mais antiga que conseguires alcançar. Bandeira no enquadramento.",
+      "question": "Quantos sinos consegues contar na torre?"
+    },
+    "en": {
+      "title": "Confession at the Cathedral",
+      "task": "Find the main door of the old Church of São Domingos and photograph your hand touching the oldest stone you can reach. Marker in frame.",
+      "question": "How many bells can you count in the tower?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.igreja-dos-clerigos",
+    "pt": {
+      "title": "O segredo de Nasoni",
+      "task": "Fotografa a fachada barroca da Capela Nova com um(a) colega a fazer a mesma pose de uma estátua ou santo que vejas.",
+      "question": "Que cor predomina na pedra da fachada?"
+    },
+    "en": {
+      "title": "Nasoni's secret",
+      "task": "Photograph the baroque facade of Capela Nova with a teammate copying the pose of any statue or saint you can see.",
+      "question": "What colour dominates the facade stone?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.casa-de-diogo-cao",
+    "pt": {
+      "title": "Rota do navegador",
+      "task": "Diogo Cão chegou ao rio Congo. Fotografa-te a apontar para sul (em direção a África) em frente à casa renascentista.",
+      "question": "Em que ano (aproximado) viveu Diogo Cão? Arrisca."
+    },
+    "en": {
+      "title": "The navigator's route",
+      "task": "Diogo Cão reached the Congo river. Photograph yourself pointing south (towards Africa) in front of the Renaissance house.",
+      "question": "Roughly what year did Diogo Cão live? Take a guess."
+    }
+  },
+  {
+    "landmark_ref": "landmark.largo-do-pelourinho",
+    "pt": {
+      "title": "Justiça de 1515",
+      "task": "Fotografa o pelourinho de baixo para cima, com a bandeira encostada à base. Faz o ângulo mais dramático que conseguires.",
+      "question": "Quantos degraus tem a base do pelourinho?"
+    },
+    "en": {
+      "title": "Justice of 1515",
+      "task": "Photograph the pillory from below, with the marker against its base. Make it as dramatic an angle as you can.",
+      "question": "How many steps does the pillory base have?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.camara-municipal",
+    "pt": {
+      "title": "Continência ao município",
+      "task": "Fotografa a equipa em sentido, a fazer continência à bandeira de Portugal na fachada da Câmara.",
+      "question": "Quantas janelas tem o piso principal da fachada?"
+    },
+    "en": {
+      "title": "Salute to the town hall",
+      "task": "Photograph the team at attention, saluting the Portuguese flag on the Câmara facade.",
+      "question": "How many windows does the main floor of the facade have?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.utad-main-library",
+    "pt": {
+      "title": "Silêncio na biblioteca",
+      "task": "Fotografa a entrada da Biblioteca Central com toda a equipa a fazer o gesto de 'silêncio' (dedo nos lábios).",
+      "question": "Qual é o horário de fecho hoje? (lê à porta)"
+    },
+    "en": {
+      "title": "Silence in the library",
+      "task": "Photograph the Central Library entrance with the whole team doing the 'shush' gesture (finger to lips).",
+      "question": "What time does it close today? (read it at the door)"
+    }
+  },
+  {
+    "landmark_ref": "landmark.utad-jardim-botanico",
+    "pt": {
+      "title": "Caça à planta",
+      "task": "No Jardim Botânico, fotografa a folha mais estranha que encontrares, ao lado da bandeira.",
+      "question": "Escreve o nome de uma planta com placa identificadora."
+    },
+    "en": {
+      "title": "Plant hunt",
+      "task": "In the Botanical Garden, photograph the strangest leaf you can find, next to the marker.",
+      "question": "Write the name of any plant with an ID label."
+    }
+  },
+  {
+    "landmark_ref": "landmark.utad-geosciences-museum",
+    "pt": {
+      "title": "Tempo profundo",
+      "task": "Fotografa-te a fazer pose de 'estátua de pedra' junto ao edifício de Geociências, com a bandeira visível.",
+      "question": "Que mineral ou rocha consegues nomear? Arrisca um."
+    },
+    "en": {
+      "title": "Deep time",
+      "task": "Photograph yourself posing as a 'stone statue' by the Geosciences building, marker visible.",
+      "question": "Name any mineral or rock you can. Take a guess."
+    }
+  },
+  {
+    "landmark_ref": "landmark.parque-florestal",
+    "pt": {
+      "title": "Pulmão da cidade",
+      "task": "Fotografa a equipa a abraçar a maior árvore que encontrarem no parque. Bandeira no tronco.",
+      "question": "Quantas pessoas foram precisas para abraçar a árvore?"
+    },
+    "en": {
+      "title": "Lungs of the city",
+      "task": "Photograph the team hugging the biggest tree you can find in the park. Marker on the trunk.",
+      "question": "How many people did it take to hug the tree?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.igreja-da-conceicao",
+    "pt": {
+      "title": "Conceição",
+      "task": "Fotografa a porta da igreja com a bandeira pousada no degrau e um(a) colega ajoelhado em pose teatral.",
+      "question": "A porta está aberta ou fechada agora?"
+    },
+    "en": {
+      "title": "Conceição",
+      "task": "Photograph the church door with the marker on the step and a teammate kneeling in a theatrical pose.",
+      "question": "Is the door open or closed right now?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.estacao-ferroviaria",
+    "pt": {
+      "title": "Comboio fantasma",
+      "task": "A estação está fechada desde 2009. Fotografa a equipa a fingir esperar um comboio que nunca chega, bandeira no banco.",
+      "question": "Que horas marca o relógio (ou onde estava o relógio)?"
+    },
+    "en": {
+      "title": "Ghost train",
+      "task": "The station has been closed since 2009. Photograph the team pretending to wait for a train that never comes, marker on the bench.",
+      "question": "What time does the clock show (or where the clock was)?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.mercado-municipal",
+    "pt": {
+      "title": "Pregão do mercado",
+      "task": "Fotografa a bandeira junto a uma banca (ou à entrada se estiver fechado) e a equipa a apontar para o produto mais colorido.",
+      "question": "Qual é o produto mais barato que consegues ver? Escreve o preço."
+    },
+    "en": {
+      "title": "Market cry",
+      "task": "Photograph the marker by a stall (or at the entrance if closed) and the team pointing at the most colourful product.",
+      "question": "What's the cheapest product you can see? Write the price."
+    }
+  },
+  {
+    "landmark_ref": "landmark.nosso-shopping",
+    "pt": {
+      "title": "Missão no shopping",
+      "task": "Fotografa a equipa a entrar no Nosso Shopping em formação de filme de espiões, bandeira escondida mas visível.",
+      "question": "Qual é a primeira loja que vês ao entrar?"
+    },
+    "en": {
+      "title": "Mall mission",
+      "task": "Photograph the team entering Nosso Shopping in spy-movie formation, marker hidden but visible.",
+      "question": "What's the first shop you see on entering?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.biblioteca-municipal",
+    "pt": {
+      "title": "Silêncio absoluto",
+      "task": "Na Biblioteca Municipal, fotografa a equipa em pose de leitura concentrada (livro ou telemóvel na mão), com a bandeira pousada à frente.",
+      "question": "Que horas fecha a biblioteca hoje? (lê à entrada)"
+    },
+    "en": {
+      "title": "Absolute silence",
+      "task": "At the Municipal Library, photograph the team in a deep-reading pose (book or phone in hand), marker on the floor in front.",
+      "question": "What time does the library close today? (read it at the entrance)"
+    }
+  },
+  {
+    "landmark_ref": "landmark.igreja-sao-pedro",
+    "pt": {
+      "title": "São Pedro, 1528",
+      "task": "Fotografa a fachada da Igreja de São Pedro com a bandeira encostada à porta e a equipa de costas, como se fossem entrar.",
+      "question": "De que cor é a porta principal?"
+    },
+    "en": {
+      "title": "São Pedro, 1528",
+      "task": "Photograph the facade of São Pedro church with the marker against the door and the team facing it, as if about to enter.",
+      "question": "What colour is the main door?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.jardim-da-carreira",
+    "pt": {
+      "title": "O miradouro de Camilo",
+      "task": "Encontra a estátua de Camilo Castelo Branco no Jardim da Carreira e fotografa a equipa a imitar a pose dele, bandeira à vista.",
+      "question": "Para que lado olha a estátua — cidade ou montanha?"
+    },
+    "en": {
+      "title": "Camilo's viewpoint",
+      "task": "Find the Camilo Castelo Branco statue in Jardim da Carreira and photograph the team copying his pose, marker in view.",
+      "question": "Which way does the statue face — city or mountains?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.largo-do-pioledo",
+    "pt": {
+      "title": "Encruzilhada do Pioledo",
+      "task": "No Largo do Pioledo, fotografa a bandeira no chão e a equipa a apontar cada um para uma direção diferente.",
+      "question": "Quantas ruas saem do largo? Conta-as."
+    },
+    "en": {
+      "title": "Pioledo crossroads",
+      "task": "At Largo do Pioledo, photograph the marker on the ground and each teammate pointing in a different direction.",
+      "question": "How many streets lead out of the square? Count them."
+    }
+  },
+  {
+    "landmark_ref": "landmark.escola-sao-pedro",
+    "pt": {
+      "title": "Recreio invadido",
+      "task": "À entrada da Escola Secundária de São Pedro, fotografa a equipa em pose de fotografia de turma, bandeira ao centro.",
+      "question": "O que diz a placa à entrada da escola?"
+    },
+    "en": {
+      "title": "Playground raid",
+      "task": "At the gate of Escola Secundária de São Pedro, photograph the team in a class-photo pose with the marker in the middle.",
+      "question": "What does the sign at the school entrance say?"
+    }
+  }
+]

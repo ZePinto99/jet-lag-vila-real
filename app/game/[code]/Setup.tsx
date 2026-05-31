@@ -1,10 +1,12 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { Button } from '@/components/ui/Button'
 import { apiGet, apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
 import { useGameStore } from '@/store/gameStore'
+import { PlacedCursePanel } from '@/components/game/PlacedCursePanel'
 import type {
   FlagAssignment,
   FlagRole,
@@ -15,6 +17,15 @@ import type {
   SetupStateResponse,
   Team,
 } from '@/lib/types'
+
+const SetupMap = dynamic(() => import('@/components/map/SetupMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-72 w-full items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-sm text-neutral-500">
+      Loading map…
+    </div>
+  ),
+})
 
 const ROLES: ReadonlyArray<FlagRole> = ['real', 'decoy', 'empty']
 
@@ -47,6 +58,7 @@ interface SetupSnapshot {
 export function Setup() {
   const game = useGameStore((s) => s.game)
   const me = useGameStore((s) => s.me)
+  const myPlacedCurses = useGameStore((s) => s.myPlacedCurses)
 
   const [snapshot, setSnapshot] = useState<SetupSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
@@ -260,6 +272,17 @@ export function Setup() {
             </p>
           )}
         </section>
+
+        {/* Pre-arm placed curses on your own candidates while you wait (P2-2). */}
+        {me && (
+          <PlacedCursePanel
+            gameId={game.id}
+            myPlayerId={me.id}
+            teamCoins={snapshot.myTeam.coins}
+            myCandidateLandmarks={snapshot.myLandmarks}
+            placedCurses={myPlacedCurses}
+          />
+        )}
       </main>
     )
   }
@@ -279,6 +302,18 @@ export function Setup() {
           1 hides the real flag, 2 are decoys, 2 are empty.
         </p>
       </header>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-medium">Map — all candidate points</h2>
+        <p className="text-xs text-neutral-400">
+          Your pool is highlighted; the enemy pool and neutral respawn points are
+          shown too. Plan picks with non-overlapping defense zones.
+        </p>
+        <SetupMap
+          mySide={snapshot.myTeam.side}
+          myHomeRef={snapshot.myTeam.home_landmark_id}
+        />
+      </section>
 
       <section className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
         <h2 className="text-base font-medium">Your pool</h2>

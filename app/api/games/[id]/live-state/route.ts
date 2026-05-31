@@ -9,6 +9,7 @@ import type {
   GameEvent,
   Landmark,
   LiveStateResponse,
+  PlacedCurse,
   Player,
   Team,
 } from '@/lib/types'
@@ -170,6 +171,22 @@ export async function GET(
   }
   const myCards = (myCardsData ?? []) as Card[]
 
+  // 8b. My team's armed placed curses (hidden from the enemy — server-only read).
+  const { data: placedData, error: placedError } = await supabase
+    .from('placed_curses')
+    .select('*')
+    .eq('game_id', game.id)
+    .eq('owner_team_id', myTeam.id)
+    .eq('armed', true)
+
+  if (placedError) {
+    return NextResponse.json(
+      { error: 'placed_curse_lookup_failed', details: placedError.message },
+      { status: 500 },
+    )
+  }
+  const myPlacedCurses = (placedData ?? []) as PlacedCurse[]
+
   // 9. Load last 50 events. Fetch DESC, then reverse for ascending client order.
   const { data: recentEventsData, error: recentEventsError } = await supabase
     .from('events')
@@ -197,6 +214,7 @@ export async function GET(
     enemy_landmarks: enemyLandmarks,
     active_curses: activeCurses,
     my_cards: myCards,
+    my_placed_curses: myPlacedCurses,
     recent_events: recentEvents,
   }
   return NextResponse.json(response)

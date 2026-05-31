@@ -274,6 +274,53 @@ export interface Card {
   updated_at: string
 }
 
+// Placed curses (P2-2). Armed-on-own-landmark, hidden from the enemy. The row
+// lives in the placed_curses table (not broadcast); the owning team reads its
+// own via live-state.
+export interface PlacedCurseDefinition {
+  id: string
+  name: string
+  cost_coins: number
+  casts_curse_ref: string // an id in data/curses.json (timed curse cast on trigger)
+  description: string
+}
+
+export interface PlacedCurse {
+  id: string
+  game_id: string
+  owner_team_id: string
+  landmark_ref: string
+  placed_ref: string
+  curse_ref: string
+  armed: boolean
+  created_at: string
+  triggered_at: string | null
+  triggered_by_team_id: string | null
+}
+
+// POST /api/games/[id]/place-curse
+export interface PlaceCurseRequest {
+  device_id: string
+  player_id: string
+  landmark_ref: string
+  placed_ref: string
+}
+export interface PlaceCurseResponse {
+  placed: PlacedCurse
+  team_coins: number
+}
+
+// POST /api/games/[id]/trigger-placed-curse — intruder reports position; the
+// server triggers any armed enemy placement whose zone they've entered.
+export interface TriggerPlacedCurseRequest {
+  device_id: string
+  player_id: string
+  pos: GpsPosition
+}
+export interface TriggerPlacedCurseResponse {
+  triggered_curse_refs: string[]
+}
+
 export interface GameEvent {
   id: string
   game_id: string
@@ -295,6 +342,7 @@ export interface LiveStateResponse {
   enemy_landmarks: EnemyLandmark[]
   active_curses: ActiveCurse[]    // curses targeting MY team
   my_cards: Card[]                 // my team's cards (intel + curses cast + challenges)
+  my_placed_curses: PlacedCurse[] // MY team's armed placements (hidden from enemy)
   recent_events: GameEvent[]       // last 50 events for timeline
 }
 
@@ -373,13 +421,31 @@ export interface AttemptFlagRequest {
   player_id: string
   landmark_ref: string
   pos: GpsPosition
-  photo_url?: string
+  // Photo is now required (P2-1): a real upload to Supabase Storage, URL passed
+  // here. `answer` is the optional flavour answer to the mini-challenge.
+  photo_url: string
+  answer?: string
 }
 
 export interface AttemptFlagResponse {
   result: FlagAttemptResult
   message: string
   game: Game
+}
+
+// Per-landmark flag-attempt mini-challenge content (data/flag-attempt-challenges.json).
+// Public — shown to the raider when attempting. Hardening is NOT represented
+// here (it's a server-side tighter GPS radius) so the content never leaks which
+// enemy candidate is the real flag.
+export interface FlagAttemptChallengeText {
+  title: string
+  task: string
+  question?: string
+}
+export interface FlagAttemptChallenge {
+  landmark_ref: string
+  pt: FlagAttemptChallengeText
+  en: FlagAttemptChallengeText
 }
 
 // POST /api/games/[id]/complete-run
@@ -448,7 +514,6 @@ export type IntelAnswer =
       intel_ref: 'intel.direction'
       bearing: 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW'
     }
-  | { intel_ref: 'intel.landmark-type'; category: string }
 
 // POST /api/games/[id]/buy-intel
 // Body validation:

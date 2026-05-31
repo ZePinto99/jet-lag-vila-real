@@ -24,6 +24,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { apiGet, apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
+import { useT } from '@/lib/i18n/context'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import type {
@@ -44,6 +45,7 @@ interface ChallengesPanelProps {
   myPlayerId: string
   myGps: GpsPosition | null
   respawning: boolean
+  actionsLocked?: boolean
 }
 
 export function ChallengesPanel({
@@ -52,7 +54,10 @@ export function ChallengesPanel({
   myPlayerId,
   myGps,
   respawning,
+  actionsLocked = false,
 }: ChallengesPanelProps) {
+  const t = useT()
+  const lockedLabel = actionsLocked ? t('curse.actions_locked') : null
   const [active, setActive] = useState<ChallengeDefinition[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -87,34 +92,17 @@ export function ChallengesPanel({
   const gameNotLive = gameStatus !== 'live' && gameStatus !== 'flag_found'
 
   const handleSubmit = useCallback(
-    async (challenge: ChallengeDefinition) => {
+    async (challenge: ChallengeDefinition, textSubmission?: string) => {
       setSubmitError(null)
       setToast(null)
 
-      // Prompt for text submission when the challenge calls for it. Photo
-      // upload itself is deferred (v1 — no actual photo path); the prompt is
-      // only opened when the challenge clearly expects a text answer.
-      const promptText = textPromptForChallenge(challenge)
-      let textSubmission: string | undefined
-      if (promptText) {
-        const value =
-          typeof window !== 'undefined'
-            ? window.prompt(promptText, '')
-            : null
-        if (value == null) return // user cancelled
-        const trimmed = value.trim()
-        if (!trimmed) {
-          setSubmitError('A submission is required for this challenge.')
-          return
-        }
-        textSubmission = trimmed
-      } else {
-        const ok =
-          typeof window === 'undefined' ||
-          window.confirm(
-            `Submit "${challenge.location_name}" for ${challenge.reward_coins} coins?`,
-          )
-        if (!ok) return
+      // Text answer (window count, Latin name, pastel quote) is collected via
+      // an inline field in ChallengeRow and passed in — native window.prompt is
+      // unreliable in installed PWAs. See PLAYTEST_TRIAGE P0-3. Photo-only and
+      // landmark-presence challenges submit directly on tap.
+      if (textPromptForChallenge(challenge) && !textSubmission?.trim()) {
+        setSubmitError('A submission is required for this challenge.')
+        return
       }
 
       setBusyRef(challenge.id)
@@ -124,7 +112,7 @@ export function ChallengesPanel({
         challenge_ref: challenge.id,
       }
       if (myGps) body.pos = myGps
-      if (textSubmission) body.text_submission = textSubmission
+      if (textSubmission?.trim()) body.text_submission = textSubmission.trim()
 
       try {
         const res = await apiPost<SubmitChallengeResponse>(
@@ -196,6 +184,7 @@ export function ChallengesPanel({
               myGps={myGps}
               busy={busyRef === c.id}
               anyBusy={busyRef !== null}
+              lockedLabel={lockedLabel}
               onSubmit={handleSubmit}
             />
           ))}
@@ -223,6 +212,7 @@ function ChallengeRow({
   myGps,
   busy,
   anyBusy,
+  lockedLabel,
   onSubmit,
 }: {
   challenge: ChallengeDefinition
@@ -231,8 +221,14 @@ function ChallengeRow({
   myGps: GpsPosition | null
   busy: boolean
   anyBusy: boolean
-  onSubmit: (c: ChallengeDefinition) => void
+  lockedLabel: string | null
+  onSubmit: (c: ChallengeDefinition, text?: string) => void
 }) {
+  // Inline answer field for challenges that expect a text submission (window
+  // count, Latin name, pastel quote). Replaces window.prompt (PWA-unreliable).
+  const promptLabel = textPromptForChallenge(challenge)
+  const [textValue, setTextValue] = useState('')
+
   const seed = challenge.landmark_ref
     ? getSeedLandmarkByRef(challenge.landmark_ref)
     : null
@@ -246,7 +242,9 @@ function ChallengeRow({
   const outOfRange =
     distanceMeters != null && distanceMeters > CLIENT_PROXIMITY_LIMIT_M
 
-  const disabledReason: string | null = gameNotLive
+  const disabledReason: string | null = lockedLabel
+    ? lockedLabel
+    : gameNotLive
     ? 'Available during live game'
     : respawning
       ? 'You are respawning'
@@ -256,7 +254,9 @@ function ChallengeRow({
           ? `Get closer (currently ${formatDistance(distanceMeters)})`
           : null
 
-  const disabled = busy || anyBusy || disabledReason !== null
+  const needsText = promptLabel != null
+  const textMissing = needsText && textValue.trim().length === 0
+  const disabled = busy || anyBusy || disabledReason !== null || textMissing
 
   // Soft hint when we have GPS and we're within 150 m but past 100 m: still
   // enabled, but warn the player that the server may reject.
@@ -311,6 +311,16 @@ function ChallengeRow({
           </div>
         </div>
       </div>
+      {needsText && (
+        <input
+          type="text"
+          value={textValue}
+          onChange={(e) => setTextValue(e.target.value)}
+          placeholder={promptLabel ?? ''}
+          disabled={busy || anyBusy}
+          className="mt-2 w-full rounded border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none disabled:opacity-50"
+        />
+      )}
       <div className="mt-2 flex items-center justify-between gap-3">
         <p
           className={cn(
@@ -322,7 +332,7 @@ function ChallengeRow({
         </p>
         <button
           type="button"
-          onClick={() => onSubmit(challenge)}
+          onClick={() => onSubmit(challenge, needsText ? textValue : undefined)}
           disabled={disabled}
           className={cn(
             'shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition',

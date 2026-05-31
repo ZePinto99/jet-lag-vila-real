@@ -21,6 +21,7 @@ import cursesSeed from '@/data/curses.json'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
+import { useT } from '@/lib/i18n/context'
 import type {
   BuyCurseRequest,
   BuyCurseResponse,
@@ -53,6 +54,7 @@ interface CursePurchasePanelProps {
   gameStatus: GameStatus
   teamCoins: number
   myPlayerId: string
+  actionsLocked?: boolean
 }
 
 export function CursePurchasePanel({
@@ -60,37 +62,35 @@ export function CursePurchasePanel({
   gameStatus,
   teamCoins,
   myPlayerId,
+  actionsLocked = false,
 }: CursePurchasePanelProps) {
+  const t = useT()
   const [numDice, setNumDice] = useState<1 | 2 | 3>(1)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<BuyCurseResponse | null>(null)
+  // Inline two-step confirm (replaces window.confirm — PWA-unreliable, P0-3).
+  const [confirming, setConfirming] = useState(false)
 
   const cost = COIN_PER_DIE * numDice
   const gameNotLive = gameStatus !== 'live' && gameStatus !== 'flag_found'
   const insufficient = teamCoins < cost
   const coinShortfall = Math.max(0, cost - teamCoins)
 
-  const disabledReason: string | null = gameNotLive
-    ? 'Available during live game'
-    : insufficient
-      ? `Need ${coinShortfall} more coins`
-      : null
+  const disabledReason: string | null = actionsLocked
+    ? t('curse.actions_locked')
+    : gameNotLive
+      ? 'Available during live game'
+      : insufficient
+        ? `Need ${coinShortfall} more coins`
+        : null
 
   const disabled = busy || disabledReason !== null
 
   async function handleCast() {
     setError(null)
     setResult(null)
-    const ok =
-      typeof window === 'undefined' ||
-      window.confirm(
-        `Spend ${cost} coins to roll ${numDice} ${
-          numDice === 1 ? 'die' : 'dice'
-        } and cast a curse on the enemy team?`,
-      )
-    if (!ok) return
-
+    setConfirming(false)
     setBusy(true)
     const body: BuyCurseRequest = {
       device_id: getDeviceId(),
@@ -146,19 +146,42 @@ export function CursePurchasePanel({
       </div>
 
       <div className="mt-3 flex flex-col gap-2">
-        <button
-          type="button"
-          onClick={handleCast}
-          disabled={disabled}
-          className={cn(
-            'w-full rounded-md px-4 py-2 text-sm font-semibold uppercase tracking-wider transition',
-            disabled
-              ? 'cursor-not-allowed bg-neutral-800 text-neutral-500'
-              : 'bg-amber-500 text-neutral-950 hover:bg-amber-400',
-          )}
-        >
-          {busy ? 'Rolling…' : `Cast Curse · ${cost} coins`}
-        </button>
+        {confirming && !disabled ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={busy}
+              className="flex-1 rounded-md bg-neutral-800 px-4 py-2 text-sm font-semibold uppercase tracking-wider text-neutral-300 transition hover:bg-neutral-700 disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={handleCast}
+              disabled={busy}
+              className="flex-1 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold uppercase tracking-wider text-neutral-950 transition hover:bg-amber-400 disabled:opacity-50"
+            >
+              {busy ? 'Rolling…' : `${t('common.confirm')} · ${cost}`}
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (!disabled) setConfirming(true)
+            }}
+            disabled={disabled}
+            className={cn(
+              'w-full rounded-md px-4 py-2 text-sm font-semibold uppercase tracking-wider transition',
+              disabled
+                ? 'cursor-not-allowed bg-neutral-800 text-neutral-500'
+                : 'bg-amber-500 text-neutral-950 hover:bg-amber-400',
+            )}
+          >
+            {busy ? 'Rolling…' : `Cast Curse · ${cost} coins`}
+          </button>
+        )}
         {disabledReason && (
           <p className="text-[11px] text-neutral-500">{disabledReason}</p>
         )}

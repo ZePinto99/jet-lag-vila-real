@@ -28,14 +28,14 @@ A walking-only Capture the Flag game inspired by Jet Lag: The Game, set in Vila 
 
 ### 3.1 Boundaries
 
-Play area is the **City of Vila Real plus Casa de Mateus and UTAD campus**. Anything outside this perimeter is out of bounds. The app shows the perimeter as a polygon.
+Play area is the **compact core of Vila Real plus the UTAD campus**, anchored on Avenida Carvalho Araújo. The Mateus side (Palácio / Igreja de Mateus) is **out of bounds** — it was ~45 min one-way and broke the walking budget. The out-of-bounds polygon is a ~1.5 km disk centred on the avenue (`PLAY_AREA_CENTRE` / `PLAY_AREA_RADIUS_M` in `lib/intel/overlays.ts`), covering everything corner-to-corner in ~2.2 km.
 
 ### 3.2 Home bases
 
-- **Team West:** UTAD main campus
-- **Team East:** Casa de Mateus
+- **Team West:** UTAD main campus (UTAD Main Library)
+- **Team East:** Biblioteca Municipal Dr. Júlio Teixeira
 
-These are the two anchor points of the game. Each team picks 5 candidate landmarks from their **team pool** (§3.3) — the pools mostly reflect proximity to the home base, though Vila Real's compact geography means some city-centre landmarks could plausibly belong to either team. Tag eligibility is governed by **defense zones** around each candidate (§6), not by an east/west territorial line.
+These are the two anchor points of the game (~1.16 km apart). Each team picks 5 candidate landmarks from their **team pool** (§3.3) — the pools mostly reflect proximity to the home base, though Vila Real's compact geography means some city-centre landmarks could plausibly belong to either team. Tag eligibility is governed by **defense zones** around each candidate (§6), not by an east/west territorial line.
 
 ### 3.3 Landmark pool
 
@@ -52,15 +52,17 @@ Each team picks **5 candidate landmarks** from their territory's pool at game st
 7. Mercado Municipal
 8. Nosso Shopping
 
-#### Team East candidate pool (Mateus side)
+#### Team East candidate pool (city-centre / São Pedro side)
 
-1. Main Gate of Palácio de Mateus
-2. Igreja de Mateus
-3. Sé Catedral de Vila Real
-4. Igreja dos Clérigos (Capela Nova)
-5. Casa de Diogo Cão
-6. Largo do Pelourinho
-7. Câmara Municipal de Vila Real
+Spread across ~880 m so a 5-pick can have non-overlapping defense zones (the old all-Mateus/Sé cluster sat within ~330 m — one indefensible-or-trivial blob):
+
+1. Biblioteca Municipal Dr. Júlio Teixeira *(home base; SW)*
+2. Igreja de São Pedro *(N)*
+3. Jardim da Carreira *(NE)*
+4. Largo do Pioledo *(N)*
+5. Escola Secundária de São Pedro *(E)*
+6. Sé Catedral de Vila Real *(centre)*
+7. Câmara Municipal de Vila Real *(centre)*
 
 #### Neutral / shared landmarks
 
@@ -70,6 +72,7 @@ Used for tag respawns and challenge sites:
 - Ponte Metálica do Corgo
 - Teatro de Vila Real
 - Estação Rodoviária
+- Igreja dos Clérigos (Capela Nova), Casa de Diogo Cão, Largo do Pelourinho *(formerly East candidates; demoted to neutral when the central cluster was broken up)*
 
 > **TODO:** verify each landmark exists, is publicly accessible, and is open during the play window. Add precise GPS coordinates in the app config.
 
@@ -82,9 +85,10 @@ From city center (Sé), approximate one-way walking times:
 | Pelourinho, Capela Nova | <5 min |
 | Forum, Mercado, train station | 5–15 min |
 | UTAD campus | ~25 min |
-| Casa de Mateus | ~45 min |
+| Jardim da Carreira / São Pedro (N) | ~5–10 min |
+| Biblioteca Municipal (East home) | ~5 min |
 
-A single round trip UTAD ↔ Mateus is ~70 min of walking. Plan curses and intel costs accordingly.
+UTAD ↔ Biblioteca (the two home bases) is ~1.16 km, ~15 min one way. Plan curses and intel costs accordingly.
 
 ---
 
@@ -126,28 +130,24 @@ Each team prints 3 numbered markers before the game:
 
 All three markers look identical from the outside (same envelope or printed sheet). The difference is only visible when the raider opens / scans / photographs the assigned detail (see §5.3).
 
-### 5.2 Photographing a flag
+### 5.2 Attempting a flag (structured mini-challenge)
 
-When a raider reaches a candidate landmark:
+No flag attempts are allowed in the **first 30 minutes** (the protection window, server-derived from `started_at`); candidates render locked with a countdown until then. After that, when a raider reaches a candidate landmark:
 
-1. They tap "Attempt flag" in the app at the landmark (geofence-checked, must be within 20 m).
-2. The app reveals the **challenge gate** for that landmark (see §5.3).
-3. Raider completes the challenge and submits the photo.
-4. App auto-validates by EXIF time + geolocation + presence of the marker code in the photo.
+1. They tap "Attempt flag" (geofence-checked; the server accepts up to ~28 m to absorb GPS drift, ~12 m for a **hardened** landmark — see §5.3). This also fires a `flag_attempt_started` toast to the defending team and the attacker's team-mates (a reaction window — and feints are allowed).
+2. The app reveals a **landmark-specific mini-challenge** (a playful, on-theme task + an optional question), authored per real-flag-eligible candidate in `data/flag-attempt-challenges.json`.
+3. The raider takes a **photo (uploaded to Supabase Storage)**, optionally types the answer, and submits.
+4. The server validates **GPS proximity + that a photo was submitted**, then resolves by the landmark's hidden kind. The photo is stored for the opposing team to eyeball/dispute; the answer is flavour, not a hard gate. (No EXIF/hash auto-validation — humans eyeball.)
 5. Result:
-   - **Real flag:** photo accepted, raider must now return to home base to win.
-   - **Decoy:** photo rejected, raider **loses all intel cards** and must return to a neutral landmark before raiding again.
-   - **Empty:** no marker present. The attempt fails immediately, but no penalty beyond wasted time.
+   - **Real flag:** raider becomes flag carrier; must return to home base to win.
+   - **Decoy:** raider **loses all intel cards**; team is **locked out of that landmark for 15 min**; must return to a neutral landmark before raiding again.
+   - **Empty:** no marker; team is **locked out of that landmark for 15 min**, no other penalty.
 
-### 5.3 Challenge gating
+### 5.3 Challenge content & hardening
 
-Each candidate landmark, when attempted, requires the raider to perform a small **flag challenge**: a Vila Real–specific photo task tied to the landmark. Examples:
+Each candidate's mini-challenge is a Vila Real–specific photo task (see `data/flag-attempt-challenges.json`, PT-PT + EN). The challenge text is **public** — shown to any raider who attempts.
 
-- *Sé Catedral:* photograph the bell-tower clock from the south facade with the marker visible in foreground.
-- *Casa de Mateus:* photograph yourself at the central garden topiary with the marker.
-- *UTAD Botanical:* photograph a labeled plant species starting with the same letter as your team name.
-
-Defenders can spend **150 coins** to **harden** their own flag's challenge once during the game (the app upgrades the task to a harder variant). Cannot be hardened twice.
+Defenders can spend **150 coins** to **harden** their own flag once per game. Hardening is implemented as a **tighter attempt geofence** (~12 m instead of ~28 m), *not* a visible change to the challenge text — otherwise a raider seeing a different/harder task would learn which enemy candidate is the real flag (only the real flag can be hardened). Cannot be hardened twice.
 
 ---
 
@@ -208,7 +208,9 @@ Three decks live in the app. Drawing/buying from a deck is a server action that 
   - Roll 1–3: minor curse (5–10 min)
   - Roll 4–8: medium curse (10–20 min)
   - Roll 9+: major curse (20+ min or one-shot disruption)
-- Curse is applied to the *enemy team*. App pushes a notification, starts a timer, and enforces compliance through prompts.
+- Curse is applied to the *enemy team*. App pushes a notification, starts a timer, and enforces compliance through prompts (Full Stop locks all action buttons; check-in / photo curses fire timed in-app prompts; movement curses show live readouts — honor-based, no automated penalty in v1).
+
+**Placed curses (third category).** A team may spend a fixed **medium cost (~120 coins)** to **place a curse on one of its own candidate landmarks**, during setup or live play. The placement is **hidden from the enemy**. When an enemy enters that landmark's 200 m defense zone — including a flag carrier in transit (it fires but does not block the win) — the curse triggers on the **intruder's team** as a normal timed curse, and is consumed. One armed placement per landmark; no-stack with an identical active effect. Catalog in `data/placed-curses.json`.
 
 ### 8.3 Intel (find the real flag)
 
@@ -228,8 +230,6 @@ Starter set. Each challenge specifies location + task + reward. The app picks 3 
 | C3 | Avenida Carvalho Araújo | Find a statue, photograph the inscription | 30 |
 | C4 | Igreja dos Clérigos (Capela Nova) | Count the windows visible from the street, submit number | 20 |
 | C5 | Casa de Diogo Cão | Photograph the commemorative plaque | 30 |
-| C6 | Palácio de Mateus | Buy a postcard at the gift shop and photograph it | 50 |
-| C7 | Palácio de Mateus gardens | Photograph the central reflecting pool | 40 |
 | C8 | UTAD Botanical | Photograph a tree with a Latin name placard, submit the name | 40 |
 | C9 | UTAD Library | Photograph the main entrance with a teammate inside | 30 |
 | C10 | Mercado Municipal | Photograph a vendor's price sign for any product | 20 |
@@ -240,7 +240,6 @@ Starter set. Each challenge specifies location + task + reward. The app picks 3 
 | C15 | Câmara Municipal | Photograph the Portuguese flag at the building | 20 |
 | C16 | Any landmark | Ask a local for the best pastel de nata in town, submit a quote | 60 |
 | C17 | Parque Florestal | Photograph two different bird species (any) | 50 |
-| C18 | Igreja de Mateus | Photograph the church facade with all team members | 40 |
 
 > **TODO:** validate each location for accessibility and accuracy. Add 10–15 more.
 
@@ -298,11 +297,12 @@ Each card reveals one piece of information about the *enemy team's* flag assignm
 | I2 | East/West | Whether the real flag is E or W of the team's home base | 30 |
 | I3 | Eliminate One | Names one of the 5 candidate landmarks that is *not* the real flag | 50 |
 | I4 | Eliminate Two | Names two candidate landmarks that are *not* the real flag | 80 |
-| I5 | Decoy Reveal | Names one of the two decoys (does not reveal real) | 60 |
+| I5 | Decoy Reveal | Names one of the two decoys (does not reveal real) | 100 |
 | I6 | Hot/Cold | Distance bracket from your current GPS to real flag (<200 m / <500 m / <1 km / further) | 60 |
 | I7 | Surroundings | One photo of the surroundings within 30 m of the real flag, no marker visible | 80 |
 | I8 | Direction | Compass bearing from city center to real flag (8 cardinal directions) | 50 |
-| I9 | Landmark Type | Reveals the *category* of the real flag (church, civic, park, museum, etc.) | 40 |
+
+*(The former I9 "Landmark Type" intel was removed: with only ~7 candidates of mixed kinds, revealing the category near-uniquely identified the flag.)*
 
 > **Anti-spam:** a team may not buy more than 4 intel cards total. Forces commitment and prevents the rich-get-richer spiral.
 

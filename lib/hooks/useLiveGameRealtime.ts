@@ -8,6 +8,8 @@ import type {
   Card,
   Game,
   GameEvent,
+  Player,
+  Team,
 } from '@/lib/types'
 
 // Subscribes to postgres_changes for the live phase of a given game.
@@ -15,17 +17,26 @@ import type {
 // Channel name: live:{gameId}.
 // Watches:
 //   - games (by id)            → setGame on UPDATE
+//   - teams (by game_id)       → upsertTeam (coin counter, home base)
+//   - players                  → upsertPlayer, filtered to this game's teams
+//                                client-side (respawning, flag_carrier)
 //   - events (by game_id)      → appendEvent on INSERT
 //   - active_curses (by game_id) → upsert/remove (we filter by myTeamId client-side)
 //   - cards (by team_id)       → upsert/remove (only my team's cards)
 //
-// Supabase only supports a single equality filter per binding, so active_curses
-// is subscribed for the whole game and filtered to my team in the handler.
+// Supabase only supports a single equality filter per binding. `teams` carries
+// game_id so it filters server-side; `players` only carries team_id, so we
+// subscribe game-wide and drop rows for other games in the handler. Without the
+// teams/players bindings, coin balances and respawn/flag-carrier state went
+// stale mid-game (the snapshot is only fetched on mount) — see PLAYTEST_TRIAGE
+// P0-1 / P1-1.
 export function useLiveGameRealtime(
   gameId: string | null,
   myTeamId: string | null,
 ) {
   const setGame = useGameStore((s) => s.setGame)
+  const upsertTeam = useGameStore((s) => s.upsertTeam)
+  const upsertPlayer = useGameStore((s) => s.upsertPlayer)
   const appendEvent = useGameStore((s) => s.appendEvent)
   const upsertActiveCurse = useGameStore((s) => s.upsertActiveCurse)
   const removeActiveCurse = useGameStore((s) => s.removeActiveCurse)
@@ -45,6 +56,33 @@ export function useLiveGameRealtime(
         if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
           setGame(payload.new as Game)
         }
+      },
+    )
+
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'teams', filter: `game_id=eq.${gameId}` },
+      (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          upsertTeam(payload.new as Team)
+        }
+      },
+    )
+
+    // players has no game_id column, so we can't filter server-side. Subscribe
+    // game-wide and accept only rows whose team belongs to this game. Reading
+    // teams via getState avoids re-subscribing every time the roster changes.
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'players' },
+      (payload) => {
+        if (payload.eventType === 'DELETE') return
+        const player = payload.new as Player
+        const teamIds = new Set(
+          useGameStore.getState().teams.map((t) => t.id),
+        )
+        if (!teamIds.has(player.team_id)) return
+        upsertPlayer(player)
       },
     )
 
@@ -97,6 +135,8 @@ export function useLiveGameRealtime(
     gameId,
     myTeamId,
     setGame,
+    upsertTeam,
+    upsertPlayer,
     appendEvent,
     upsertActiveCurse,
     removeActiveCurse,

@@ -438,20 +438,6 @@ export async function POST(
       }
       break
     }
-    case 'intel.landmark-type': {
-      const seed = getSeedLandmarkByRef(realFlag.ref)
-      if (!seed) {
-        return NextResponse.json(
-          { error: 'seed_landmark_missing' },
-          { status: 500 },
-        )
-      }
-      answer = {
-        intel_ref: 'intel.landmark-type',
-        category: seed.kind,
-      }
-      break
-    }
     default: {
       // The intel_ref exists in intel.json but we have no compute path for it.
       // Shouldn't happen unless someone adds a new intel id to the JSON
