@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { VilaRealBanner } from '@/components/art/VilaRealBanner'
 import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
 import type {
@@ -46,7 +47,10 @@ export default function NewGamePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col gap-8 px-6 py-16">
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col gap-8 px-6 pb-16 pt-6">
+      <div className="-mx-6 -mt-6 overflow-hidden rounded-b-3xl shadow-lg shadow-black/40 ring-1 ring-black/20">
+        <VilaRealBanner className="h-28" tint={side} />
+      </div>
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold">Create game</h1>
         <p className="text-sm text-neutral-400">
@@ -77,7 +81,7 @@ export default function NewGamePage() {
               onSelect={() => setSide('west')}
             />
             <SideOption
-              label="East (Mateus)"
+              label="East (Biblioteca)"
               value="east"
               selected={side === 'east'}
               onSelect={() => setSide('east')}

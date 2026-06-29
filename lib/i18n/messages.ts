@@ -70,7 +70,7 @@ export const MESSAGES: MessageDict = {
     pt: 'Partilha o código com os outros jogadores. O jogo começa quando todos estiverem prontos.',
   },
   'lobby.team_west_full': { en: 'Team West (UTAD)', pt: 'Equipa Oeste (UTAD)' },
-  'lobby.team_east_full': { en: 'Team East (Mateus)', pt: 'Equipa Este (Mateus)' },
+  'lobby.team_east_full': { en: 'Team East (Biblioteca)', pt: 'Equipa Este (Biblioteca)' },
   'lobby.no_players': { en: 'No players yet.', pt: 'Ainda sem jogadores.' },
   'lobby.team_not_initialised': { en: 'Team not initialised yet…', pt: 'Equipa ainda não inicializada…' },
   'lobby.players_one': { en: '1 player', pt: '1 jogador' },
@@ -359,6 +359,87 @@ export const MESSAGES: MessageDict = {
   'toast.placed_curse_hit': {
     en: 'You walked into a trap — a curse hit your team!',
     pt: 'Caíste numa armadilha — uma maldição atingiu a tua equipa!',
+  },
+
+  // Big-moment popups (animated). Capture / tag / trap. Player gametags are
+  // woven in so 2+ player teams know who did what.
+  'moment.capture.title': { en: 'FLAG CAPTURED!', pt: 'BANDEIRA CAPTURADA!' },
+  'moment.capture.sub': {
+    en: '{player} found the real flag at {name} — run to home base!',
+    pt: '{player} encontrou a bandeira real em {name} — corram para a base!',
+  },
+  'moment.discovered.title': { en: 'FLAG DISCOVERED!', pt: 'BANDEIRA DESCOBERTA!' },
+  'moment.discovered.sub': {
+    en: '{player} found your flag at {name} — intercept them!',
+    pt: '{player} encontrou a tua bandeira em {name} — intercetem!',
+  },
+  'moment.tag_made.title': { en: 'RAIDER TAGGED!', pt: 'RAIDER APANHADO!' },
+  'moment.tag_made.sub': {
+    en: '{tagger} tagged {raider} — they lose intel and must respawn',
+    pt: '{tagger} apanhou {raider} — perde intel e tem de renascer',
+  },
+  'moment.tagged.title': { en: 'TAGGED!', pt: 'APANHADO!' },
+  'moment.tagged.sub': {
+    en: '{raider} got tagged by {tagger} — walk to a neutral landmark',
+    pt: '{raider} foi apanhado por {tagger} — vai a um local neutro',
+  },
+  'moment.trap.title': { en: 'TRAP SPRUNG!', pt: 'ARMADILHA!' },
+  'moment.trap.sub': {
+    en: '{player} walked into a hidden curse!',
+    pt: '{player} caiu numa maldição escondida!',
+  },
+
+  // Sound mute toggle (live header).
+  'sound.mute': { en: 'Mute sounds', pt: 'Silenciar sons' },
+  'sound.unmute': { en: 'Unmute sounds', pt: 'Ativar sons' },
+
+  // Walking-only gentle nudge.
+  'walk.nudge': {
+    en: '🚶 Walking only — please slow down!',
+    pt: '🚶 Só a pé — abranda, por favor!',
+  },
+  'walk.speed': { en: '~{speed} km/h', pt: '~{speed} km/h' },
+
+  // End-game chase HUD.
+  'chase.carrier': {
+    en: '🏁 {home} m to home · nearest hunter {hunter} m',
+    pt: '🏁 {home} m até à base · perseguidor mais perto {hunter} m',
+  },
+  'chase.defender': {
+    en: '⚠️ Carrier {home} m from winning — cut them off!',
+    pt: '⚠️ Portador a {home} m de ganhar — intercetem-no!',
+  },
+
+  // Time bonus / power hour.
+  'powerhour.next': {
+    en: '⏱️ +{amount} coins in {time}',
+    pt: '⏱️ +{amount} moedas em {time}',
+  },
+  'powerhour.next_power': {
+    en: '⚡ Power Hour! +{amount} coins in {time}',
+    pt: '⚡ Hora de Poder! +{amount} moedas em {time}',
+  },
+
+  // Post-game recap.
+  'recap.title': { en: 'Match recap', pt: 'Resumo do jogo' },
+  'recap.your_score': { en: 'Your score: {score}', pt: 'A tua pontuação: {score}' },
+  'recap.mvp': { en: 'MVP', pt: 'Melhor jogador' },
+  'recap.mvp_tags': { en: '{count} tags made', pt: '{count} apanhados' },
+  'recap.no_mvp': { en: 'No tags this match', pt: 'Nenhum apanhado neste jogo' },
+  'recap.you': { en: 'you', pt: 'tu' },
+  'recap.first_blood': { en: 'First blood', pt: 'Primeiro sangue' },
+  'recap.no_first_blood': {
+    en: 'No challenges completed',
+    pt: 'Nenhum desafio concluído',
+  },
+  'recap.stat_tags': { en: 'Tags', pt: 'Apanhados' },
+  'recap.stat_challenges': { en: 'Challenges', pt: 'Desafios' },
+  'recap.stat_curses': { en: 'Curses', pt: 'Maldições' },
+  'recap.stat_captures': { en: 'Captures', pt: 'Capturas' },
+  'recap.highlights': { en: 'Highlights', pt: 'Destaques' },
+  'recap.no_highlights': {
+    en: 'No highlights recorded',
+    pt: 'Sem destaques registados',
   },
 
   // ---------- placed curses (P2-2) ----------

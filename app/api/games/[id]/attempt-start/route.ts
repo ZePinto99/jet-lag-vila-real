@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendPushToTeam } from '@/lib/push/server'
+import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import type { Game, Landmark, Player, Team } from '@/lib/types'
 
 // POST /api/games/[id]/attempt-start
@@ -143,6 +145,17 @@ export async function POST(
       { error: 'event_insert_failed', details: eventError.message },
       { status: 500 },
     )
+  }
+
+  // Lock-screen alert to the defending team (best-effort; no-op without VAPID).
+  if (landmark.team_id) {
+    const lmName = getSeedLandmarkByRef(landmark_ref)?.name ?? landmark_ref
+    void sendPushToTeam(game.id, landmark.team_id, {
+      title: 'Flag under attack!',
+      body: `Your flag is under attack at ${lmName}!`,
+      tag: 'flag-attack',
+      url: `/game/${game.code}`,
+    })
   }
 
   return NextResponse.json({ ok: true })

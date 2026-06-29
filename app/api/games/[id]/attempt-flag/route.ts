@@ -407,6 +407,36 @@ export async function POST(
         { status: 500 },
       )
     }
+
+    // RULEBOOK §5.2: after a decoy the raider must return to a neutral landmark
+    // before raiding again. Reuse the tag respawn machinery — set respawning so
+    // the RespawnBanner + /respawn-clear (neutral geofence) flow takes over.
+    const { error: respawnError } = await supabase
+      .from('players')
+      .update({ respawning: true })
+      .eq('id', caller.id)
+    if (respawnError) {
+      return NextResponse.json(
+        { error: 'player_update_failed', details: respawnError.message },
+        { status: 500 },
+      )
+    }
+    const { error: respawnEventError } = await supabase.from('events').insert({
+      game_id: game.id,
+      type: 'player_respawning_set',
+      actor_player_id: caller.id,
+      payload: {
+        player_id: caller.id,
+        team_id: caller.team_id,
+        reason: 'decoy',
+      },
+    })
+    if (respawnEventError) {
+      return NextResponse.json(
+        { error: 'event_insert_failed', details: respawnEventError.message },
+        { status: 500 },
+      )
+    }
   } else {
     // empty
     const { error: attemptEventError } = await supabase.from('events').insert({

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendPushToPlayers } from '@/lib/push/server'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { isInDefenseZone } from '@/lib/geo/zones'
 import type {
@@ -310,6 +311,16 @@ export async function POST(
     }
 
     tagged_player_ids.push(target.id)
+  }
+
+  // Lock-screen alert to tagged raiders (best-effort; no-op without VAPID).
+  if (tagged_player_ids.length > 0) {
+    void sendPushToPlayers(tagged_player_ids, {
+      title: 'Tagged!',
+      body: "You've been tagged — respawn at a neutral landmark.",
+      tag: 'tagged',
+      url: `/game/${game.code}`,
+    })
   }
 
   const response: TagResponse = { tagged_player_ids, rejected }

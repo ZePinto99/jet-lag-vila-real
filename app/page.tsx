@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useT } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
+import { VilaRealBanner } from '@/components/art/VilaRealBanner'
 import { getLastGameCode } from '@/lib/device'
 
 export default function HomePage() {
@@ -14,14 +15,23 @@ export default function HomePage() {
   }, [])
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col gap-8 px-6 py-16">
-      <header className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Jet Lag: Vila Real</h1>
-          <p className="text-sm text-neutral-400">{t('landing.tagline')}</p>
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col gap-8 px-6 pb-16 pt-6">
+      <div className="relative -mx-6 -mt-6 overflow-hidden rounded-b-3xl shadow-lg shadow-black/40 ring-1 ring-black/20">
+        <VilaRealBanner className="h-56" />
+        {/* scrim so the title stays legible over the sky */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/80 to-transparent" />
+        <div className="absolute right-3 top-3">
+          <LanguageSwitcher />
         </div>
-        <LanguageSwitcher />
-      </header>
+        <div className="absolute inset-x-0 bottom-0 px-6 pb-4">
+          <h1 className="text-3xl font-semibold text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)]">
+            Jet Lag: Vila Real
+          </h1>
+          <p className="text-sm text-neutral-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
+            {t('landing.tagline')}
+          </p>
+        </div>
+      </div>
       <div className="flex flex-col gap-4">
         {lastCode && (
           <a

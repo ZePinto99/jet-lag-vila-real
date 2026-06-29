@@ -104,16 +104,8 @@ export function useGameToasts({
   function handleEvent(e: GameEvent) {
     const p = e.payload as Record<string, unknown>
 
-    // Placed-curse triggers carry no landmark_ref (so they can't leak which
-    // candidate was armed) — handle before the landmark guard below.
-    if (e.type === 'placed_curse_triggered') {
-      const targetTeam =
-        typeof p.target_team_id === 'string' ? p.target_team_id : null
-      if (targetTeam === myTeamId) {
-        pushRef.current(t('toast.placed_curse_hit'), 'alert')
-      }
-      return
-    }
+    // NOTE: flag_found, tag and placed_curse_triggered are handled by
+    // useGameMoments (the animated big-moment overlay), not here.
 
     const ref = typeof p.landmark_ref === 'string' ? p.landmark_ref : null
     if (!ref) return
@@ -134,17 +126,6 @@ export function useGameToasts({
           t('toast.teammate_attempt_start', { player, name }),
           'info',
         )
-      }
-      return
-    }
-
-    if (e.type === 'flag_found') {
-      if (iAmAttacker) {
-        if (e.actor_player_id !== myPlayerId) {
-          pushRef.current(t('toast.teammate_found_real', { name }), 'success')
-        }
-      } else {
-        pushRef.current(t('toast.defender_discovered', { name }), 'alert')
       }
       return
     }

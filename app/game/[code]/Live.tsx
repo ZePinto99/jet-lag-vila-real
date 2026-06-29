@@ -22,12 +22,23 @@ import { useFlagAttemptButton } from '@/lib/hooks/useFlagAttemptButton'
 import { useCurseExpiryPoll } from '@/lib/hooks/useCurseExpiryPoll'
 import { useCurseEnforcement } from '@/lib/hooks/useCurseEnforcement'
 import { useGameToasts } from '@/lib/hooks/useGameToasts'
+import { useGameMoments } from '@/lib/hooks/useGameMoments'
 import { usePlacedCurseTrigger } from '@/lib/hooks/usePlacedCurseTrigger'
+import { useWalkingSpeed } from '@/lib/hooks/useWalkingSpeed'
+import { useChaseStatus } from '@/lib/hooks/useChaseStatus'
+import { useTimeTick } from '@/lib/hooks/useTimeTick'
+import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
+import { isMuted as soundIsMuted, setMuted as soundSetMuted } from '@/lib/sound'
 import { ToastLayer } from '@/components/game/ToastLayer'
+import { MomentOverlay } from '@/components/game/MomentOverlay'
+import { WalkingNudge } from '@/components/game/WalkingNudge'
+import { ChaseHud } from '@/components/game/ChaseHud'
+import { PowerHourBanner } from '@/components/game/PowerHourBanner'
 import { PlacedCursePanel } from '@/components/game/PlacedCursePanel'
 import { computeNarrowedRefs } from '@/lib/intel/narrowing'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { useDiscoveredEnemyKinds } from '@/lib/hooks/useDiscoveredEnemyKinds'
+import { useEnemyLandmarkLocks } from '@/lib/hooks/useEnemyLandmarkLocks'
 import { TagButton } from '@/components/game/TagButton'
 import { RespawnBanner } from '@/components/game/RespawnBanner'
 import { FlagAttemptButton } from '@/components/game/FlagAttemptButton'
@@ -90,6 +101,19 @@ export function Live() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [gpsEnabled, setGpsEnabled] = useState(false)
   const [now, setNow] = useState<number>(() => Date.now())
+  const [muted, setMutedState] = useState(false)
+
+  // Sync the sound-mute toggle from localStorage after mount (avoids SSR drift).
+  useEffect(() => {
+    setMutedState(soundIsMuted())
+  }, [])
+  const toggleMute = useCallback(() => {
+    setMutedState((prev) => {
+      const next = !prev
+      soundSetMuted(next)
+      return next
+    })
+  }, [])
 
   // 1s ticking clock for countdowns.
   useEffect(() => {
@@ -138,9 +162,29 @@ export function Live() {
   const myTeamId = me?.team_id ?? null
   useLiveGameRealtime(game?.id ?? null, myTeamId)
 
+  // Web Push (lock-screen alerts) — subscribes once when live; no-ops unless
+  // VAPID is configured + the browser grants notification permission.
+  usePushNotifications({
+    gameId: game?.id ?? null,
+    playerId: me?.id ?? null,
+    enabled: game?.status === 'live' || game?.status === 'flag_found',
+  })
+
   // Camping detection (50 m / 2 min rule). Drives the Tag button's
   // camping_locked state and the on-screen warning.
   const camping = useCamping({ myGps, myTeamLandmarks })
+
+  // Walking-only gentle nudge — flags vehicle-speed movement from my GPS.
+  const { speedKmh, speeding } = useWalkingSpeed(myGps)
+
+  // A short alert cue the moment camping locks the Tag button.
+  const prevCampingRef = useRef(camping.status)
+  useEffect(() => {
+    if (camping.status === 'locked' && prevCampingRef.current !== 'locked') {
+      import('@/lib/sound').then((s) => s.playCue('alert')).catch(() => {})
+    }
+    prevCampingRef.current = camping.status
+  }, [camping.status])
 
   // Tag eligibility — pure derivation from GPS + presence + my own landmarks.
   const tagState = useTagButton({
@@ -157,6 +201,10 @@ export function Live() {
   // Drives both the map popups and the "already_discovered" disable reason
   // on the flag-attempt button.
   const discoveredEnemyKinds = useDiscoveredEnemyKinds(events, myTeamId)
+
+  // Per-landmark 15-min lockout state (decoy/empty attempts) → grey-out +
+  // countdown on the map.
+  const enemyLocks = useEnemyLandmarkLocks(events, myTeamId)
 
   // Intel filter — derive ruled-out enemy refs from my intel cards. The
   // toggle controls whether the map dims them.
@@ -209,6 +257,14 @@ export function Live() {
   // curses are active on our team. Idempotent on the server.
   useCurseExpiryPoll(game?.id ?? null, activeCurses.length)
 
+  // Time bonus / power hour: poll the idempotent /time-tick route every 30 s
+  // while the game is in play; it credits +20 (or +40 on a Power Hour) per
+  // elapsed 30-min interval to both teams.
+  useTimeTick(
+    game?.id ?? null,
+    game?.status === 'live' || game?.status === 'flag_found',
+  )
+
   // Curse enforcement (P2-6) — Full Stop locks all actions; [A]/[B]/[L] curses
   // get live readouts / timed prompts in the banner.
   const curseEnforcement = useCurseEnforcement({
@@ -230,6 +286,15 @@ export function Live() {
     players,
     presence,
     myTeamLandmarks,
+    t,
+  })
+
+  // Animated "big moment" popups (capture / tag / trap) — sit above the toasts.
+  const { moment, dismiss: dismissMoment } = useGameMoments({
+    events,
+    myTeamId,
+    myPlayerId: me?.id ?? null,
+    players,
     t,
   })
 
@@ -261,6 +326,23 @@ export function Live() {
     if (!flagCarrier) return null
     return teams.find((t) => t.id === flagCarrier.team_id) ?? null
   }, [teams, flagCarrier])
+
+  // End-game chase HUD: live distance from the carrier to their home base and
+  // to the nearest hunter. Self-guards via `active` so it's safe to call here.
+  const carrierHome = useMemo<{ lat: number; lng: number } | null>(() => {
+    const ref = flagCarrierTeam?.home_landmark_id
+    const seed = ref ? getSeedLandmarkByRef(ref) : null
+    return seed ? { lat: seed.lat, lng: seed.lng } : null
+  }, [flagCarrierTeam])
+  const chaseStatus = useChaseStatus({
+    active: game?.status === 'flag_found',
+    carrierPos: flagCarrier ? presence[flagCarrier.id] ?? null : null,
+    carrierHome,
+    carrierTeamId: flagCarrierTeam?.id ?? null,
+    presence,
+  })
+  const iAmOnCarrierTeam =
+    flagCarrierTeam != null && myTeam != null && myTeam.id === flagCarrierTeam.id
 
   const endsAtMs = useMemo<number | null>(() => {
     if (!game?.started_at) return null
@@ -358,6 +440,15 @@ export function Live() {
         <div className="flex items-center gap-3 text-xs text-neutral-400">
           <span>{myTeam.coins} {t('common.coins')}</span>
           <Countdown endsAtMs={endsAtMs} nowMs={now} />
+          <button
+            type="button"
+            onClick={toggleMute}
+            aria-label={muted ? t('sound.unmute') : t('sound.mute')}
+            title={muted ? t('sound.unmute') : t('sound.mute')}
+            className="rounded px-1 py-0.5 text-sm leading-none hover:bg-neutral-800"
+          >
+            {muted ? '🔇' : '🔊'}
+          </button>
           <LanguageSwitcher />
         </div>
       </header>
@@ -381,11 +472,31 @@ export function Live() {
         />
       )}
 
+      {/* Cinematic chase HUD — live distance-to-home + nearest hunter for both
+          teams during the run-home phase. */}
+      {isFlagFound && (
+        <ChaseHud
+          status={chaseStatus}
+          iAmOnCarrierTeam={iAmOnCarrierTeam}
+          t={t}
+        />
+      )}
+
       {/* Flag-attempt protection window countdown (first 30 min). */}
       {withinProtection && !isGameOver && (
         <div className="border-b border-sky-800/60 bg-sky-950/40 px-4 py-1.5 text-center text-[11px] font-medium text-sky-200">
           🔒 {t('attempt.window_header', { time: mmss(attemptsUnlockAtMs! - now) })}
         </div>
+      )}
+
+      {/* Time-bonus / Power Hour countdown strip. */}
+      {!isGameOver && (
+        <PowerHourBanner
+          startedAt={game.started_at}
+          nowMs={now}
+          events={events}
+          t={t}
+        />
       )}
 
       {/* Active curses banner — sits below carrier/flag-found banners so the
@@ -425,6 +536,8 @@ export function Live() {
               myIntelCards={myIntelCards}
               myTeamHomeLng={myTeamHomeLng}
               attemptsLocked={withinProtection}
+              enemyLocks={enemyLocks}
+              nowMs={now}
             />
             <MapOverlay
               gpsEnabled={gpsEnabled}
@@ -508,6 +621,11 @@ export function Live() {
 
       {/* In-app discovery toasts (top-center, foregrounded only). */}
       <ToastLayer toasts={toasts} onDismiss={dismissToast} />
+
+      <MomentOverlay moment={moment} onDismiss={dismissMoment} />
+
+      {/* Walking-only gentle nudge (top-center, over the map). */}
+      <WalkingNudge speeding={speeding} speedKmh={speedKmh} t={t} />
 
       {/* Game-over screen — fixed/full-screen, sits over everything else. */}
       {isGameOver && (

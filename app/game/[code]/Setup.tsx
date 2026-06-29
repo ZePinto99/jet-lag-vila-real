@@ -206,7 +206,7 @@ export function Setup() {
 
   const sideLabel = snapshot.myTeam.side === 'east' ? 'East' : 'West'
   const homeName =
-    snapshot.myTeam.side === 'east' ? 'Casa de Mateus' : 'UTAD'
+    snapshot.myTeam.side === 'east' ? 'Biblioteca Municipal' : 'UTAD'
 
   if (alreadySubmitted) {
     const submittedAtIso = snapshot.myLandmarks

@@ -28,6 +28,7 @@ import {
 
 import seedLandmarks from '@/data/landmarks.json'
 import { DEFENSE_ZONE_RADIUS_M } from '@/lib/geo/zones'
+import type { EnemyLandmarkLock } from '@/lib/hooks/useEnemyLandmarkLocks'
 import {
   getOutOfBoundsOverlay,
   getIntelOverlays,
@@ -93,6 +94,13 @@ interface GameMapProps {
   myTeamHomeLng?: number | null
   /** During the 30-min protection window, enemy candidates render "locked". */
   attemptsLocked?: boolean
+  /**
+   * Per-landmark lockout state for enemy candidates my team has attempted
+   * (decoy/empty → 15-min lockout). Drives the grey-out + countdown.
+   */
+  enemyLocks?: Record<string, EnemyLandmarkLock>
+  /** Ticking clock (ms) so the lockout countdown updates each second. */
+  nowMs?: number
 }
 
 interface MapPoint {
@@ -118,6 +126,17 @@ function bounds(points: MapPoint[]): { center: [number, number] } {
 function findSeed(ref: string): SeedLandmark | null {
   return SEED_LANDMARKS.find((s) => s.id === ref) ?? null
 }
+
+// m:ss for the lockout countdown shown inside a landmark circle.
+function fmtCountdown(ms: number): string {
+  const rem = Math.max(0, ms)
+  const m = Math.floor(rem / 60_000)
+  const s = Math.floor((rem % 60_000) / 1000)
+  return `${m}:${s < 10 ? '0' : ''}${s}`
+}
+
+// Eliminated (attempted decoy/empty) enemy landmarks render in this grey.
+const ELIMINATED_COLOR = '#6b7280' // gray-500
 
 function walkingDirectionsUrl(lat: number, lng: number, label?: string): string {
   const dest = label ? `${lat},${lng}(${encodeURIComponent(label)})` : `${lat},${lng}`
@@ -273,6 +292,8 @@ function GameMap({
   myIntelCards = [],
   myTeamHomeLng = null,
   attemptsLocked = false,
+  enemyLocks = {},
+  nowMs,
 }: GameMapProps) {
   const outOfBoundsOverlay: MapOverlay = useMemo(() => getOutOfBoundsOverlay(), [])
   const intelOverlays: MapOverlay[] = useMemo(
@@ -507,16 +528,32 @@ function GameMap({
           const seed = findSeed(lm.ref)
           const name = seed?.name ?? lm.ref
           const discovered = discoveredEnemyKinds[lm.ref]
+          // Eliminated = we attempted it and it was a decoy/empty (a dead end).
+          const eliminated =
+            discovered === 'flag_decoy' || discovered === 'flag_empty'
+          // Remaining 15-min lockout on this landmark (only meaningful for an
+          // eliminated one we just attempted).
+          const lock = enemyLocks[lm.ref]
+          const lockRemaining =
+            eliminated && lock && nowMs != null && nowMs < lock.unlocksAtMs
+              ? lock.unlocksAtMs - nowMs
+              : 0
           const isNarrowedOut = filterActive && narrowedOutRefs!.has(lm.ref)
           // During the 30-min protection window, undiscovered enemy candidates
           // render "locked" (amber dashed ring).
           const locked = attemptsLocked && !discovered && !isNarrowedOut
-          const fill = isNarrowedOut ? '#404040' : enemyColor
-          const stroke = isNarrowedOut
-            ? '#525252'
-            : locked
-              ? '#f59e0b'
-              : '#ffffff'
+          const fill = eliminated
+            ? ELIMINATED_COLOR
+            : isNarrowedOut
+              ? '#404040'
+              : enemyColor
+          const stroke = eliminated
+            ? '#9ca3af'
+            : isNarrowedOut
+              ? '#525252'
+              : locked
+                ? '#f59e0b'
+                : '#ffffff'
           return (
             <CircleMarker
               key={`enemy-${lm.id}`}
@@ -525,14 +562,22 @@ function GameMap({
               pathOptions={{
                 color: stroke,
                 fillColor: fill,
-                fillOpacity: isNarrowedOut ? 0.4 : 0.85,
+                fillOpacity: eliminated ? 0.6 : isNarrowedOut ? 0.4 : 0.85,
                 weight: isNarrowedOut ? 1 : 2,
                 dashArray: locked ? '3 3' : undefined,
               }}
             >
-              <Tooltip direction="right" offset={[8, 0]} className="map-label">
-                {name}
-              </Tooltip>
+              {/* During the lockout, show a live countdown inside the circle;
+                  otherwise the usual hover name label. */}
+              {lockRemaining > 0 ? (
+                <Tooltip permanent direction="center" className="map-countdown">
+                  ⏳ {fmtCountdown(lockRemaining)}
+                </Tooltip>
+              ) : (
+                <Tooltip direction="right" offset={[8, 0]} className="map-label">
+                  {name}
+                </Tooltip>
+              )}
               <Popup>
                 <LandmarkPopupBody
                   name={name}
@@ -540,13 +585,17 @@ function GameMap({
                   lng={lm.lng}
                   teamLabel={`${enemyTeam.side.toUpperCase()} — enemy candidate`}
                   status={
-                    discovered
-                      ? `Confirmed: ${kindHumanLabel(discovered)}`
-                      : isNarrowedOut
-                        ? 'Ruled out by intel'
-                        : locked
-                          ? '🔒 Attempts locked (first 30 min)'
-                          : 'Unknown — attempt to discover'
+                    eliminated
+                      ? lockRemaining > 0
+                        ? `Eliminated (${kindHumanLabel(discovered)}) · locked ${fmtCountdown(lockRemaining)}`
+                        : `Eliminated: ${kindHumanLabel(discovered)}`
+                      : discovered
+                        ? `Confirmed: ${kindHumanLabel(discovered)}`
+                        : isNarrowedOut
+                          ? 'Ruled out by intel'
+                          : locked
+                            ? '🔒 Attempts locked (first 30 min)'
+                            : 'Unknown — attempt to discover'
                   }
                   statusTone="enemy"
                 />

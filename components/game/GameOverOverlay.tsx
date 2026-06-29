@@ -8,6 +8,8 @@ import Link from 'next/link'
 import { useMemo } from 'react'
 import { cn } from '@/lib/cn'
 import { computeScores } from '@/lib/results/scoring'
+import { useT } from '@/lib/i18n/context'
+import { MatchRecap } from '@/components/game/MatchRecap'
 import type { GameEvent, Player, Team, TeamScore, WinReason } from '@/lib/types'
 
 interface GameOverOverlayProps {
@@ -186,6 +188,7 @@ export function GameOverOverlay({
   myTeamId,
   onViewTimeline,
 }: GameOverOverlayProps) {
+  const t = useT()
   const scores = useMemo(
     () => computeScores({ events, teams, players }),
     [events, teams, players],
@@ -245,6 +248,15 @@ export function GameOverOverlay({
             isMine={myTeamId != null && myTeamId === eastTeam?.id}
           />
         </section>
+
+        {/* Narrative recap: MVP, first blood, highlight beats. */}
+        <MatchRecap
+          events={events}
+          players={players}
+          teams={teams}
+          myTeamId={myTeamId ?? ''}
+          t={t}
+        />
 
         <section className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-neutral-300">

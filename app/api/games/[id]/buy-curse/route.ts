@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sendPushToTeam } from '@/lib/push/server'
 import cursesCatalog from '@/data/curses.json'
 import type {
   ActiveCurse,
@@ -464,6 +465,14 @@ export async function POST(
       { status: 500 },
     )
   }
+
+  // Lock-screen alert to the cursed team (best-effort; no-op without VAPID).
+  void sendPushToTeam(game.id, enemyTeam.id, {
+    title: 'Your team has been cursed',
+    body: `Your team has been cursed: ${curse.name}`,
+    tag: 'cursed',
+    url: `/game/${game.code}`,
+  })
 
   const response: BuyCurseResponse = {
     curse_ref: curse.id,

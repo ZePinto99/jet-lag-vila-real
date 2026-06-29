@@ -225,13 +225,17 @@ export async function POST(
     )
   }
 
-  // Public event — deliberately WITHOUT landmark_ref so it can't leak which
-  // candidate (likely the real flag) was armed.
+  // Public event — deliberately WITHOUT landmark_ref OR placed_ref. recent_events
+  // is broadcast to both teams (no per-team redaction in v1), so leaking the
+  // landmark would reveal which candidate (likely the real flag) was armed, and
+  // leaking placed_ref would reveal the curse type. RULEBOOK §8.2: the placement
+  // is hidden from the enemy. The owning team reads its own placements from
+  // live-state's `my_placed_curses` instead. (No client consumes this payload.)
   const { error: armedEventError } = await supabase.from('events').insert({
     game_id: game.id,
     type: 'placed_curse_armed',
     actor_player_id: caller.id,
-    payload: { team_id: callerTeam.id, placed_ref },
+    payload: { team_id: callerTeam.id },
   })
   if (armedEventError) {
     return NextResponse.json(
