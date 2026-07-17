@@ -1,4 +1,4 @@
--- Migration 0011: storage bucket for challenge-proof photos (playtest item D14).
+-- Migration 0012: storage bucket for challenge-proof photos (playtest item D14).
 --
 -- Photo challenges now go through peer review: the submitting team uploads a
 -- proof photo, and the OTHER team accepts or rejects it before coins are

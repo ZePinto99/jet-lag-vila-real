@@ -109,7 +109,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │
 ├── data/                  ← static seed JSON (see above)
 │
-└── supabase/migrations/   ← 11 migrations (0001–0011):
+└── supabase/migrations/   ← 12 migrations (0001–0012):
     ├── 0001_init.sql              ← initial schema (9 tables, append-only events trigger)
     ├── 0002_adjustments.sql       ← game_code, flag_carrier, captain→host, setup status
     ├── 0003_realtime_publication.sql
@@ -120,10 +120,11 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
     ├── 0008_rls_baseline.sql      ← RLS enabled on all tables
     ├── 0009_flag_attempt_photos.sql ← public `flag-attempts` Storage bucket + policies
     ├── 0010_placed_curses.sql     ← hidden placed_curses table (no anon RLS, not broadcast)
-    └── 0011_challenge_photos.sql  ← public `challenge-photos` Storage bucket (D14 peer review)
+    ├── 0011_push_subscriptions.sql ← Web Push subscriptions (experience pass)
+    └── 0012_challenge_photos.sql  ← public `challenge-photos` Storage bucket (D14 peer review)
 ```
 
-> ⚠️ **Migrations `0009` + `0010` + `0011` may not be applied yet** — flag-attempt photo upload, placed curses, and challenge peer-review photo upload fail without them. Run `supabase db push` locally and on hosted Supabase.
+> ⚠️ **Migrations `0009`–`0012` may not be applied yet** — flag-attempt photo upload (0009), placed curses (0010), Web Push (0011), and challenge peer-review photo upload (0012) fail without them. Run `supabase db push` locally and on hosted Supabase.
 
 ---
 
@@ -204,7 +205,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
   - **Notifications (F18-20)**: one bug — `useGameToasts`/`useGameMoments` seeded against empty pre-snapshot events (history replay) + `setLiveSnapshot` replaced events (dropped live ones). Fixed with a `ready` gate + event **merge** in the store.
   - **Curses**: E15 Frozen countdown gates on being in place + `/extend-curse` route so wandering prolongs it; E16 check-in `submission_window_seconds` + tap-to-ack in `ActiveCursesBanner`; E17 Hot/Cold is now a **live** thermometer (server stamps real-flag coords in `intel.hot-cold` payload — a deliberate balance change).
   - **Confirm-spend (G21)**: `ConfirmSpendModal` on all 4 spends (intel/curse/harden/placed).
-  - **Challenge peer review (D14)**: photo challenges → `pending` card state → other team accept/reject (`/accept-challenge`, `/reject-challenge`, `lib/server/challengeAward.ts`), reject→resubmit, event-driven `ChallengeReviewPanel` + review toast; new `challenge-photos` bucket (migration 0011).
+  - **Challenge peer review (D14)**: photo challenges → `pending` card state → other team accept/reject (`/accept-challenge`, `/reject-challenge`, `lib/server/challengeAward.ts`), reject→resubmit, event-driven `ChallengeReviewPanel` + review toast; new `challenge-photos` bucket (migration 0012).
   - **Chat (G22)**: `useChat` + `ChatPanel` — ephemeral Supabase-broadcast chat, global + private per-team channels, unread badge; NOT persisted / not in results.
   - **Setup (A1-A4)**: visible team-tinted select on join; map-first flag selection in `SetupMap` (tap to cycle role, color-coded, permanent labels, Map/List toggle) with the list kept as fallback.
 
