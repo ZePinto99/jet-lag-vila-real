@@ -41,8 +41,9 @@ describe('HardenFlagButton', () => {
     )
 
     await userEvent.click(screen.getByRole('button', { name: 'Harden flag · 150 coins' }))
+    // Confirm-spend modal (G21): Cancel + "Confirmar e gastar" in PT.
     expect(await screen.findByRole('button', { name: /Cancelar/ })).toBeVisible()
-    await userEvent.click(screen.getByRole('button', { name: /Confirmar · 150/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Confirmar e gastar/ }))
 
     await waitFor(() => expect(screen.getByText('Flag challenge hardened.')).toBeVisible())
     expect(global.fetch).toHaveBeenCalledWith(

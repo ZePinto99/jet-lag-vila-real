@@ -19,6 +19,7 @@ import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
 import { useT } from '@/lib/i18n/context'
+import { ConfirmSpendModal } from '@/components/game/ConfirmSpendModal'
 import type {
   BuyIntelRequest,
   BuyIntelResponse,
@@ -62,6 +63,9 @@ export function IntelPurchasePanel({
   const [busyRef, setBusyRef] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  // Confirm-spend modal (G21): a tapped Buy opens the modal; the actual spend
+  // fires on confirm.
+  const [pending, setPending] = useState<IntelSeed | null>(null)
 
   const ownedRefs = new Set(myIntelCards.map((c) => c.ref))
   const intelCount = myIntelCards.length
@@ -70,9 +74,6 @@ export function IntelPurchasePanel({
   const lockedLabel = actionsLocked ? t('curse.actions_locked') : null
 
   async function handleBuy(intel: IntelSeed) {
-    // No window.confirm — unreliable in installed PWAs (P0-3). Buying intel is
-    // a deliberate per-card tap with the cost shown on the button, and it's
-    // capped at 4 per game, so a second confirm step isn't worth the friction.
     setError(null)
     setSuccess(null)
 
@@ -90,6 +91,7 @@ export function IntelPurchasePanel({
     try {
       await apiPost<BuyIntelResponse>(`/api/games/${gameId}/buy-intel`, body)
       setSuccess(`${intel.name} acquired — see Status tab.`)
+      setPending(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
@@ -123,7 +125,10 @@ export function IntelPurchasePanel({
             busy={busyRef === intel.id}
             anyBusy={busyRef !== null}
             lockedLabel={lockedLabel}
-            onBuy={handleBuy}
+            onBuy={(i) => {
+              setError(null)
+              setPending(i)
+            }}
           />
         ))}
       </ul>
@@ -133,11 +138,27 @@ export function IntelPurchasePanel({
           {success}
         </p>
       )}
-      {error && (
+      {error && !pending && (
         <p className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
           {error}
         </p>
       )}
+
+      <ConfirmSpendModal
+        open={pending !== null}
+        itemName={pending?.name ?? ''}
+        cost={pending?.cost_coins ?? 0}
+        balance={teamCoins}
+        busy={busyRef !== null}
+        error={error}
+        onConfirm={() => {
+          if (pending) void handleBuy(pending)
+        }}
+        onCancel={() => {
+          setPending(null)
+          setError(null)
+        }}
+      />
     </div>
   )
 }

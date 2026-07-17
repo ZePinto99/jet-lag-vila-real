@@ -10,6 +10,7 @@ import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
 import { useT } from '@/lib/i18n/context'
+import { ConfirmSpendModal } from '@/components/game/ConfirmSpendModal'
 import { getPlacedCurseCatalog } from '@/lib/placedCurses'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { useGameStore } from '@/store/gameStore'
@@ -47,6 +48,8 @@ export function PlacedCursePanel({
   const addPlacedCurse = useGameStore((s) => s.addPlacedCurse)
   const [busyRef, setBusyRef] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Confirm-spend modal (G21).
+  const [pending, setPending] = useState<(typeof CATALOG)[number] | null>(null)
 
   const armedRefs = new Set(placedCurses.map((p) => p.landmark_ref))
   const availableLandmarks = myCandidateLandmarks.filter(
@@ -75,6 +78,7 @@ export function PlacedCursePanel({
       )
       addPlacedCurse(res.placed)
       setSelectedRef('')
+      setPending(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
@@ -162,7 +166,10 @@ export function PlacedCursePanel({
                     </span>
                     <button
                       type="button"
-                      onClick={() => handlePlace(def.id)}
+                      onClick={() => {
+                        setError(null)
+                        setPending(def)
+                      }}
                       disabled={disabled}
                       className={cn(
                         'shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold uppercase tracking-wider transition',
@@ -183,11 +190,27 @@ export function PlacedCursePanel({
         </>
       )}
 
-      {error && (
+      {error && !pending && (
         <p className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
           {error}
         </p>
       )}
+
+      <ConfirmSpendModal
+        open={pending !== null}
+        itemName={pending?.name ?? ''}
+        cost={pending?.cost_coins ?? 0}
+        balance={teamCoins}
+        busy={busyRef !== null}
+        error={error}
+        onConfirm={() => {
+          if (pending) void handlePlace(pending.id)
+        }}
+        onCancel={() => {
+          setPending(null)
+          setError(null)
+        }}
+      />
     </div>
   )
 }

@@ -22,6 +22,7 @@ import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
 import { useT } from '@/lib/i18n/context'
+import { ConfirmSpendModal } from '@/components/game/ConfirmSpendModal'
 import type {
   BuyCurseRequest,
   BuyCurseResponse,
@@ -90,7 +91,6 @@ export function CursePurchasePanel({
   async function handleCast() {
     setError(null)
     setResult(null)
-    setConfirming(false)
     setBusy(true)
     const body: BuyCurseRequest = {
       device_id: getDeviceId(),
@@ -103,6 +103,7 @@ export function CursePurchasePanel({
         body,
       )
       setResult(res)
+      setConfirming(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
@@ -146,42 +147,37 @@ export function CursePurchasePanel({
       </div>
 
       <div className="mt-3 flex flex-col gap-2">
-        {confirming && !disabled ? (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              disabled={busy}
-              className="flex-1 rounded-md bg-neutral-800 px-4 py-2 text-sm font-semibold uppercase tracking-wider text-neutral-300 transition hover:bg-neutral-700 disabled:opacity-50"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={handleCast}
-              disabled={busy}
-              className="flex-1 rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold uppercase tracking-wider text-neutral-950 transition hover:bg-amber-400 disabled:opacity-50"
-            >
-              {busy ? 'Rolling…' : `${t('common.confirm')} · ${cost}`}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              if (!disabled) setConfirming(true)
-            }}
-            disabled={disabled}
-            className={cn(
-              'w-full rounded-md px-4 py-2 text-sm font-semibold uppercase tracking-wider transition',
-              disabled
-                ? 'cursor-not-allowed bg-neutral-800 text-neutral-500'
-                : 'bg-amber-500 text-neutral-950 hover:bg-amber-400',
-            )}
-          >
-            {busy ? 'Rolling…' : `Cast Curse · ${cost} coins`}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (!disabled) {
+              setError(null)
+              setConfirming(true)
+            }
+          }}
+          disabled={disabled}
+          className={cn(
+            'w-full rounded-md px-4 py-2 text-sm font-semibold uppercase tracking-wider transition',
+            disabled
+              ? 'cursor-not-allowed bg-neutral-800 text-neutral-500'
+              : 'bg-amber-500 text-neutral-950 hover:bg-amber-400',
+          )}
+        >
+          {busy ? 'Rolling…' : `Cast Curse · ${cost} coins`}
+        </button>
+        <ConfirmSpendModal
+          open={confirming}
+          itemName={t('curse.panel_title')}
+          cost={cost}
+          balance={teamCoins}
+          busy={busy}
+          error={error}
+          onConfirm={handleCast}
+          onCancel={() => {
+            setConfirming(false)
+            setError(null)
+          }}
+        />
         {disabledReason && (
           <p className="text-[11px] text-neutral-500">{disabledReason}</p>
         )}
