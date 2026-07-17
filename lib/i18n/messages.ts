@@ -461,6 +461,84 @@ export const MESSAGES: MessageDict = {
     pt: 'Todos os teus locais já estão armados.',
   },
   'placed.need_coins': { en: 'Need {n} more coins', pt: 'Faltam {n} moedas' },
+
+  // ---------- confirm-spend modal (G21) ----------
+  'spend.title': { en: 'Confirm purchase', pt: 'Confirmar compra' },
+  'spend.item': { en: 'Item', pt: 'Item' },
+  'spend.cost': { en: 'Cost', pt: 'Custo' },
+  'spend.balance_now': { en: 'Balance now', pt: 'Saldo atual' },
+  'spend.balance_after': { en: 'Balance after', pt: 'Saldo depois' },
+  'spend.confirm_button': { en: 'Confirm & spend', pt: 'Confirmar e gastar' },
+  'spend.insufficient': { en: 'Not enough coins', pt: 'Moedas insuficientes' },
+
+  // ---------- in-game chat (G22) ----------
+  'chat.tab': { en: 'Chat', pt: 'Chat' },
+  'chat.title': { en: 'Chat', pt: 'Chat' },
+  'chat.channel_global': { en: 'All players', pt: 'Todos' },
+  'chat.channel_team': { en: 'My team', pt: 'Minha equipa' },
+  'chat.placeholder': { en: 'Message…', pt: 'Mensagem…' },
+  'chat.send': { en: 'Send', pt: 'Enviar' },
+  'chat.empty': { en: 'No messages yet. Say hi!', pt: 'Ainda sem mensagens. Diz olá!' },
+  'chat.ephemeral_note': {
+    en: 'Live only — messages are not saved.',
+    pt: 'Só ao vivo — as mensagens não são guardadas.',
+  },
+  'chat.you': { en: 'You', pt: 'Tu' },
+  'chat.connecting': { en: 'Connecting…', pt: 'A ligar…' },
+  'chat.unread': { en: '{n} new', pt: '{n} novas' },
+
+  // ---------- challenge peer-verification (D14) ----------
+  'challenge.photo_add': { en: '📷 Add photo', pt: '📷 Adicionar foto' },
+  'challenge.photo_change': { en: '✓ Photo ready', pt: '✓ Foto pronta' },
+  'challenge.photo_required_hint': {
+    en: 'Needs a photo the other team will verify.',
+    pt: 'Precisa de foto que a outra equipa vai verificar.',
+  },
+  'challenge.pending_review': {
+    en: 'Waiting for the other team to verify…',
+    pt: 'À espera que a outra equipa verifique…',
+  },
+  'challenge.rejected_resubmit': {
+    en: 'Rejected — submit a new photo.',
+    pt: 'Rejeitada — envia uma nova foto.',
+  },
+  'challenge.review_title': { en: 'Photos to review', pt: 'Fotos para verificar' },
+  'challenge.review_none': {
+    en: 'Nothing to review right now.',
+    pt: 'Nada para verificar de momento.',
+  },
+  'challenge.review_line': {
+    en: '{team} · {name} (+{coins})',
+    pt: '{team} · {name} (+{coins})',
+  },
+  'challenge.view_photo': { en: 'View photo', pt: 'Ver foto' },
+  'challenge.accept': { en: 'Accept', pt: 'Aceitar' },
+  'challenge.reject': { en: 'Reject', pt: 'Rejeitar' },
+  'challenge.reviewing': { en: 'Saving…', pt: 'A guardar…' },
+  'challenge.review_toast': {
+    en: 'A challenge photo needs your review',
+    pt: 'Uma foto de desafio precisa da tua verificação',
+  },
+  'challenge.submitted_feed': {
+    en: '{team} submitted {name} for review',
+    pt: '{team} submeteu {name} para verificação',
+  },
+  'challenge.accepted_feed': {
+    en: '{name} accepted (+{coins})',
+    pt: '{name} aceite (+{coins})',
+  },
+  'challenge.rejected_feed': {
+    en: '{name} rejected — resubmit',
+    pt: '{name} rejeitada — reenviar',
+  },
+
+  // ---------- setup: map-first flag selection (A2/A3/A4) ----------
+  'setup.tab_map': { en: 'Map', pt: 'Mapa' },
+  'setup.tab_list': { en: 'List', pt: 'Lista' },
+  'setup.map_hint': {
+    en: 'Tap a point to cycle its role: real → decoy → empty → none.',
+    pt: 'Toca num ponto para mudar o papel: real → engano → vazio → nenhum.',
+  },
 }
 
 export type MessageKey = keyof typeof MESSAGES

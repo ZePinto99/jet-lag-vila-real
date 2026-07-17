@@ -33,6 +33,8 @@ export type CardState =
   | 'active'
   | 'consumed'
   | 'expired'
+  // A photo challenge awaiting the other team's accept/reject (D14).
+  | 'pending'
 
 export type PhotoKind = 'flag_attempt' | 'challenge' | 'curse_proof' | 'other'
 
@@ -505,6 +507,10 @@ export type IntelAnswer =
       // The bucket is a distance bracket from this point to the real flag.
       // Stored in payload so the client can compute "ruled out" enemies later.
       buy_position: { lat: number; lng: number }
+      // The enemy real-flag coordinates. Present so the client can show a LIVE
+      // distance/thermometer reading that updates as the player moves (E17).
+      // (Older cards bought before this shipped may omit it → static bucket.)
+      target?: { lat: number; lng: number }
     }
   | {
       intel_ref: 'intel.surroundings'
@@ -617,6 +623,17 @@ export interface ChallengeDefinition {
 // replacements from the pool of unused challenges.
 export interface GetChallengesResponse {
   active: ChallengeDefinition[]
+  // Photo challenges this team has submitted and that are awaiting the other
+  // team's review (D14).
+  pending?: PendingChallenge[]
+  // Refs in `active` that were rejected and can be resubmitted (D14).
+  rejected_refs?: string[]
+}
+
+export interface PendingChallenge {
+  challenge: ChallengeDefinition
+  card_id: string
+  photo_url: string
 }
 
 // POST /api/games/[id]/submit-challenge
@@ -640,12 +657,23 @@ export interface SubmitChallengeRequest {
 }
 
 export interface SubmitChallengeResponse {
+  // 'pending' → a photo challenge is now awaiting the other team's review
+  // (no coins yet). 'completed' → a non-photo challenge auto-completed (D14).
+  status: 'completed' | 'pending'
   challenge_ref: string
   reward_coins: number
   first_blood: boolean
   bonus_coins: number
   team_coins: number
   replacement: ChallengeDefinition | null
+}
+
+// POST /api/games/[id]/accept-challenge & /reject-challenge (D14)
+export interface ReviewChallengeRequest {
+  device_id: string
+  player_id: string
+  /** The pending challenge card being reviewed. */
+  card_id: string
 }
 
 // ---------------------------------------------------------------------------

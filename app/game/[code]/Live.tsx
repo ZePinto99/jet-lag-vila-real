@@ -39,6 +39,7 @@ import { computeNarrowedRefs } from '@/lib/intel/narrowing'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { useDiscoveredEnemyKinds } from '@/lib/hooks/useDiscoveredEnemyKinds'
 import { useEnemyLandmarkLocks } from '@/lib/hooks/useEnemyLandmarkLocks'
+import { useActiveChallenges } from '@/lib/hooks/useActiveChallenges'
 import { TagButton } from '@/components/game/TagButton'
 import { RespawnBanner } from '@/components/game/RespawnBanner'
 import { FlagAttemptButton } from '@/components/game/FlagAttemptButton'
@@ -52,7 +53,10 @@ import { CursePurchasePanel } from '@/components/game/CursePurchasePanel'
 import { ActiveCursesBanner } from '@/components/game/ActiveCursesBanner'
 import { CurseHistoryList } from '@/components/game/CurseHistoryList'
 import { ChallengesPanel } from '@/components/game/ChallengesPanel'
+import { ChallengeReviewPanel } from '@/components/game/ChallengeReviewPanel'
 import { ChallengeHistoryList } from '@/components/game/ChallengeHistoryList'
+import { ChatPanel } from '@/components/game/ChatPanel'
+import { useChat } from '@/lib/hooks/useChat'
 import type {
   ActiveCurse,
   Card,
@@ -71,7 +75,7 @@ const GameMap = dynamic(() => import('@/components/map/GameMap'), {
   ),
 })
 
-type Tab = 'map' | 'actions' | 'status'
+type Tab = 'map' | 'actions' | 'status' | 'chat'
 
 const DEFAULT_DURATION_MIN = 180 // 3 hours per RULEBOOK §4.2
 const ATTEMPT_PROTECTION_MIN = 30 // RULEBOOK §5.2 — no flag attempts in first 30 min
@@ -162,6 +166,19 @@ export function Live() {
   const myTeamId = me?.team_id ?? null
   useLiveGameRealtime(game?.id ?? null, myTeamId)
 
+  // In-game chat (G22) — ephemeral broadcast, global + per-team channels.
+  const chat = useChat(
+    game?.id ?? null,
+    me?.id ?? null,
+    myTeamId,
+    me?.display_name ?? 'Player',
+  )
+  const [chatSeen, setChatSeen] = useState(0)
+  useEffect(() => {
+    if (tab === 'chat') setChatSeen(chat.messages.length)
+  }, [tab, chat.messages.length])
+  const chatUnread = tab === 'chat' ? 0 : Math.max(0, chat.messages.length - chatSeen)
+
   // Web Push (lock-screen alerts) — subscribes once when live; no-ops unless
   // VAPID is configured + the browser grants notification permission.
   usePushNotifications({
@@ -205,6 +222,13 @@ export function Live() {
   // Per-landmark 15-min lockout state (decoy/empty attempts) → grey-out +
   // countdown on the map.
   const enemyLocks = useEnemyLandmarkLocks(events, myTeamId)
+
+  // Active challenges for the caller's team → gold star markers on the map.
+  const challengeMarkers = useActiveChallenges(
+    game?.id ?? null,
+    game?.status ?? 'lobby',
+    events,
+  )
 
   // Intel filter — derive ruled-out enemy refs from my intel cards. The
   // toggle controls whether the map dims them.
@@ -273,6 +297,7 @@ export function Live() {
     myTeamId,
     presence,
     nowMs: now,
+    gameId: game?.id ?? null,
     t,
   })
   const actionsLocked = curseEnforcement.actionsLocked
@@ -286,6 +311,7 @@ export function Live() {
     players,
     presence,
     myTeamLandmarks,
+    ready: !snapshotLoading,
     t,
   })
 
@@ -295,6 +321,7 @@ export function Live() {
     myTeamId,
     myPlayerId: me?.id ?? null,
     players,
+    ready: !snapshotLoading,
     t,
   })
 
@@ -538,6 +565,7 @@ export function Live() {
               attemptsLocked={withinProtection}
               enemyLocks={enemyLocks}
               nowMs={now}
+              challenges={challengeMarkers}
             />
             <MapOverlay
               gpsEnabled={gpsEnabled}
@@ -549,7 +577,7 @@ export function Live() {
                 the bottom-center. Both pointer-events-none on the wrapper so
                 taps fall through to the map outside the button itself. */}
             {camping.status !== 'idle' && (
-              <div className="pointer-events-none absolute left-1/2 top-3 z-[400] -translate-x-1/2 rounded-md bg-amber-900/80 px-3 py-1 text-[11px] font-medium text-amber-100 shadow">
+              <div className="pointer-events-none absolute left-1/2 top-3 z-[1000] -translate-x-1/2 rounded-md bg-amber-900/80 px-3 py-1 text-[11px] font-medium text-amber-100 shadow">
                 {camping.status === 'locked'
                   ? 'Camping locked — leave own landmark for 60 s to reset'
                   : `Camping warning — ${camping.lockThresholdSeconds - camping.secondsInZone}s until tag disabled`}
@@ -559,7 +587,7 @@ export function Live() {
                 (most reflex-driven), Flag Attempt below. The pointer-events
                 wrapper is set on each child so map taps still register
                 between the buttons. */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[400] flex flex-col items-center gap-2 px-4">
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[1000] flex flex-col items-center gap-2 px-4">
               <TagButton
                 gameId={game.id}
                 myPlayerId={me.id}
@@ -582,6 +610,7 @@ export function Live() {
           <ActionsTab
             gameId={game.id}
             myPlayerId={me.id}
+            myTeamId={myTeam.id}
             gameStatus={game.status}
             coins={myTeam.coins}
             sideLabel={sideLabel}
@@ -591,6 +620,7 @@ export function Live() {
             actionsLocked={actionsLocked}
             myTeamLandmarks={myTeamLandmarks}
             placedCurses={myPlacedCurses}
+            events={events}
           />
         )}
 
@@ -603,6 +633,7 @@ export function Live() {
             myTeamLandmarks={myTeamLandmarks}
             activeCurses={activeCurses}
             myCards={myCards}
+            myGps={myGps}
             events={events}
             players={players}
             teams={teams}
@@ -610,13 +641,29 @@ export function Live() {
             actionsLocked={actionsLocked}
           />
         )}
+
+        {tab === 'chat' && (
+          <ChatPanel
+            messages={chat.messages}
+            send={chat.send}
+            connected={chat.connected}
+            myPlayerId={me.id}
+            teamColorClass={sideColorClass}
+          />
+        )}
       </div>
 
       {/* Bottom tab bar */}
-      <nav className="grid grid-cols-3 border-t border-neutral-800 bg-neutral-950">
+      <nav className="grid grid-cols-4 border-t border-neutral-800 bg-neutral-950">
         <TabButton label={t('live.tab_map')} active={tab === 'map'} onClick={() => setTab('map')} />
         <TabButton label={t('live.tab_actions')} active={tab === 'actions'} onClick={() => setTab('actions')} />
         <TabButton label={t('live.tab_status')} active={tab === 'status'} onClick={() => setTab('status')} />
+        <TabButton
+          label={t('chat.tab')}
+          active={tab === 'chat'}
+          onClick={() => setTab('chat')}
+          badge={chatUnread}
+        />
       </nav>
 
       {/* In-app discovery toasts (top-center, foregrounded only). */}
@@ -649,23 +696,30 @@ function TabButton({
   label,
   active,
   onClick,
+  badge = 0,
 }: {
   label: string
   active: boolean
   onClick: () => void
+  badge?: number
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        'px-3 py-3 text-center text-sm font-medium transition',
+        'relative px-3 py-3 text-center text-sm font-medium transition',
         active
           ? 'bg-neutral-900 text-neutral-100'
           : 'text-neutral-400 hover:bg-neutral-900 hover:text-neutral-200',
       )}
     >
       {label}
+      {badge > 0 && (
+        <span className="absolute right-2 top-1.5 min-w-[16px] rounded-full bg-emerald-500 px-1 text-[10px] font-bold leading-4 text-neutral-950">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </button>
   )
 }
@@ -726,7 +780,7 @@ function MapOverlay({
 }) {
   const t = useT()
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-[400] flex flex-col items-start gap-2">
+    <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex flex-col items-start gap-2">
       <Button
         variant={gpsEnabled ? 'secondary' : 'primary'}
         onClick={onToggleGps}
@@ -750,6 +804,7 @@ function MapOverlay({
 function ActionsTab({
   gameId,
   myPlayerId,
+  myTeamId,
   gameStatus,
   coins,
   sideLabel,
@@ -759,9 +814,11 @@ function ActionsTab({
   actionsLocked,
   myTeamLandmarks,
   placedCurses,
+  events,
 }: {
   gameId: string
   myPlayerId: string
+  myTeamId: string
   gameStatus: import('@/lib/types').GameStatus
   coins: number
   sideLabel: string
@@ -771,6 +828,7 @@ function ActionsTab({
   actionsLocked: boolean
   myTeamLandmarks: import('@/lib/types').Landmark[]
   placedCurses: import('@/lib/types').PlacedCurse[]
+  events: GameEvent[]
 }) {
   const myIntelCards = myCards.filter((c) => c.kind === 'intel')
   return (
@@ -814,9 +872,18 @@ function ActionsTab({
         gameId={gameId}
         gameStatus={gameStatus}
         myPlayerId={myPlayerId}
+        myTeamId={myTeamId}
         myGps={myGps}
         respawning={respawning}
         actionsLocked={actionsLocked}
+        events={events}
+      />
+
+      <ChallengeReviewPanel
+        gameId={gameId}
+        myPlayerId={myPlayerId}
+        myTeamId={myTeamId}
+        events={events}
       />
     </section>
   )
@@ -830,6 +897,7 @@ function StatusTab({
   myTeamLandmarks,
   activeCurses,
   myCards,
+  myGps,
   events,
   players,
   teams,
@@ -843,6 +911,7 @@ function StatusTab({
   myTeamLandmarks: import('@/lib/types').Landmark[]
   activeCurses: ActiveCurse[]
   myCards: Card[]
+  myGps: import('@/lib/types').GpsPosition | null
   events: GameEvent[]
   players: Player[]
   teams: Team[]
@@ -891,7 +960,7 @@ function StatusTab({
         )}
       </div>
 
-      <IntelCardDisplay myCards={myCards} />
+      <IntelCardDisplay myCards={myCards} myGps={myGps} />
 
       <CurseHistoryList events={events} myTeamId={myTeam.id} />
 
