@@ -147,7 +147,18 @@ export const useGameStore = create<GameStore>((set) => ({
       const nextMe = state.me
         ? snapshot.players.find((p) => p.id === state.me!.id) ?? state.me
         : state.me
-      const cappedEvents = snapshot.recent_events.slice(-MAX_EVENTS_KEPT)
+      // Merge, don't replace: realtime can deliver events (appendEvent) before
+      // this async snapshot resolves. Replacing would silently drop them (a
+      // notification/log-entry that never shows). Dedupe by id, order by time.
+      const byId = new Map<string, GameEvent>()
+      for (const e of state.events) byId.set(e.id, e)
+      for (const e of snapshot.recent_events) byId.set(e.id, e)
+      const cappedEvents = Array.from(byId.values())
+        .sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+        .slice(-MAX_EVENTS_KEPT)
       return {
         game: snapshot.game,
         teams: snapshot.teams,

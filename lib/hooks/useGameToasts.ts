@@ -40,6 +40,13 @@ interface UseGameToastsParams {
   players: Player[]
   presence: Record<string, PresencePayload>
   myTeamLandmarks: Landmark[]
+  /**
+   * True once the live-state snapshot has been applied. Seeding must wait for
+   * this: seeding against the empty pre-snapshot `events` array made the whole
+   * snapshot batch look "new" and replayed it as a toast burst on every load
+   * (playtest items F18–F20).
+   */
+  ready: boolean
   t: (key: string, tokens?: Record<string, string | number>) => string
 }
 
@@ -54,6 +61,7 @@ export function useGameToasts({
   players,
   presence,
   myTeamLandmarks,
+  ready,
   t,
 }: UseGameToastsParams): {
   toasts: GameToast[]
@@ -84,10 +92,12 @@ export function useGameToasts({
   }, [])
 
   // --- event-driven toasts ---------------------------------------------------
-  // Seed with the snapshot's events on first run so we never toast history.
+  // Seed once the snapshot has loaded (ready), capturing every event known at
+  // that moment as history. Only events that arrive AFTER seeding get toasted.
   const processedRef = useRef<Set<string>>(new Set())
   const seededRef = useRef(false)
   useEffect(() => {
+    if (!ready) return
     if (!seededRef.current) {
       for (const e of events) processedRef.current.add(e.id)
       seededRef.current = true
@@ -99,13 +109,23 @@ export function useGameToasts({
       handleEvent(e)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, myTeamId, myPlayerId])
+  }, [events, ready, myTeamId, myPlayerId])
 
   function handleEvent(e: GameEvent) {
     const p = e.payload as Record<string, unknown>
 
     // NOTE: flag_found, tag and placed_curse_triggered are handled by
     // useGameMoments (the animated big-moment overlay), not here.
+
+    // A challenge photo submitted by the enemy needs MY team to review it (D14).
+    if (e.type === 'challenge_submitted') {
+      const reviewing =
+        typeof p.reviewing_team_id === 'string' ? p.reviewing_team_id : null
+      if (reviewing === myTeamId) {
+        pushRef.current(t('challenge.review_toast'), 'alert')
+      }
+      return
+    }
 
     const ref = typeof p.landmark_ref === 'string' ? p.landmark_ref : null
     if (!ref) return

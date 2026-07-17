@@ -35,6 +35,8 @@ interface UseGameMomentsParams {
   myTeamId: string | null
   myPlayerId: string | null
   players: Player[]
+  /** True once the live-state snapshot has been applied (see useGameToasts). */
+  ready: boolean
   t: (key: string, tokens?: Record<string, string | number>) => string
 }
 
@@ -47,6 +49,7 @@ export function useGameMoments({
   myTeamId,
   myPlayerId,
   players,
+  ready,
   t,
 }: UseGameMomentsParams): {
   moment: GameMoment | null
@@ -69,10 +72,12 @@ export function useGameMoments({
     return () => clearTimeout(timer)
   }, [headId])
 
-  // Seed with the snapshot's events on first run so we never replay history.
+  // Seed once the snapshot has loaded (ready) so we never replay history; only
+  // events arriving after seeding produce a moment.
   const processedRef = useRef<Set<string>>(new Set())
   const seededRef = useRef(false)
   useEffect(() => {
+    if (!ready) return
     if (!seededRef.current) {
       for (const e of events) processedRef.current.add(e.id)
       seededRef.current = true
@@ -84,7 +89,7 @@ export function useGameMoments({
       handleEvent(e)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, myTeamId, myPlayerId, players])
+  }, [events, ready, myTeamId, myPlayerId, players])
 
   function teamOf(playerId: string | null): string | null {
     return players.find((p) => p.id === playerId)?.team_id ?? null
