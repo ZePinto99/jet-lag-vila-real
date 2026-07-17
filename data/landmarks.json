@@ -13,24 +13,24 @@
   {
     "id": "landmark.utad-jardim-botanico",
     "name": "UTAD Jardim Botânico (botanical garden)",
-    "lat": 41.286,
-    "lng": -7.738,
+    "lat": 41.28631,
+    "lng": -7.7436,
     "team_pool": "west",
     "kind": "park",
     "approximate": true,
-    "source": "estimated",
-    "notes": "130 ha garden integrated into UTAD campus; precise entrance not confirmed, estimated within campus polygon"
+    "source": "https://nominatim.openstreetmap.org/ (Jardim Botânico UTAD, arboreto)",
+    "notes": "130 ha garden integrated into UTAD campus; representative arboreto point (was a rough estimate co-located with the museum)"
   },
   {
     "id": "landmark.utad-geosciences-museum",
     "name": "UTAD Geosciences Museum",
-    "lat": 41.287,
-    "lng": -7.738,
+    "lat": 41.286393,
+    "lng": -7.739605,
     "team_pool": "west",
     "kind": "museum",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Edifício de Geociências, UTAD campus core; address Quinta Prados 5000-696; coords estimated within campus"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Museu de Geologia da UTAD, Rua Senhora de Lourdes)",
+    "notes": "Museu de Geologia da UTAD, Rua Senhora de Lourdes; coords corrected via Nominatim (was co-located with the garden estimate)"
   },
   {
     "id": "landmark.parque-florestal",
@@ -46,13 +46,13 @@
   {
     "id": "landmark.igreja-da-conceicao",
     "name": "Igreja da Conceição",
-    "lat": 41.302,
-    "lng": -7.741,
+    "lat": 41.305979,
+    "lng": -7.743512,
     "team_pool": "west",
     "kind": "church",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Parish church of Nossa Senhora da Conceição, Vila Real; precise coords to verify on the ground"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Igreja de Nossa Senhora da Conceição, Praça de N. Sra. da Conceição)",
+    "notes": "Igreja de Nossa Senhora da Conceição, Praça de N. Sra. da Conceição; coords corrected via Nominatim (~490 m off)"
   },
   {
     "id": "landmark.estacao-ferroviaria",
@@ -68,13 +68,13 @@
   {
     "id": "landmark.mercado-municipal",
     "name": "Mercado Municipal",
-    "lat": 41.298,
-    "lng": -7.748,
+    "lat": 41.299475,
+    "lng": -7.746032,
     "team_pool": "west",
     "kind": "market",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Address Rua de Santa Sofia 10, 5000-651; closed Sundays; coords estimated from address"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Mercado Municipal, Rua Dom Pedro de Castro)",
+    "notes": "Mercado Municipal, Rua Dom Pedro de Castro; closed Sundays; coords corrected via Nominatim"
   },
   {
     "id": "landmark.nosso-shopping",
@@ -90,13 +90,13 @@
   {
     "id": "landmark.biblioteca-municipal",
     "name": "Biblioteca Municipal Dr. Júlio Teixeira",
-    "lat": 41.29434,
-    "lng": -7.74851,
+    "lat": 41.29256,
+    "lng": -7.73829,
     "team_pool": "east",
     "kind": "civic",
     "approximate": false,
-    "source": "https://biblioteca.cm-vilareal.pt/",
-    "notes": "Team East home base. Rua Madame Brouillard 5000-573; coords from the municipal library site map link"
+    "source": "https://nominatim.openstreetmap.org/ (Rua Madame Brouillard, 5000-573)",
+    "notes": "Team East home base. Rua Madame Brouillard 5000-573; coords corrected via Nominatim address+postcode match (was ~875 m too far west)"
   },
   {
     "id": "landmark.igreja-sao-pedro",
@@ -123,24 +123,24 @@
   {
     "id": "landmark.largo-do-pioledo",
     "name": "Largo do Pioledo",
-    "lat": 41.2998,
-    "lng": -7.7447,
+    "lat": 41.29963,
+    "lng": -7.74468,
     "team_pool": "east",
     "kind": "monument",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "São Pedro parish, 5000-596; ~140 m NW of Igreja de São Pedro near the Centro Cultural Regional; coords estimated, verify on the ground"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Largo do Pioledo, São Pedro)",
+    "notes": "São Pedro parish, 5000-596; ~140 m NW of Igreja de São Pedro near the Centro Cultural Regional; verified via Nominatim cluster"
   },
   {
     "id": "landmark.escola-sao-pedro",
     "name": "Escola Secundária de São Pedro",
-    "lat": 41.2966,
-    "lng": -7.741,
+    "lat": 41.30133,
+    "lng": -7.74551,
     "team_pool": "east",
     "kind": "civic",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Rua Morgado de Mateus 5000-455; east edge of the play area; coords estimated from address, verify on the ground"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Rua Morgados de Mateus, 5000-455)",
+    "notes": "Rua Morgados de Mateus 5000-455; coords corrected via Nominatim postcode match (was ~640 m off)"
   },
   {
     "id": "landmark.se-catedral",
@@ -152,6 +152,17 @@
     "approximate": false,
     "source": "https://culturaportugal.gov.pt/pt/conhecer/local/_drcnorte/se-de-vila-real-igreja-de-sao-domingos/",
     "notes": "Igreja de São Domingos; Avenida Carvalho Araújo 89, 5000-657; Gothic, 15th century"
+  },
+  {
+    "id": "landmark.camara-municipal",
+    "name": "Câmara Municipal de Vila Real",
+    "lat": 41.29462,
+    "lng": -7.74622,
+    "team_pool": "east",
+    "kind": "civic",
+    "approximate": false,
+    "source": "https://www.gov.pt/entidades/camara-municipal-de-vila-real",
+    "notes": "Avenida Carvalho Araújo, 5000-657; Portuguese flag flown at facade (challenge C15)"
   },
   {
     "id": "landmark.igreja-dos-clerigos",
@@ -187,17 +198,6 @@
     "notes": "Pillory of Vila Real, 1515; in São Pedro parish, 5000-513"
   },
   {
-    "id": "landmark.camara-municipal",
-    "name": "Câmara Municipal de Vila Real",
-    "lat": 41.29462,
-    "lng": -7.74622,
-    "team_pool": "east",
-    "kind": "civic",
-    "approximate": false,
-    "source": "https://www.gov.pt/entidades/camara-municipal-de-vila-real",
-    "notes": "Avenida Carvalho Araújo, 5000-657; Portuguese flag flown at facade (challenge C15)"
-  },
-  {
     "id": "landmark.avenida-carvalho-araujo",
     "name": "Avenida Carvalho Araújo (midpoint)",
     "lat": 41.2955,
@@ -211,13 +211,13 @@
   {
     "id": "landmark.ponte-metalica-do-corgo",
     "name": "Ponte Metálica do Corgo",
-    "lat": 41.298,
-    "lng": -7.737,
+    "lat": 41.296676,
+    "lng": -7.740427,
     "team_pool": "neutral",
     "kind": "bridge",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Metal road bridge over Rio Corgo, inaugurated 1904; in Bairro dos Ferreiros area; precise mid-span coord estimated"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Ponte Metálica, Rua do Corgo)",
+    "notes": "Metal road bridge over Rio Corgo, inaugurated 1904; Bairro dos Ferreiros; coords corrected via Nominatim"
   },
   {
     "id": "landmark.teatro-de-vila-real",
@@ -233,12 +233,12 @@
   {
     "id": "landmark.estacao-rodoviaria",
     "name": "Estação Rodoviária",
-    "lat": 41.296,
-    "lng": -7.741,
+    "lat": 41.299368,
+    "lng": -7.750036,
     "team_pool": "neutral",
     "kind": "station",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Terminal Rodoviário, R. Dom António Valente da Fonseca, 5000-539; coord estimated from address"
+    "approximate": false,
+    "source": "https://nominatim.openstreetmap.org/ (Terminal Rodoviário, R. Dom António Valente da Fonseca)",
+    "notes": "Terminal Rodoviário, R. Dom António Valente da Fonseca; coords corrected via Nominatim (~840 m off)"
   }
 ]
