@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
+import { awardChallenge } from '@/lib/server/challengeAward'
 import challengesCatalog from '@/data/challenges.json'
 import type {
   Card,
@@ -21,11 +22,6 @@ import type {
 // since challenges happen at the surrounding location, not strictly at the
 // marker. 100 m generously covers "I'm at the landmark" for walking play.
 const CHALLENGE_GEOFENCE_M = 100
-
-// One-shot bonus to the very first team to complete any challenge.
-const FIRST_BLOOD_BONUS = 30
-
-const ACTIVE_CHALLENGES_TARGET = 3
 
 // ---------------------------------------------------------------------------
 // Challenge catalog
@@ -236,209 +232,107 @@ export async function POST(
   // Apply submission.
   // -------------------------------------------------------------------------
 
-  // 8. Consume the card. Merge a submission record into payload for the
-  //    timeline / audit. Optimistic guard on state to avoid double-consume.
-  const submittedAt = new Date().toISOString()
-  const newPayload: Record<string, unknown> = {
-    ...(card.payload ?? {}),
-    submitted_at: submittedAt,
-  }
-  if (photo_url !== undefined) newPayload.photo_url = photo_url
-  if (text_submission !== undefined) newPayload.text_submission = text_submission
+  // Photo challenges go through peer review: they don't credit coins on submit.
+  // Instead the card moves to `pending` and the OTHER team accepts/rejects it
+  // (D14). Non-photo challenges (window count, quote) auto-complete as before.
+  const needsReview = def.photo_required === true
 
-  const { data: consumedCardRow, error: consumeError } = await supabase
-    .from('cards')
-    .update({
-      state: 'consumed',
-      payload: newPayload,
-      updated_at: submittedAt,
-    })
-    .eq('id', card.id)
-    .eq('state', 'available')
-    .select()
-    .maybeSingle()
-
-  if (consumeError) {
-    return NextResponse.json(
-      { error: 'card_update_failed', details: consumeError.message },
-      { status: 500 },
-    )
-  }
-  if (!consumedCardRow) {
-    // State moved under us — another concurrent submit beat us to it.
-    return NextResponse.json(
-      { error: 'challenge_not_available' },
-      { status: 409 },
-    )
-  }
-
-  // 9. First-blood check: any prior challenge_completed event in this game?
-  const { data: priorCompletionRow, error: priorCompletionError } =
-    await supabase
-      .from('events')
-      .select('id')
-      .eq('game_id', game.id)
-      .eq('type', 'challenge_completed')
-      .limit(1)
-      .maybeSingle()
-
-  if (priorCompletionError) {
-    return NextResponse.json(
-      {
-        error: 'events_lookup_failed',
-        details: priorCompletionError.message,
-      },
-      { status: 500 },
-    )
-  }
-  const first_blood = !priorCompletionRow
-  const bonus_coins = first_blood ? FIRST_BLOOD_BONUS : 0
-  const total_credit = reward_coins + bonus_coins
-
-  // 10. coins_credited event (ledger). Insert before the team coin bump so the
-  //     log records intent even if the update somehow fails.
-  const { error: coinsEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'coins_credited',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: callerTeam.id,
-      amount: total_credit,
-      reason: 'challenge_completed',
-      challenge_ref,
-      breakdown: { reward: reward_coins, first_blood: bonus_coins },
-    },
-  })
-  if (coinsEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: coinsEventError.message },
-      { status: 500 },
-    )
-  }
-
-  // 11. Credit team coins. Addition is monotonic — no optimistic guard needed.
-  const { data: updatedTeamRow, error: teamUpdateError } = await supabase
-    .from('teams')
-    .update({ coins: callerTeam.coins + total_credit })
-    .eq('id', callerTeam.id)
-    .select()
-    .maybeSingle()
-
-  if (teamUpdateError) {
-    return NextResponse.json(
-      { error: 'team_update_failed', details: teamUpdateError.message },
-      { status: 500 },
-    )
-  }
-  // Re-read coins to avoid drift from concurrent credits.
-  let teamCoins =
-    (updatedTeamRow as Team | null)?.coins ?? callerTeam.coins + total_credit
-  {
-    const { data: refreshedTeam, error: refreshError } = await supabase
-      .from('teams')
-      .select('coins')
-      .eq('id', callerTeam.id)
-      .maybeSingle()
-    if (refreshError) {
-      return NextResponse.json(
-        { error: 'team_lookup_failed', details: refreshError.message },
-        { status: 500 },
-      )
+  if (needsReview) {
+    if (!photo_url) {
+      return NextResponse.json({ error: 'photo_required' }, { status: 400 })
     }
-    if (refreshedTeam) {
-      teamCoins = (refreshedTeam as { coins: number }).coins
+    const enemyTeam = teams.find((t) => t.id !== callerTeam.id)
+    if (!enemyTeam) {
+      return NextResponse.json({ error: 'no_reviewing_team' }, { status: 409 })
     }
-  }
-
-  // 12. challenge_completed event.
-  const { error: completedEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'challenge_completed',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: callerTeam.id,
-      challenge_ref,
-      reward_coins,
-      first_blood,
-      bonus_coins,
-      actor_player_id: caller.id,
-    },
-  })
-  if (completedEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: completedEventError.message },
-      { status: 500 },
-    )
-  }
-
-  // -------------------------------------------------------------------------
-  // Draw a replacement challenge if any unused remain.
-  // -------------------------------------------------------------------------
-
-  let replacement: ChallengeDefinition | null = null
-
-  // Re-read the team's challenge cards (any state) so we know exactly which
-  // refs have ever been drawn.
-  const { data: allTeamChallengesData, error: allTeamChallengesError } =
-    await supabase
+    const submittedAt = new Date().toISOString()
+    const { data: pendingRow, error: pendingError } = await supabase
       .from('cards')
-      .select('ref, state')
-      .eq('game_id', game.id)
-      .eq('team_id', callerTeam.id)
-      .eq('kind', 'challenge')
-
-  if (allTeamChallengesError) {
-    return NextResponse.json(
-      {
-        error: 'cards_lookup_failed',
-        details: allTeamChallengesError.message,
-      },
-      { status: 500 },
-    )
-  }
-  const allTeamChallenges = (allTeamChallengesData ?? []) as Array<{
-    ref: string
-    state: string
-  }>
-  const availableCount = allTeamChallenges.filter(
-    (c) => c.state === 'available',
-  ).length
-  const drawnRefs = new Set(allTeamChallenges.map((c) => c.ref))
-  const unusedPool = CATALOG.filter((c) => !drawnRefs.has(c.id))
-
-  if (availableCount < ACTIVE_CHALLENGES_TARGET && unusedPool.length > 0) {
-    const pick = unusedPool[Math.floor(Math.random() * unusedPool.length)]
-    const { data: insertedRow, error: insertError } = await supabase
-      .from('cards')
-      .insert({
-        game_id: game.id,
-        team_id: callerTeam.id,
-        kind: 'challenge',
-        ref: pick.id,
-        state: 'available',
-        payload: {},
+      .update({
+        state: 'pending',
+        payload: {
+          ...(card.payload ?? {}),
+          photo_url,
+          submitted_at: submittedAt,
+          submitted_by: caller.id,
+          review_status: 'submitted',
+          ...(text_submission !== undefined ? { text_submission } : {}),
+        },
+        updated_at: submittedAt,
       })
+      .eq('id', card.id)
+      .eq('state', 'available')
       .select()
       .maybeSingle()
-
-    if (insertError) {
+    if (pendingError) {
       return NextResponse.json(
-        { error: 'card_insert_failed', details: insertError.message },
+        { error: 'card_update_failed', details: pendingError.message },
         { status: 500 },
       )
     }
-    if (insertedRow) {
-      replacement = pick
+    if (!pendingRow) {
+      return NextResponse.json(
+        { error: 'challenge_not_available' },
+        { status: 409 },
+      )
     }
+
+    // Notify the reviewing team (event flows over realtime to all clients).
+    const { error: submittedEventError } = await supabase
+      .from('events')
+      .insert({
+        game_id: game.id,
+        type: 'challenge_submitted',
+        actor_player_id: caller.id,
+        payload: {
+          team_id: callerTeam.id,
+          reviewing_team_id: enemyTeam.id,
+          challenge_ref,
+          card_id: card.id,
+          photo_url,
+          reward_coins,
+          location_name: def.location_name,
+          submitter_player_id: caller.id,
+        },
+      })
+    if (submittedEventError) {
+      return NextResponse.json(
+        { error: 'event_insert_failed', details: submittedEventError.message },
+        { status: 500 },
+      )
+    }
+
+    const response: SubmitChallengeResponse = {
+      status: 'pending',
+      challenge_ref,
+      reward_coins,
+      first_blood: false,
+      bonus_coins: 0,
+      team_coins: callerTeam.coins,
+      replacement: null,
+    }
+    return NextResponse.json(response)
   }
 
-  const response: SubmitChallengeResponse = {
-    challenge_ref,
-    reward_coins,
-    first_blood,
-    bonus_coins,
-    team_coins: teamCoins,
-    replacement,
+  // Non-photo challenge → auto-complete + credit now.
+  try {
+    const award = await awardChallenge({
+      supabase,
+      game,
+      team: callerTeam,
+      card,
+      def,
+      actorPlayerId: caller.id,
+    })
+    const response: SubmitChallengeResponse = {
+      status: 'completed',
+      challenge_ref,
+      ...award,
+    }
+    return NextResponse.json(response)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'award_failed'
+    const status = message === 'challenge_not_available' ? 409 : 500
+    return NextResponse.json({ error: message }, { status })
   }
-  return NextResponse.json(response)
 }

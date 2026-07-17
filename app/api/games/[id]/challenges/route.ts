@@ -147,11 +147,15 @@ export async function GET(
   const challengeCards = (challengeCardsData ?? []) as Card[]
 
   // 5. Lazy initialisation: top up `available` to 3 from the unused pool.
+  //    Pending (awaiting peer review) cards count toward the active cap so we
+  //    don't refill past 3 while some are under review (D14).
   let available = challengeCards.filter((c) => c.state === 'available')
+  const pendingCards = challengeCards.filter((c) => c.state === 'pending')
   const drawnRefs = new Set(challengeCards.map((c) => c.ref))
   const unusedPool = CATALOG.filter((c) => !drawnRefs.has(c.id))
 
-  const needed = ACTIVE_CHALLENGES_TARGET - available.length
+  const needed =
+    ACTIVE_CHALLENGES_TARGET - available.length - pendingCards.length
   if (needed > 0 && unusedPool.length > 0) {
     const remaining = unusedPool.slice()
     const toInsert: Array<{
@@ -196,13 +200,32 @@ export async function GET(
   // 6. Resolve active challenges to their definitions. Drop any cards whose
   //    ref no longer exists in the catalog (shouldn't happen, but degrade).
   const activeDefs: ChallengeDefinition[] = []
+  const rejectedRefs: string[] = []
   for (const card of available) {
     const def = CATALOG_BY_ID.get(card.ref)
-    if (def) activeDefs.push(def)
+    if (!def) continue
+    activeDefs.push(def)
+    if ((card.payload as Record<string, unknown>)?.review_status === 'rejected') {
+      rejectedRefs.push(card.ref)
+    }
+  }
+
+  const pending: GetChallengesResponse['pending'] = []
+  for (const card of pendingCards) {
+    const def = CATALOG_BY_ID.get(card.ref)
+    if (!def) continue
+    const photo = (card.payload as Record<string, unknown>)?.photo_url
+    pending.push({
+      challenge: def,
+      card_id: card.id,
+      photo_url: typeof photo === 'string' ? photo : '',
+    })
   }
 
   const response: GetChallengesResponse = {
     active: activeDefs,
+    pending,
+    rejected_refs: rejectedRefs,
   }
   return NextResponse.json(response)
 }
