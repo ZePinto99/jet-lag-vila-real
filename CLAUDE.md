@@ -109,7 +109,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │
 ├── data/                  ← static seed JSON (see above)
 │
-└── supabase/migrations/   ← 12 migrations (0001–0012):
+└── supabase/migrations/   ← 13 migrations (0001–0013):
     ├── 0001_init.sql              ← initial schema (9 tables, append-only events trigger)
     ├── 0002_adjustments.sql       ← game_code, flag_carrier, captain→host, setup status
     ├── 0003_realtime_publication.sql
@@ -121,10 +121,11 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
     ├── 0009_flag_attempt_photos.sql ← public `flag-attempts` Storage bucket + policies
     ├── 0010_placed_curses.sql     ← hidden placed_curses table (no anon RLS, not broadcast)
     ├── 0011_push_subscriptions.sql ← Web Push subscriptions (experience pass)
-    └── 0012_challenge_photos.sql  ← public `challenge-photos` Storage bucket (D14 peer review)
+    ├── 0012_challenge_photos.sql  ← public `challenge-photos` Storage bucket (D14 peer review)
+    └── 0013_challenge_pending_state.sql ← add 'pending' to cards_state_check (D14 review state)
 ```
 
-> ⚠️ **Migrations `0009`–`0012` may not be applied yet** — flag-attempt photo upload (0009), placed curses (0010), Web Push (0011), and challenge peer-review photo upload (0012) fail without them. Run `supabase db push` locally and on hosted Supabase.
+> ⚠️ **Migrations `0009`–`0013` may not be applied yet** — flag-attempt photo upload (0009), placed curses (0010), Web Push (0011), challenge peer-review photo upload (0012), and the `pending` challenge card state (0013) fail without them. Run `supabase db push` locally and on hosted Supabase. (D14 photo submit throws a `cards_state_check` violation without 0013.)
 
 ---
 
