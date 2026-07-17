@@ -173,13 +173,24 @@ function SideOption({
   selected: boolean
   onSelect: () => void
 }) {
+  // Team colours match the maps: West = blue (#3b82f6), East = pink (#ec4899).
+  const tint =
+    value === 'west'
+      ? {
+          on: 'border-blue-400 bg-blue-500/20 ring-2 ring-blue-400 text-white shadow-lg shadow-blue-500/20',
+          dot: 'bg-blue-400',
+        }
+      : {
+          on: 'border-pink-400 bg-pink-500/20 ring-2 ring-pink-400 text-white shadow-lg shadow-pink-500/20',
+          dot: 'bg-pink-400',
+        }
   return (
     <label
       className={
-        'flex cursor-pointer flex-col items-center justify-center rounded-lg border px-3 py-4 text-sm transition ' +
+        'relative flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border px-3 py-4 text-sm font-medium transition ' +
         (selected
-          ? 'border-neutral-300 bg-neutral-800'
-          : 'border-neutral-700 bg-neutral-900 hover:border-neutral-500')
+          ? tint.on
+          : 'border-neutral-700 bg-neutral-900 text-neutral-300 hover:border-neutral-500')
       }
     >
       <input
@@ -190,6 +201,25 @@ function SideOption({
         onChange={onSelect}
         className="sr-only"
       />
+      <span
+        className={
+          'flex h-4 w-4 items-center justify-center rounded-full border transition ' +
+          (selected ? tint.dot + ' border-transparent' : 'border-neutral-500')
+        }
+        aria-hidden
+      >
+        {selected && (
+          <svg viewBox="0 0 12 12" className="h-3 w-3 text-neutral-950" fill="none">
+            <path
+              d="M2.5 6.2 5 8.5l4.5-5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        )}
+      </span>
       <span>{label}</span>
     </label>
   )

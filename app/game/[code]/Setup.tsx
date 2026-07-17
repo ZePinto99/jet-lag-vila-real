@@ -7,6 +7,7 @@ import { apiGet, apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
 import { useGameStore } from '@/store/gameStore'
 import { PlacedCursePanel } from '@/components/game/PlacedCursePanel'
+import { useT } from '@/lib/i18n/context'
 import type {
   FlagAssignment,
   FlagRole,
@@ -55,7 +56,17 @@ interface SetupSnapshot {
   otherTeamDone: boolean
 }
 
+// Role cycle order for the map-first tap flow (A2/A3): none → real → decoy →
+// empty → none.
+const CYCLE_ORDER: ReadonlyArray<FlagRole | null> = [
+  null,
+  'real',
+  'decoy',
+  'empty',
+]
+
 export function Setup() {
+  const t = useT()
   const game = useGameStore((s) => s.game)
   const me = useGameStore((s) => s.me)
   const myPlacedCurses = useGameStore((s) => s.myPlacedCurses)
@@ -68,6 +79,8 @@ export function Setup() {
   )
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  // Map-first UI (A2): the map is the primary view, the list is the fallback.
+  const [view, setView] = useState<'map' | 'list'>('map')
 
   // Hydrate setup state on mount and any time the game id changes.
   useEffect(() => {
@@ -141,6 +154,15 @@ export function Setup() {
       next.set(ref, role)
       return next
     })
+  }
+
+  // Tap a landmark on the map to advance its role through CYCLE_ORDER. Drives
+  // the same `selections` state as the list, so both views stay in sync.
+  function cycleRole(seedId: string) {
+    const current = selections.get(seedId) ?? null
+    const idx = CYCLE_ORDER.indexOf(current)
+    const nextRole = CYCLE_ORDER[(idx + 1) % CYCLE_ORDER.length]
+    setRole(seedId, nextRole)
   }
 
   async function submit() {
@@ -303,60 +325,8 @@ export function Setup() {
         </p>
       </header>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-medium">Map — all candidate points</h2>
-        <p className="text-xs text-neutral-400">
-          Your pool is highlighted; the enemy pool and neutral respawn points are
-          shown too. Plan picks with non-overlapping defense zones.
-        </p>
-        <SetupMap
-          mySide={snapshot.myTeam.side}
-          myHomeRef={snapshot.myTeam.home_landmark_id}
-        />
-      </section>
-
-      <section className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-        <h2 className="text-base font-medium">Your pool</h2>
-        <ul className="flex flex-col gap-2">
-          {snapshot.myPool.map((seed) => {
-            const current = selections.get(seed.id) ?? null
-            return (
-              <li
-                key={seed.id}
-                className="flex flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-neutral-100">
-                    {seed.name}
-                  </span>
-                  {seed.notes && (
-                    <span className="text-xs text-neutral-500">
-                      {seed.notes}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <RoleButton
-                    label="—"
-                    active={current === null}
-                    onClick={() => setRole(seed.id, null)}
-                  />
-                  {ROLES.map((r) => (
-                    <RoleButton
-                      key={r}
-                      label={ROLE_LABEL[r]}
-                      tone={r}
-                      active={current === r}
-                      onClick={() => setRole(seed.id, r)}
-                    />
-                  ))}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      </section>
-
+      {/* Counter + submit stay outside the map/list toggle so validation and
+          submit are always visible and usable in BOTH views. */}
       <section className="flex flex-col gap-2">
         <CountsFooter counts={counts} valid={isValid} />
         <Button
@@ -364,7 +334,7 @@ export function Setup() {
           disabled={!isValid || submitting}
           className="w-full py-4 text-base"
         >
-          {submitting ? 'Submitting…' : 'Submit flag assignment'}
+          {submitting ? 'Submitting…' : t('setup.submit_assignment')}
         </Button>
         {submitError && (
           <div className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200">
@@ -372,7 +342,104 @@ export function Setup() {
           </div>
         )}
       </section>
+
+      {/* Map/List toggle — map is the primary (default) view, list is the
+          fallback (A2). Both drive the same `selections` state. */}
+      <section className="flex flex-col gap-2">
+        <div className="flex gap-1 rounded-lg border border-neutral-800 bg-neutral-900/40 p-1">
+          <ViewTab
+            label={t('setup.tab_map')}
+            active={view === 'map'}
+            onClick={() => setView('map')}
+          />
+          <ViewTab
+            label={t('setup.tab_list')}
+            active={view === 'list'}
+            onClick={() => setView('list')}
+          />
+        </div>
+
+        {view === 'map' ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-neutral-400">{t('setup.map_hint')}</p>
+            <SetupMap
+              mySide={snapshot.myTeam.side}
+              myHomeRef={snapshot.myTeam.home_landmark_id}
+              selections={selections}
+              poolIds={snapshot.myPool.map((s) => s.id)}
+              onCycleRole={cycleRole}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
+            <h2 className="text-base font-medium">Your pool</h2>
+            <ul className="flex flex-col gap-2">
+              {snapshot.myPool.map((seed) => {
+                const current = selections.get(seed.id) ?? null
+                return (
+                  <li
+                    key={seed.id}
+                    className="flex flex-col gap-2 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium text-neutral-100">
+                        {seed.name}
+                      </span>
+                      {seed.notes && (
+                        <span className="text-xs text-neutral-500">
+                          {seed.notes}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <RoleButton
+                        label={t('setup.role_none')}
+                        active={current === null}
+                        onClick={() => setRole(seed.id, null)}
+                      />
+                      {ROLES.map((r) => (
+                        <RoleButton
+                          key={r}
+                          label={ROLE_LABEL[r]}
+                          tone={r}
+                          active={current === r}
+                          onClick={() => setRole(seed.id, r)}
+                        />
+                      ))}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+      </section>
     </main>
+  )
+}
+
+function ViewTab({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        'flex-1 rounded-md px-3 py-2 text-sm font-medium transition ' +
+        (active
+          ? 'bg-neutral-100 text-neutral-900'
+          : 'text-neutral-300 hover:bg-neutral-800')
+      }
+    >
+      {label}
+    </button>
   )
 }
 
