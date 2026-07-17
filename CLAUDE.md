@@ -209,6 +209,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
   - **Challenge peer review (D14)**: photo challenges → `pending` card state → other team accept/reject (`/accept-challenge`, `/reject-challenge`, `lib/server/challengeAward.ts`), reject→resubmit, event-driven `ChallengeReviewPanel` + review toast; new `challenge-photos` bucket (migration 0012).
   - **Chat (G22)**: `useChat` + `ChatPanel` — ephemeral Supabase-broadcast chat, global + private per-team channels, unread badge; NOT persisted / not in results.
   - **Setup (A1-A4)**: visible team-tinted select on join; map-first flag selection in `SetupMap` (tap to cycle role, color-coded, permanent labels, Map/List toggle) with the list kept as fallback.
+  - **Verified locally** via a new browser sim harness (`tools/sim/`, Playwright + system Chrome, 2 controllable-GPS clients): radar pulse + zone-gating, live notifications (no history replay), chat (global live + team isolation), confirm-spend modal, Frozen gated countdown + check-in ack, map-first setup — all screenshotted. Server-side E2E (D14 submit→accept/reject, E17 live thermometer, extend-curse) driven via API. **Bug caught + fixed:** `cards_state_check` lacked `'pending'` → migration `0013`.
 
 ### Implementation backlog (ordered)
 See `ARCHITECTURE.md §9` for the full ordered backlog. Headline:
