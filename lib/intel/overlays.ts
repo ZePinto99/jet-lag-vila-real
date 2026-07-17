@@ -22,6 +22,20 @@ import type { Card, IntelAnswer } from '@/lib/types'
 export const PLAY_AREA_CENTRE = { lat: 41.2955, lng: -7.7461 }
 export const PLAY_AREA_RADIUS_M = 1500
 
+// Lat/lng bounding box of the play disk, for framing the map on Vila Real
+// (playtest item C9). Used both for the map's initial fit and the
+// "Fit Vila Real" control, so the two never drift apart again.
+export function getPlayAreaBounds(): [[number, number], [number, number]] {
+  const c = PLAY_AREA_CENTRE
+  const latPad = PLAY_AREA_RADIUS_M / 111_320
+  const lngPad =
+    PLAY_AREA_RADIUS_M / (111_320 * Math.cos((c.lat * Math.PI) / 180))
+  return [
+    [c.lat - latPad, c.lng - lngPad],
+    [c.lat + latPad, c.lng + lngPad],
+  ]
+}
+
 // Used for I1 N/S half-plane split.
 const CITY_CENTRE_LAT = 41.295
 

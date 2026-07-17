@@ -13,13 +13,15 @@
 // MUST be dynamic-imported by the parent with `ssr: false` — Leaflet touches
 // `window` during module init.
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
   MapContainer,
   TileLayer,
   CircleMarker,
   Circle,
+  Marker,
   Polygon,
   Tooltip,
   Popup,
@@ -27,11 +29,14 @@ import {
 } from 'react-leaflet'
 
 import seedLandmarks from '@/data/landmarks.json'
-import { DEFENSE_ZONE_RADIUS_M } from '@/lib/geo/zones'
+import { DEFENSE_ZONE_RADIUS_M, isInDefenseZone } from '@/lib/geo/zones'
+import { radarPingVisible } from '@/lib/geo/radar'
+import type { ChallengeMarker } from '@/lib/hooks/useActiveChallenges'
 import type { EnemyLandmarkLock } from '@/lib/hooks/useEnemyLandmarkLocks'
 import {
   getOutOfBoundsOverlay,
   getIntelOverlays,
+  getPlayAreaBounds,
   type MapOverlay,
 } from '@/lib/intel/overlays'
 import type { Card as IntelCard } from '@/lib/types'
@@ -99,32 +104,51 @@ interface GameMapProps {
    * (decoy/empty → 15-min lockout). Drives the grey-out + countdown.
    */
   enemyLocks?: Record<string, EnemyLandmarkLock>
-  /** Ticking clock (ms) so the lockout countdown updates each second. */
+  /** Ticking clock (ms) so the lockout countdown + radar pulse update. */
   nowMs?: number
-}
-
-interface MapPoint {
-  lat: number
-  lng: number
-}
-
-function bounds(points: MapPoint[]): { center: [number, number] } {
-  if (points.length === 0) return { center: [41.295, -7.726] }
-  let minLat = Infinity
-  let maxLat = -Infinity
-  let minLng = Infinity
-  let maxLng = -Infinity
-  for (const p of points) {
-    if (p.lat < minLat) minLat = p.lat
-    if (p.lat > maxLat) maxLat = p.lat
-    if (p.lng < minLng) minLng = p.lng
-    if (p.lng > maxLng) maxLng = p.lng
-  }
-  return { center: [(minLat + maxLat) / 2, (minLng + maxLng) / 2] }
+  /** Active challenges (with resolved coords) → gold star markers. */
+  challenges?: ChallengeMarker[]
 }
 
 function findSeed(ref: string): SeedLandmark | null {
   return SEED_LANDMARKS.find((s) => s.id === ref) ?? null
+}
+
+// Gold star marker for a challenge location (playtest item C10). A divIcon so
+// it can be a real ★ glyph with a dark halo for legibility on the basemap.
+function challengeStarIcon(): L.DivIcon {
+  return L.divIcon({
+    className: 'challenge-star-icon',
+    html: '<div class="challenge-star">★</div>',
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  })
+}
+
+// Radar blip for a revealed enemy: a pulsing dot + expanding sweep ring,
+// animated purely in CSS so it stays smooth between the 1 Hz clock ticks.
+function radarBlipIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'radar-blip-icon',
+    html:
+      `<div class="radar-blip">` +
+      `<span class="radar-blip__ring" style="border-color:${color}"></span>` +
+      `<span class="radar-blip__dot" style="background:${color}"></span>` +
+      `</div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+  })
+}
+
+// Fits the viewport to the Vila Real play disk on mount (playtest item C9).
+// Replaces the old centroid-of-points + fixed-zoom framing that centred the
+// map ~1.5 km east of the actual play area.
+function FitToPlayArea() {
+  const map = useMap()
+  useEffect(() => {
+    map.fitBounds(getPlayAreaBounds(), { padding: [24, 24] })
+  }, [map])
+  return null
 }
 
 // m:ss for the lockout countdown shown inside a landmark circle.
@@ -214,7 +238,7 @@ function MapControls({
     <div className="pointer-events-none absolute right-3 top-3 z-[1000] flex flex-col gap-2">
       <button
         type="button"
-        onClick={() => map.flyTo([41.295, -7.726], 14)}
+        onClick={() => map.flyToBounds(getPlayAreaBounds(), { padding: [24, 24] })}
         className="pointer-events-auto rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-xs font-medium text-neutral-100 shadow-lg backdrop-blur hover:bg-neutral-800"
       >
         Fit Vila Real
@@ -294,6 +318,7 @@ function GameMap({
   attemptsLocked = false,
   enemyLocks = {},
   nowMs,
+  challenges = [],
 }: GameMapProps) {
   const outOfBoundsOverlay: MapOverlay = useMemo(() => getOutOfBoundsOverlay(), [])
   const intelOverlays: MapOverlay[] = useMemo(
@@ -312,19 +337,18 @@ function GameMap({
     [],
   )
 
-  const center = useMemo(() => {
-    const points: MapPoint[] = []
-    for (const lm of myTeamLandmarks) points.push({ lat: lm.lat, lng: lm.lng })
-    for (const lm of enemyLandmarks) points.push({ lat: lm.lat, lng: lm.lng })
-    if (myHomeSeed) points.push({ lat: myHomeSeed.lat, lng: myHomeSeed.lng })
-    if (enemyHomeSeed) points.push({ lat: enemyHomeSeed.lat, lng: enemyHomeSeed.lng })
-    return bounds(points).center
-  }, [myTeamLandmarks, enemyLandmarks, myHomeSeed, enemyHomeSeed])
-
   const otherPlayers = useMemo(
     () => Object.values(presence).filter((p) => p.player_id !== myPlayerId),
     [presence, myPlayerId],
   )
+
+  // My candidate landmarks as bare points — the union of 200 m circles around
+  // these is my defense zone, which gates which enemies the radar reveals.
+  const myZonePoints = useMemo(
+    () => myTeamLandmarks.map((lm) => ({ lat: lm.lat, lng: lm.lng })),
+    [myTeamLandmarks],
+  )
+  const radarOn = nowMs != null && radarPingVisible(nowMs)
 
   const myAccuracyM = myGps ? Math.min(50, Math.max(5, myGps.accuracy)) : 0
 
@@ -334,12 +358,13 @@ function GameMap({
   return (
     <div className="relative h-full w-full">
       <MapContainer
-        center={center}
-        zoom={14}
+        bounds={getPlayAreaBounds()}
+        boundsOptions={{ padding: [24, 24] }}
         scrollWheelZoom
         className="h-full w-full"
         style={{ background: '#0a0a0a' }}
       >
+        <FitToPlayArea />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
@@ -604,19 +629,71 @@ function GameMap({
           )
         })}
 
-        {/* Other players from presence. */}
+        {/* Challenge locations — gold star markers (playtest item C10). */}
+        {challenges.map((c) => (
+          <Marker
+            key={`challenge-${c.ref}`}
+            position={[c.lat, c.lng]}
+            icon={challengeStarIcon()}
+          >
+            <Tooltip direction="top" offset={[0, -12]} className="map-label">
+              ⭐ {c.name} · +{c.reward}
+            </Tooltip>
+            <Popup>
+              <div className="min-w-[180px] text-sm">
+                <div className="font-medium text-neutral-900">⭐ {c.name}</div>
+                <div className="mt-1 text-xs text-neutral-700">{c.task}</div>
+                <div className="mt-1 text-xs font-semibold text-amber-700">
+                  +{c.reward} coins
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* Players from presence. Team-mates are always visible. Enemies are
+            radar-gated: revealed only while inside one of my own defense zones
+            AND during a radar ping (5 s on / 15 s off — see lib/geo/radar.ts).
+            The rule is identical for every player on every device. */}
         {otherPlayers.map((p) => {
           const isMine = p.team_id === myTeam.id
-          const color = isMine ? myColor : enemyColor
+          if (isMine) {
+            return (
+              <CircleMarker
+                key={`p-${p.player_id}`}
+                center={[p.lat, p.lng]}
+                radius={RADIUS.other}
+                pathOptions={{
+                  color: '#ffffff',
+                  fillColor: myColor,
+                  fillOpacity: 0.95,
+                  weight: 2,
+                }}
+              >
+                <Tooltip>Team-mate</Tooltip>
+              </CircleMarker>
+            )
+          }
+          const inMyZone = isInDefenseZone(
+            { lat: p.lat, lng: p.lng },
+            myZonePoints,
+          )
+          if (!inMyZone || !radarOn) return null
           return (
-            <CircleMarker
-              key={`p-${p.player_id}`}
-              center={[p.lat, p.lng]}
-              radius={RADIUS.other}
-              pathOptions={{ color: '#ffffff', fillColor: color, fillOpacity: 0.95, weight: 2 }}
+            <Marker
+              key={`radar-${p.player_id}`}
+              position={[p.lat, p.lng]}
+              icon={radarBlipIcon(enemyColor)}
+              zIndexOffset={500}
             >
-              <Tooltip>{isMine ? 'Team-mate' : 'Enemy player'}</Tooltip>
-            </CircleMarker>
+              <Tooltip
+                direction="top"
+                offset={[0, -12]}
+                className="map-label map-label--strong"
+              >
+                Enemy raider in your zone
+              </Tooltip>
+            </Marker>
           )
         })}
 

@@ -19,8 +19,16 @@ export function usePresence(
   presence: Record<string, PresencePayload>
 } {
   const [presence, setPresence] = useState<Record<string, PresencePayload>>({})
+  // Bumped when a subscribe attempt errors/times out, forcing the subscribe
+  // effect to re-run and rebuild the channel. Without this a single failed
+  // handshake (common on flaky mobile networks) left that device with a
+  // permanently empty presence map — the real cause of "only some players see
+  // enemies" (playtest item C11).
+  const [retryTick, setRetryTick] = useState(0)
   const channelRef = useRef<RealtimeChannel | null>(null)
   const subscribedRef = useRef(false)
+  const closingRef = useRef(false)
+  const retryScheduledRef = useRef(false)
   // Latest payload we want tracked. The track effect reads from here, and
   // the subscribe callback below also reads it so the first publish lands
   // as soon as the subscription completes.
@@ -32,6 +40,10 @@ export function usePresence(
       setPresence({})
       return
     }
+
+    closingRef.current = false
+    retryScheduledRef.current = false
+    let retryTimer: ReturnType<typeof setTimeout> | null = null
 
     const supabase = createClient()
     const channel = supabase.channel(`game:${gameId}:positions`, {
@@ -67,10 +79,20 @@ export function usePresence(
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           subscribedRef.current = true
+          retryScheduledRef.current = false
           // Flush any pending payload accumulated before subscribe completed.
           const pending = pendingPayloadRef.current
           if (pending) {
             channel.track(pending).catch(() => {})
+          }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          // Handshake failed. Tear this channel down and re-subscribe shortly
+          // (unless we're unmounting) so the device doesn't get stuck with an
+          // empty presence map.
+          subscribedRef.current = false
+          if (!closingRef.current && !retryScheduledRef.current) {
+            retryScheduledRef.current = true
+            retryTimer = setTimeout(() => setRetryTick((n) => n + 1), 2000)
           }
         }
       })
@@ -78,14 +100,16 @@ export function usePresence(
     channelRef.current = channel
 
     return () => {
+      closingRef.current = true
       subscribedRef.current = false
       channelRef.current = null
+      if (retryTimer) clearTimeout(retryTimer)
       // untrack is best-effort; removeChannel tears everything down anyway.
       channel.untrack().catch(() => {})
       supabase.removeChannel(channel)
       setPresence({})
     }
-  }, [gameId, myPlayerId])
+  }, [gameId, myPlayerId, retryTick])
 
   // 2) Publish my position when it changes (and ids are known).
   useEffect(() => {

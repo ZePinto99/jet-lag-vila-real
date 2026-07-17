@@ -82,6 +82,70 @@
   .moment-ring { display: none; }
 }
 
+/* Challenge star marker (playtest item C10): a gold ★ glyph with a dark halo
+   so it reads on the light Voyager basemap. divIcon has no background of its
+   own. */
+.challenge-star-icon {
+  background: none;
+  border: none;
+}
+.challenge-star {
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
+  font-size: 22px;
+  color: #fbbf24; /* amber-400 */
+  text-shadow:
+    0 0 3px rgba(0, 0, 0, 0.95),
+    0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+/* Enemy radar blip (playtest item C11): a pulsing dot with an expanding sweep
+   ring, both animated from their shared centre. The marker only mounts during
+   the ON window, so the sweep restarts fresh on every ping. */
+@keyframes radar-sweep {
+  0% { transform: translate(-50%, -50%) scale(0.25); opacity: 0.85; }
+  100% { transform: translate(-50%, -50%) scale(3.2); opacity: 0; }
+}
+@keyframes radar-dot {
+  0%, 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 0.45; transform: translate(-50%, -50%) scale(0.82); }
+}
+.radar-blip-icon {
+  background: none;
+  border: none;
+}
+.radar-blip {
+  position: relative;
+  width: 0;
+  height: 0;
+}
+.radar-blip__dot,
+.radar-blip__ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 9999px;
+}
+.radar-blip__dot {
+  width: 15px;
+  height: 15px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+  animation: radar-dot 1.3s ease-in-out infinite;
+}
+.radar-blip__ring {
+  width: 15px;
+  height: 15px;
+  border: 2px solid;
+  animation: radar-sweep 1.7s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .radar-blip__ring { display: none; }
+  .radar-blip__dot { animation: none; }
+}
+
 /* Leaflet popups: nicer dark-theme styling that matches the app. */
 .leaflet-popup-content-wrapper {
   border-radius: 6px;
