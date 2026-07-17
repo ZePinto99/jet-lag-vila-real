@@ -51,12 +51,12 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │   └── api/games/
 │       ├── route.ts                       ← POST  /api/games (create)
 │       ├── by-code/[code]/route.ts        ← GET   /api/games/by-code/[code]
-│       └── [id]/                          ← 22 routes covering all phases (incl. attempt-start, place-curse, trigger-placed-curse):
+│       └── [id]/                          ← 26 routes covering all phases (incl. attempt-start, place-curse, trigger-placed-curse):
 │           ├── join, switch-team, ready, start, remove-player
 │           ├── flag-setup, setup-state, harden-flag
 │           ├── live-state, tag, attempt-flag, complete-run, respawn-clear
-│           ├── buy-intel, buy-curse, expire-curses
-│           ├── challenges, submit-challenge
+│           ├── buy-intel, buy-curse, expire-curses, extend-curse (E15 frozen)
+│           ├── challenges, submit-challenge, accept-challenge, reject-challenge (D14)
 │           └── end-by-timeout
 │
 ├── lib/
@@ -109,7 +109,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │
 ├── data/                  ← static seed JSON (see above)
 │
-└── supabase/migrations/   ← 10 migrations (0001–0010):
+└── supabase/migrations/   ← 11 migrations (0001–0011):
     ├── 0001_init.sql              ← initial schema (9 tables, append-only events trigger)
     ├── 0002_adjustments.sql       ← game_code, flag_carrier, captain→host, setup status
     ├── 0003_realtime_publication.sql
@@ -119,10 +119,11 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
     ├── 0007_player_respawning.sql
     ├── 0008_rls_baseline.sql      ← RLS enabled on all tables
     ├── 0009_flag_attempt_photos.sql ← public `flag-attempts` Storage bucket + policies
-    └── 0010_placed_curses.sql     ← hidden placed_curses table (no anon RLS, not broadcast)
+    ├── 0010_placed_curses.sql     ← hidden placed_curses table (no anon RLS, not broadcast)
+    └── 0011_challenge_photos.sql  ← public `challenge-photos` Storage bucket (D14 peer review)
 ```
 
-> ⚠️ **Migrations `0009` + `0010` may not be applied yet** — flag-attempt photo upload and placed curses fail without them. Run `supabase db push` locally and on hosted Supabase.
+> ⚠️ **Migrations `0009` + `0010` + `0011` may not be applied yet** — flag-attempt photo upload, placed curses, and challenge peer-review photo upload fail without them. Run `supabase db push` locally and on hosted Supabase.
 
 ---
 
@@ -197,6 +198,15 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
   - Discovery notifications: `useGameToasts` + `ToastLayer` (two-stage attempt toasts + enemy-proximity ping); new `flag_attempt_started` event + `/attempt-start` route.
   - Placed curses (3rd category): `placed_curses` hidden table, `/place-curse` + `/trigger-placed-curse` routes, `data/placed-curses.json`, `PlacedCursePanel` (setup + live), `usePlacedCurseTrigger`.
   - Map redesign: Mateus removed, East home → Biblioteca Municipal, out-of-bounds disk recentred on the avenue (1.5 km), `SetupMap` planning view, intel I9 removed + decoy-reveal repriced to 100, "Rejoin last game" button.
+- **Post-playtest round 2 (2026-07-17)** — branch `post-playtest-round2`, 9 themed commits. All items verified via `tsc` + `next build` + 59 unit tests; live GPS/multi-client field test still pending (Rancher was down at implementation time):
+  - **Coordinates**: audited all 22 landmarks vs OSM/Nominatim; corrected 9 (Biblioteca Municipal East home, Escola São Pedro, Geosciences Museum, Mercado, Igreja da Conceição, Ponte Metálica, Estação Rodoviária, Jardim Botânico, Largo do Pioledo); Câmara regrouped East.
+  - **Map**: `fitBounds` on the play disk (was offset ~1.5 km E); challenge **star markers** (`useActiveChallenges`); **enemy radar** — enemies shown only inside your defense zones, pulsed via `lib/geo/radar.ts` (RADAR_CONFIG 5s on/15s off) with CSS sweep; `usePresence` now retries on failed subscribe (the real "only creator sees enemies" cause); map action stack raised above Leaflet panes (C12).
+  - **Notifications (F18-20)**: one bug — `useGameToasts`/`useGameMoments` seeded against empty pre-snapshot events (history replay) + `setLiveSnapshot` replaced events (dropped live ones). Fixed with a `ready` gate + event **merge** in the store.
+  - **Curses**: E15 Frozen countdown gates on being in place + `/extend-curse` route so wandering prolongs it; E16 check-in `submission_window_seconds` + tap-to-ack in `ActiveCursesBanner`; E17 Hot/Cold is now a **live** thermometer (server stamps real-flag coords in `intel.hot-cold` payload — a deliberate balance change).
+  - **Confirm-spend (G21)**: `ConfirmSpendModal` on all 4 spends (intel/curse/harden/placed).
+  - **Challenge peer review (D14)**: photo challenges → `pending` card state → other team accept/reject (`/accept-challenge`, `/reject-challenge`, `lib/server/challengeAward.ts`), reject→resubmit, event-driven `ChallengeReviewPanel` + review toast; new `challenge-photos` bucket (migration 0011).
+  - **Chat (G22)**: `useChat` + `ChatPanel` — ephemeral Supabase-broadcast chat, global + private per-team channels, unread badge; NOT persisted / not in results.
+  - **Setup (A1-A4)**: visible team-tinted select on join; map-first flag selection in `SetupMap` (tap to cycle role, color-coded, permanent labels, Map/List toggle) with the list kept as fallback.
 
 ### Implementation backlog (ordered)
 See `ARCHITECTURE.md §9` for the full ordered backlog. Headline:
