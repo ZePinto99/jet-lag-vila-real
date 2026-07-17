@@ -8,7 +8,8 @@
 
 import { Fragment } from 'react'
 import intelSeed from '@/data/intel.json'
-import type { Card, IntelAnswer } from '@/lib/types'
+import { haversineMeters } from '@/lib/geo/haversine'
+import type { Card, GpsPosition, IntelAnswer } from '@/lib/types'
 
 interface IntelSeed {
   id: string
@@ -42,9 +43,11 @@ function answerFor<R extends IntelAnswer['intel_ref']>(
 
 interface IntelCardDisplayProps {
   myCards: Card[]
+  /** Live GPS — powers the Hot/Cold live thermometer reading (E17). */
+  myGps?: GpsPosition | null
 }
 
-export function IntelCardDisplay({ myCards }: IntelCardDisplayProps) {
+export function IntelCardDisplay({ myCards, myGps = null }: IntelCardDisplayProps) {
   const intelCards = myCards.filter((c) => c.kind === 'intel')
 
   return (
@@ -57,7 +60,7 @@ export function IntelCardDisplay({ myCards }: IntelCardDisplayProps) {
       ) : (
         <ul className="mt-2 flex flex-col gap-2">
           {intelCards.map((card) => (
-            <IntelCardRow key={card.id} card={card} />
+            <IntelCardRow key={card.id} card={card} myGps={myGps} />
           ))}
         </ul>
       )}
@@ -65,7 +68,7 @@ export function IntelCardDisplay({ myCards }: IntelCardDisplayProps) {
   )
 }
 
-function IntelCardRow({ card }: { card: Card }) {
+function IntelCardRow({ card, myGps }: { card: Card; myGps: GpsPosition | null }) {
   const expired = card.state === 'expired'
   return (
     <li
@@ -86,7 +89,7 @@ function IntelCardRow({ card }: { card: Card }) {
         )}
       </div>
       <p className="mt-1 text-xs leading-snug text-neutral-300">
-        <IntelAnswerLine card={card} />
+        <IntelAnswerLine card={card} myGps={myGps} />
       </p>
     </li>
   )
@@ -95,7 +98,13 @@ function IntelCardRow({ card }: { card: Card }) {
 // Renders the answer line for a single intel card. Uses `<strong>` for the
 // load-bearing words; the rest is plain text. Returns null+fallback for any
 // unrecognised ref so nothing blows up if a future intel ref ships.
-function IntelAnswerLine({ card }: { card: Card }) {
+function IntelAnswerLine({
+  card,
+  myGps,
+}: {
+  card: Card
+  myGps: GpsPosition | null
+}) {
   switch (card.ref) {
     case 'intel.north-south': {
       const a = answerFor(card, 'intel.north-south')
@@ -141,10 +150,27 @@ function IntelAnswerLine({ card }: { card: Card }) {
     }
     case 'intel.hot-cold': {
       const a = answerFor(card, 'intel.hot-cold')
+      // Live thermometer (E17): if we have the target coords + a GPS fix,
+      // recompute distance continuously as the player moves. Otherwise fall
+      // back to the static bucket captured at purchase.
+      if (a.target && myGps) {
+        const dist = haversineMeters(
+          { lat: myGps.lat, lng: myGps.lng },
+          a.target,
+        )
+        return (
+          <Fragment>
+            {tempEmoji(dist)} Real flag is <strong>{formatDist(dist)}</strong>{' '}
+            away right now ({humaniseBucket(liveBucket(dist))}) —{' '}
+            <strong>{tempWord(dist)}</strong>
+          </Fragment>
+        )
+      }
       return (
         <Fragment>
-          Real flag distance from where you bought this:{' '}
+          Real flag distance when bought:{' '}
           <strong>{humaniseBucket(a.bucket)}</strong>
+          {a.target ? ' · enable GPS for a live reading' : ''}
         </Fragment>
       )
     }
@@ -177,5 +203,36 @@ function humaniseBucket(
       return 'under 1 km'
     case 'over_1km':
       return 'over 1 km'
+    default:
+      return '—'
   }
+}
+
+// Live distance → bucket (mirrors the server's hotColdBucket thresholds).
+function liveBucket(
+  meters: number,
+): IntelAnswerByRef<'intel.hot-cold'>['bucket'] {
+  if (meters < 200) return 'under_200m'
+  if (meters < 500) return 'under_500m'
+  if (meters < 1000) return 'under_1km'
+  return 'over_1km'
+}
+
+function formatDist(m: number): string {
+  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(2)} km`
+}
+
+function tempWord(m: number): string {
+  if (m < 100) return 'BOILING'
+  if (m < 250) return 'hot'
+  if (m < 500) return 'warm'
+  if (m < 1000) return 'cool'
+  return 'cold'
+}
+
+function tempEmoji(m: number): string {
+  if (m < 250) return '🔥'
+  if (m < 500) return '🌡️'
+  if (m < 1000) return '💧'
+  return '❄️'
 }

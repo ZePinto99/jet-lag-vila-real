@@ -11,6 +11,7 @@
 // "actions locked" notice. Curses past their expiry render dimmed; the expiry
 // poll cleans them up shortly.
 
+import { useState } from 'react'
 import cursesSeed from '@/data/curses.json'
 import { useT } from '@/lib/i18n/context'
 import type { CurseEnforcementEntry } from '@/lib/hooks/useCurseEnforcement'
@@ -89,13 +90,39 @@ function ActiveCurseRow({
   const expiresMs = curse.expires_at
     ? new Date(curse.expires_at).getTime()
     : null
-  const expired = expiresMs != null && expiresMs <= nowMs
+
+  // Frozen shows a gated countdown (time served while in place) instead of the
+  // raw wall clock (E15). It also pauses while the player is out of place.
+  const overrideMs = enforcement?.remainingMsOverride ?? null
+  const paused = overrideMs != null && enforcement?.readout?.ok === false
+  const remainingMs =
+    overrideMs != null
+      ? overrideMs
+      : expiresMs != null
+        ? Math.max(0, expiresMs - nowMs)
+        : null
+  const timerExpired =
+    overrideMs != null ? overrideMs <= 0 : expiresMs != null && expiresMs <= nowMs
+
+  // Check-in (E16): the prompt is an explicit tap-to-acknowledge each interval.
+  const isCheckin = curse.curse_ref === 'curse.check-in'
+  const intervalS =
+    typeof curse.params?.interval_seconds === 'number'
+      ? curse.params.interval_seconds
+      : 60
+  const startedMs = new Date(curse.started_at).getTime()
+  const intervalIdx = Math.max(
+    0,
+    Math.floor((nowMs - startedMs) / (intervalS * 1000)),
+  )
+  const [ackedIdx, setAckedIdx] = useState(-1)
+  const acked = ackedIdx === intervalIdx
 
   return (
     <li
       className={
         'rounded border border-orange-700/40 bg-orange-900/30 px-3 py-1.5 text-xs text-orange-100' +
-        (expired ? ' opacity-60' : '')
+        (timerExpired ? ' opacity-60' : '')
       }
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -108,11 +135,11 @@ function ActiveCurseRow({
           </span>
         </div>
         <span className="shrink-0 font-mono text-[11px] tabular-nums text-orange-200">
-          {expiresMs == null
+          {remainingMs == null
             ? t('curse.no_timer')
-            : expired
+            : timerExpired
               ? t('curse.expired_hint')
-              : formatTimeRemaining(expiresMs, nowMs)}
+              : `${paused ? '⏸ ' : ''}${formatMsRemaining(remainingMs)}`}
         </span>
       </div>
       {description && (
@@ -120,17 +147,38 @@ function ActiveCurseRow({
           {description}
         </p>
       )}
-      {enforcement?.prompt && !expired && (
-        <p className="mt-1 rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-100">
-          {enforcement.prompt.secondsLeft > 0
-            ? t('curse.prompt_window', {
-                label: enforcement.prompt.label,
-                s: enforcement.prompt.secondsLeft,
-              })
-            : enforcement.prompt.label}
-        </p>
-      )}
-      {enforcement?.readout && !expired && (
+      {enforcement?.prompt &&
+        !timerExpired &&
+        (isCheckin ? (
+          acked ? (
+            <p className="mt-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
+              {t('curse.checkin_ack')}
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAckedIdx(intervalIdx)}
+              className="mt-1 w-full rounded bg-amber-400/30 px-2 py-1 text-[11px] font-semibold text-amber-50 transition hover:bg-amber-400/50"
+            >
+              {enforcement.prompt.secondsLeft > 0
+                ? t('curse.prompt_window', {
+                    label: enforcement.prompt.label,
+                    s: enforcement.prompt.secondsLeft,
+                  })
+                : enforcement.prompt.label}
+            </button>
+          )
+        ) : (
+          <p className="mt-1 rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-100">
+            {enforcement.prompt.secondsLeft > 0
+              ? t('curse.prompt_window', {
+                  label: enforcement.prompt.label,
+                  s: enforcement.prompt.secondsLeft,
+                })
+              : enforcement.prompt.label}
+          </p>
+        ))}
+      {enforcement?.readout && !timerExpired && (
         <p
           className={
             'mt-1 font-mono text-[11px] tabular-nums ' +
@@ -148,9 +196,9 @@ function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`
 }
 
-function formatTimeRemaining(endsMs: number, nowMs: number): string {
-  const rem = Math.max(0, endsMs - nowMs)
-  const m = Math.floor(rem / 60_000)
-  const s = Math.floor((rem % 60_000) / 1000)
+function formatMsRemaining(rem: number): string {
+  const clamped = Math.max(0, rem)
+  const m = Math.floor(clamped / 60_000)
+  const s = Math.floor((clamped % 60_000) / 1000)
   return `${m}m ${pad2(s)}s`
 }

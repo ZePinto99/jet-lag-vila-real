@@ -15,8 +15,23 @@
 // existing /expire-curses poll + active_curses realtime.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import cursesSeed from '@/data/curses.json'
+import { apiPost } from '@/lib/api'
+import { getDeviceId } from '@/lib/device'
 import { haversineMeters } from '@/lib/geo/haversine'
 import type { ActiveCurse, GpsPosition, PresencePayload } from '@/lib/types'
+
+// Nominal durations from the catalog, for the Frozen gated countdown (E15).
+const CURSE_DURATION_MS: Record<string, number> = {}
+for (const c of cursesSeed as { id: string; duration_minutes: number | null }[]) {
+  if (c.duration_minutes) CURSE_DURATION_MS[c.id] = c.duration_minutes * 60_000
+}
+
+const FROZEN = 'curse.frozen'
+// Accumulated out-of-place time before we ask the server to extend, and the
+// minimum gap between extend calls (keeps the network chatter low).
+const EXTEND_DEBT_THRESHOLD_MS = 6_000
+const EXTEND_MIN_INTERVAL_MS = 8_000
 
 export interface CurseReadout {
   /** i18n key for the label, with already-substituted value inside. */
@@ -35,6 +50,12 @@ export interface CursePrompt {
 export interface CurseEnforcementEntry {
   readout?: CurseReadout
   prompt?: CursePrompt
+  /**
+   * For "stay in place" curses (Frozen): the remaining time computed from
+   * accumulated IN-PLACE time only. It pauses while the player is out of place,
+   * so the countdown reflects "time served" rather than raw wall-clock (E15).
+   */
+  remainingMsOverride?: number
 }
 
 export interface UseCurseEnforcementResult {
@@ -50,6 +71,8 @@ export interface UseCurseEnforcementParams {
   myTeamId: string | null
   presence: Record<string, PresencePayload>
   nowMs: number
+  /** Needed to extend a Frozen curse's expiry while the player wanders (E15). */
+  gameId: string | null
   t: (key: string, tokens?: Record<string, string | number>) => string
 }
 
@@ -72,7 +95,7 @@ function numParam(
 export function useCurseEnforcement(
   params: UseCurseEnforcementParams,
 ): UseCurseEnforcementResult {
-  const { activeCurses, myGps, myTeamId, presence, nowMs, t } = params
+  const { activeCurses, myGps, myTeamId, presence, nowMs, gameId, t } = params
 
   // --- live speed estimate (for Slow Walk) ----------------------------------
   const [speedKmh, setSpeedKmh] = useState<number | null>(null)
@@ -98,17 +121,101 @@ export function useCurseEnforcement(
     lastSampleRef.current = { lat: myGps.lat, lng: myGps.lng, ts }
   }, [myGps])
 
-  // --- captured "start" positions for Frozen, keyed by curse id -------------
-  const startPosRef = useRef<Record<string, { lat: number; lng: number }>>({})
+  // --- Frozen "stay in place" bookkeeping, keyed by curse id (E15) ----------
+  // The countdown only advances while the player is within max_drift_m of the
+  // anchor captured at curse start. Out-of-place time is accumulated as "debt"
+  // and pushed to the server (extend-curse) so wandering prolongs the freeze
+  // rather than letting the wall clock run out.
+  interface FrozenState {
+    anchor: { lat: number; lng: number } | null
+    lastTickMs: number
+    inPlaceMs: number
+    debtMs: number
+    lastExtendMs: number
+    durationMs: number
+    extending: boolean
+  }
+  const frozenRef = useRef<Record<string, FrozenState>>({})
+  const [frozenRemaining, setFrozenRemaining] = useState<
+    Record<string, number>
+  >({})
 
-  // Drop captured start positions for curses no longer present so the map
-  // doesn't grow unbounded across a long game.
   useEffect(() => {
-    const liveIds = new Set(activeCurses.map((c) => c.id))
-    for (const id of Object.keys(startPosRef.current)) {
-      if (!liveIds.has(id)) delete startPosRef.current[id]
+    const liveFrozen = activeCurses.filter(
+      (c) => c.curse_ref === FROZEN && isActive(c, nowMs),
+    )
+    const liveIds = new Set(liveFrozen.map((c) => c.id))
+    for (const id of Object.keys(frozenRef.current)) {
+      if (!liveIds.has(id)) delete frozenRef.current[id]
     }
-  }, [activeCurses])
+
+    const next: Record<string, number> = {}
+    for (const c of liveFrozen) {
+      let st = frozenRef.current[c.id]
+      if (!st) {
+        st = frozenRef.current[c.id] = {
+          anchor: myGps ? { lat: myGps.lat, lng: myGps.lng } : null,
+          lastTickMs: nowMs,
+          inPlaceMs: 0,
+          debtMs: 0,
+          lastExtendMs: 0,
+          durationMs: CURSE_DURATION_MS[c.curse_ref] ?? 8 * 60_000,
+          extending: false,
+        }
+      }
+      if (st.anchor == null && myGps) {
+        st.anchor = { lat: myGps.lat, lng: myGps.lng }
+      }
+      const dt = Math.max(0, nowMs - st.lastTickMs)
+      st.lastTickMs = nowMs
+      const maxDrift = numParam(c.params, 'max_drift_m', 10)
+      // Without a GPS fix we can't verify, so give the benefit of the doubt and
+      // let the timer run (honor system — no penalty for GPS gaps).
+      let inPlace = true
+      if (myGps && st.anchor) {
+        inPlace =
+          haversineMeters(st.anchor, { lat: myGps.lat, lng: myGps.lng }) <=
+          maxDrift
+      }
+      if (inPlace) st.inPlaceMs += dt
+      else st.debtMs += dt
+      next[c.id] = Math.max(0, st.durationMs - st.inPlaceMs)
+
+      if (
+        gameId &&
+        st.debtMs >= EXTEND_DEBT_THRESHOLD_MS &&
+        !st.extending &&
+        nowMs - st.lastExtendMs >= EXTEND_MIN_INTERVAL_MS
+      ) {
+        const extendSeconds = Math.min(120, Math.round(st.debtMs / 1000))
+        st.debtMs = 0
+        st.lastExtendMs = nowMs
+        st.extending = true
+        apiPost(`/api/games/${gameId}/extend-curse`, {
+          device_id: getDeviceId(),
+          curse_id: c.id,
+          extend_seconds: extendSeconds,
+        })
+          .catch(() => {})
+          .finally(() => {
+            const cur = frozenRef.current[c.id]
+            if (cur) cur.extending = false
+          })
+      }
+    }
+
+    setFrozenRemaining((prev) => {
+      const prevKeys = Object.keys(prev)
+      const nextKeys = Object.keys(next)
+      if (
+        prevKeys.length === nextKeys.length &&
+        nextKeys.every((k) => prev[k] === next[k])
+      ) {
+        return prev
+      }
+      return next
+    })
+  }, [nowMs, activeCurses, myGps, gameId])
 
   return useMemo<UseCurseEnforcementResult>(() => {
     const live = activeCurses.filter((c) => isActive(c, nowMs))
@@ -154,12 +261,9 @@ export function useCurseEnforcement(
           }
         }
       } else if (ref === 'curse.frozen') {
-        if (myGps) {
-          if (!startPosRef.current[c.id]) {
-            startPosRef.current[c.id] = { lat: myGps.lat, lng: myGps.lng }
-          }
-          const start = startPosRef.current[c.id]
-          const drift = haversineMeters(start, {
+        const anchor = frozenRef.current[c.id]?.anchor ?? null
+        if (myGps && anchor) {
+          const drift = haversineMeters(anchor, {
             lat: myGps.lat,
             lng: myGps.lng,
           })
@@ -169,6 +273,8 @@ export function useCurseEnforcement(
             ok: drift <= maxDrift,
           }
         }
+        const rem = frozenRemaining[c.id]
+        if (rem != null) entry.remainingMsOverride = rem
       } else if (ref === 'curse.buddy-up') {
         if (teamSpreadM != null) {
           const maxPair = numParam(c.params, 'max_pairwise_distance_m', 10)
@@ -223,9 +329,20 @@ export function useCurseEnforcement(
         }
       }
 
-      if (entry.readout || entry.prompt) byCurseId[c.id] = entry
+      if (entry.readout || entry.prompt || entry.remainingMsOverride != null) {
+        byCurseId[c.id] = entry
+      }
     }
 
     return { actionsLocked, byCurseId }
-  }, [activeCurses, myGps, myTeamId, presence, nowMs, speedKmh, t])
+  }, [
+    activeCurses,
+    myGps,
+    myTeamId,
+    presence,
+    nowMs,
+    speedKmh,
+    frozenRemaining,
+    t,
+  ])
 }

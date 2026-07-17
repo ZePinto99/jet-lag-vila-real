@@ -43,7 +43,8 @@
     "duration_minutes": 10,
     "description": "10 min, captain must answer in-app prompts every minute (auto-locks captain actions on miss)",
     "params": {
-      "interval_seconds": 60
+      "interval_seconds": 60,
+      "submission_window_seconds": 60
     }
   },
   {

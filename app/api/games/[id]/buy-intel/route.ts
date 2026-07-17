@@ -415,6 +415,10 @@ export async function POST(
         intel_ref: 'intel.hot-cold',
         bucket: hotColdBucket(meters),
         buy_position: { lat: player_pos.lat, lng: player_pos.lng },
+        // Real-flag coords for the live thermometer reading (E17). The buying
+        // team paid for distance intel, so revealing coords to them is by
+        // design; the reading updates client-side as they move.
+        target: { lat: realFlag.lat, lng: realFlag.lng },
       }
       break
     }

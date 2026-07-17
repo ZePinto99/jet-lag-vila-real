@@ -19,6 +19,7 @@ describe('useCurseEnforcement', () => {
         myTeamId: 'west',
         presence: {},
         nowMs,
+        gameId: null,
         t,
       }),
     )
@@ -42,6 +43,7 @@ describe('useCurseEnforcement', () => {
         myTeamId: 'west',
         presence: {},
         nowMs,
+        gameId: null,
         t,
       }),
     )
@@ -69,6 +71,7 @@ describe('useCurseEnforcement', () => {
           b: { player_id: 'b', team_id: 'west', lat: 41.2952, lng: -7.746, accuracy: 5, updated_at: 1 },
         },
         nowMs: Date.parse('2026-06-18T12:00:10.000Z'),
+        gameId: null,
         t,
       }),
     )
