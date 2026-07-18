@@ -35,6 +35,23 @@ node tools/sim/scenario-curses.mjs         # Frozen gated countdown + extend + c
 node tools/sim/scenario-setup.mjs          # join select + map-first flag setup (A1-A4)
 ```
 
+### Full-game walkthrough (any team size)
+
+```
+node tools/sim/walkthrough.mjs 1   # 1v1
+node tools/sim/walkthrough.mjs 2   # 2v2
+node tools/sim/walkthrough.mjs 3   # 3v3
+node tools/sim/walkthrough.mjs 4   # 4v4
+```
+
+Plays a complete game with N players per team and asserts the rule set
+(15 checks): lobby+setup, time bonus, intel + cap, curse cast, placed curse,
+challenge peer review, live chat, enemy radar (N blips), multi-raider tag in a
+single tap + respawn, Buddy-Up team-spread readout (N≥2), flag attempts
+(decoy → intel wiped + lockout, empty → lockout, real → carrier), and the win
+(carrier returns to home base → game over + scoreboard). Uses the DB to
+backdate `started_at` (opens the 30-min attempt window) and fund spends.
+
 Screenshots land in `tools/sim/shots/` (gitignored).
 
 ## Building new scenarios
