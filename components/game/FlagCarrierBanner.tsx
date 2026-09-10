@@ -32,6 +32,7 @@ interface FlagCarrierBannerProps {
   myPlayerId: string
   myTeam: Team
   myGps: GpsPosition | null
+  lockedLabel?: string | null
 }
 
 function findSeed(id: string | null): SeedLandmark | null {
@@ -44,6 +45,7 @@ export function FlagCarrierBanner({
   myPlayerId,
   myTeam,
   myGps,
+  lockedLabel = null,
 }: FlagCarrierBannerProps) {
   const homeSeed = findSeed(myTeam.home_landmark_id)
   const [submitting, setSubmitting] = useState(false)
@@ -62,7 +64,7 @@ export function FlagCarrierBanner({
     // Fire complete-run exactly once when the carrier first crosses the
     // home-base geofence. The ref prevents re-submission if the GPS jitter
     // bounces in and out of the radius.
-    if (submittedRef.current) return
+    if (submittedRef.current || lockedLabel) return
     if (!myGps || distanceM == null) return
     if (distanceM > HOME_BASE_RADIUS_M) return
     submittedRef.current = true
@@ -82,7 +84,7 @@ export function FlagCarrierBanner({
         setError(err instanceof Error ? err.message : 'unknown_error')
       })
       .finally(() => setSubmitting(false))
-  }, [gameId, myPlayerId, myGps, distanceM])
+  }, [gameId, myPlayerId, myGps, distanceM, lockedLabel])
 
   const homeName = homeSeed?.name ?? 'home base'
 
@@ -91,6 +93,11 @@ export function FlagCarrierBanner({
       <p className="text-sm font-semibold uppercase tracking-wider">
         You have the flag — run to {homeName}
       </p>
+      {lockedLabel && (
+        <p className="mt-1 rounded bg-red-950/60 px-2 py-1 text-[11px] font-semibold text-red-100">
+          {lockedLabel}
+        </p>
+      )}
       <div className="mt-1 flex items-center justify-between gap-3 text-xs text-emerald-100/90">
         {myGps ? (
           distanceM != null ? (

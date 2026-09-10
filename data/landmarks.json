@@ -4,7 +4,7 @@
     "name": "UTAD Main Library",
     "lat": 41.28584,
     "lng": -7.74057,
-    "team_pool": "west",
+    "team_pool": "retired",
     "kind": "university",
     "approximate": false,
     "source": "https://eymaps.com/map/biblioteca-central-da-universidade-de-tr%C3%A1s-os-montes-e-alto-douro-216089161/",
@@ -13,20 +13,20 @@
   {
     "id": "landmark.utad-jardim-botanico",
     "name": "UTAD Jardim Botânico (botanical garden)",
-    "lat": 41.28631,
-    "lng": -7.7436,
-    "team_pool": "west",
+    "lat": 41.2864877,
+    "lng": -7.7433389,
+    "team_pool": "retired",
     "kind": "park",
     "approximate": true,
     "source": "https://nominatim.openstreetmap.org/ (Jardim Botânico UTAD, arboreto)",
-    "notes": "130 ha garden integrated into UTAD campus; representative arboreto point (was a rough estimate co-located with the museum)"
+    "notes": "130 ha garden integrated into UTAD campus; representative OpenStreetMap arboreto centroid, so agree the exact game marker on the ground"
   },
   {
     "id": "landmark.utad-geosciences-museum",
     "name": "UTAD Geosciences Museum",
     "lat": 41.286393,
     "lng": -7.739605,
-    "team_pool": "west",
+    "team_pool": "retired",
     "kind": "museum",
     "approximate": false,
     "source": "https://nominatim.openstreetmap.org/ (Museu de Geologia da UTAD, Rua Senhora de Lourdes)",
@@ -35,20 +35,20 @@
   {
     "id": "landmark.parque-florestal",
     "name": "Parque Florestal de Vila Real",
-    "lat": 41.30017,
-    "lng": -7.73343,
+    "lat": 41.2992084,
+    "lng": -7.7384826,
     "team_pool": "west",
     "kind": "park",
-    "approximate": false,
-    "source": "https://www.google.pt/maps/place/Parque+Florestal/@41.2995119,-7.7425278,17z",
-    "notes": "Linked to Parque Corgo; ~38,000 sqm; pools and pedestrian circuits"
+    "approximate": true,
+    "source": "https://www.openstreetmap.org/way/119330942",
+    "notes": "OpenStreetMap polygon centroid; the previous point was outside the park, so agree an exact accessible game-marker point on the ground"
   },
   {
     "id": "landmark.igreja-da-conceicao",
     "name": "Igreja da Conceição",
     "lat": 41.305979,
     "lng": -7.743512,
-    "team_pool": "west",
+    "team_pool": "retired",
     "kind": "church",
     "approximate": false,
     "source": "https://nominatim.openstreetmap.org/ (Igreja de Nossa Senhora da Conceição, Praça de N. Sra. da Conceição)",
@@ -66,6 +66,39 @@
     "notes": "Closed since 2009; building still standing and used as starting point for Passadiços do Corgo"
   },
   {
+    "id": "landmark.miradouro-meia-laranja",
+    "name": "Miradouro da Meia Laranja",
+    "lat": 41.2931099,
+    "lng": -7.74171,
+    "team_pool": "west",
+    "kind": "viewpoint",
+    "approximate": false,
+    "source": "https://www.openstreetmap.org/node/1926239118",
+    "notes": "Public viewpoint on Rua Monsenhor Jerónimo Amaral; OpenStreetMap marker verified against the Central do Biel visitor address"
+  },
+  {
+    "id": "landmark.miradouro-vila-velha",
+    "name": "Miradouro da Vila Velha",
+    "lat": 41.2912745,
+    "lng": -7.7462198,
+    "team_pool": "west",
+    "kind": "viewpoint",
+    "approximate": false,
+    "source": "https://www.openstreetmap.org/node/9071246262",
+    "notes": "Public viewpoint in Vila Velha by Rua Irmã Virtudes 18, 5000-651; overlooks the Cabril and Corgo valleys"
+  },
+  {
+    "id": "landmark.capela-sao-lazaro",
+    "name": "Capela de São Lázaro",
+    "lat": 41.2974355,
+    "lng": -7.7402634,
+    "team_pool": "east",
+    "kind": "church",
+    "approximate": false,
+    "source": "https://www.openstreetmap.org/way/802569753",
+    "notes": "Building centroid for the 1520 chapel (formerly Capela de Santa Margarida), accessible from the Rua do Corgo / Rua Sargento Pelotas area"
+  },
+  {
     "id": "landmark.mercado-municipal",
     "name": "Mercado Municipal",
     "lat": 41.299475,
@@ -79,13 +112,13 @@
   {
     "id": "landmark.nosso-shopping",
     "name": "Nosso Shopping",
-    "lat": 41.2998,
-    "lng": -7.7345,
-    "team_pool": "west",
+    "lat": 41.2971889,
+    "lng": -7.7354972,
+    "team_pool": "east",
     "kind": "shopping",
-    "approximate": true,
-    "source": "estimated",
-    "notes": "Main shopping centre on Alameda de Grasse, near Teatro Municipal; coords estimated from neighbourhood, verify on the ground"
+    "approximate": false,
+    "source": "https://nossoshopping.pt/sobre-o-centro-comercial-nosso-shopping/",
+    "notes": "Official centre GPS coordinates converted from 41º17'49.88\" N, 7º44'07.79\" W; previous point was about 300 m too far north"
   },
   {
     "id": "landmark.biblioteca-municipal",
@@ -101,31 +134,31 @@
   {
     "id": "landmark.igreja-sao-pedro",
     "name": "Igreja de São Pedro",
-    "lat": 41.29888,
-    "lng": -7.74345,
+    "lat": 41.2989804,
+    "lng": -7.743134,
     "team_pool": "east",
     "kind": "church",
     "approximate": false,
-    "source": "https://www.visitarportugal.pt/d-vila-real/c-vila-real/vila-real/igreja-sao-pedro",
-    "notes": "Built from 1528; São Pedro parish, north of the historic centre"
+    "source": "https://www.openstreetmap.org/way/183602159",
+    "notes": "OpenStreetMap building centroid; built from 1528 in São Pedro parish, north of the historic centre"
   },
   {
     "id": "landmark.jardim-da-carreira",
     "name": "Jardim da Carreira",
-    "lat": 41.30049,
-    "lng": -7.74184,
+    "lat": 41.3006028,
+    "lng": -7.74173,
     "team_pool": "east",
     "kind": "park",
     "approximate": false,
-    "source": "https://www.google.pt/maps/place/Jardim+da+Carreira",
-    "notes": "1871 garden on Monte do Calvário; Camilo Castelo Branco statue; one of the highest points in the city"
+    "source": "https://www.openstreetmap.org/way/119331242",
+    "notes": "OpenStreetMap park centroid; 1871 garden on Monte do Calvário with a Camilo Castelo Branco statue"
   },
   {
     "id": "landmark.largo-do-pioledo",
     "name": "Largo do Pioledo",
     "lat": 41.29963,
     "lng": -7.74468,
-    "team_pool": "east",
+    "team_pool": "retired",
     "kind": "monument",
     "approximate": false,
     "source": "https://nominatim.openstreetmap.org/ (Largo do Pioledo, São Pedro)",
@@ -145,35 +178,35 @@
   {
     "id": "landmark.se-catedral",
     "name": "Sé Catedral de Vila Real",
-    "lat": 41.29633,
-    "lng": -7.74633,
+    "lat": 41.2963268,
+    "lng": -7.7465163,
     "team_pool": "east",
     "kind": "church",
     "approximate": false,
-    "source": "https://culturaportugal.gov.pt/pt/conhecer/local/_drcnorte/se-de-vila-real-igreja-de-sao-domingos/",
-    "notes": "Igreja de São Domingos; Avenida Carvalho Araújo 89, 5000-657; Gothic, 15th century"
+    "source": "https://www.openstreetmap.org/way/183332879",
+    "notes": "OpenStreetMap building centroid; Igreja de São Domingos, Avenida Carvalho Araújo 89, 5000-657"
   },
   {
     "id": "landmark.camara-municipal",
     "name": "Câmara Municipal de Vila Real",
-    "lat": 41.29462,
-    "lng": -7.74622,
-    "team_pool": "east",
+    "lat": 41.294301,
+    "lng": -7.7461994,
+    "team_pool": "west",
     "kind": "civic",
     "approximate": false,
-    "source": "https://www.gov.pt/entidades/camara-municipal-de-vila-real",
-    "notes": "Avenida Carvalho Araújo, 5000-657; Portuguese flag flown at facade (challenge C15)"
+    "source": "https://www.openstreetmap.org/relation/18066420",
+    "notes": "OpenStreetMap town-hall centroid; Avenida Carvalho Araújo, 5000-657; Portuguese flag flown at facade (challenge C15)"
   },
   {
     "id": "landmark.igreja-dos-clerigos",
     "name": "Igreja dos Clérigos (Capela Nova)",
-    "lat": 41.29735,
-    "lng": -7.74465,
+    "lat": 41.2974512,
+    "lng": -7.7445591,
     "team_pool": "neutral",
     "kind": "church",
     "approximate": false,
-    "source": "https://www.visitarportugal.pt/vila-real/vila-real/vila-real/capela-nova",
-    "notes": "Also known as Igreja de São Paulo or Capela Nova; baroque, attributed to Nicolau Nasoni"
+    "source": "https://www.openstreetmap.org/way/183602161",
+    "notes": "OpenStreetMap building centroid; also known as Igreja de São Paulo or Capela Nova"
   },
   {
     "id": "landmark.casa-de-diogo-cao",
@@ -213,7 +246,7 @@
     "name": "Ponte Metálica do Corgo",
     "lat": 41.296676,
     "lng": -7.740427,
-    "team_pool": "neutral",
+    "team_pool": "west",
     "kind": "bridge",
     "approximate": false,
     "source": "https://nominatim.openstreetmap.org/ (Ponte Metálica, Rua do Corgo)",
@@ -222,13 +255,13 @@
   {
     "id": "landmark.teatro-de-vila-real",
     "name": "Teatro de Vila Real",
-    "lat": 41.299128,
-    "lng": -7.734694,
+    "lat": 41.2990954,
+    "lng": -7.7344151,
     "team_pool": "neutral",
     "kind": "theater",
     "approximate": false,
-    "source": "https://www.google.pt/maps/place/Teatro+Municipal+de+Vila+Real/@41.299128,-7.7368828,17z",
-    "notes": "Alameda de Grasse 15B, 5000-703; ticket office Tue-Sat 14:00-22:00"
+    "source": "https://www.openstreetmap.org/way/180192294",
+    "notes": "OpenStreetMap building centroid; Alameda de Grasse 15B, 5000-703"
   },
   {
     "id": "landmark.estacao-rodoviaria",
@@ -240,5 +273,16 @@
     "approximate": false,
     "source": "https://nominatim.openstreetmap.org/ (Terminal Rodoviário, R. Dom António Valente da Fonseca)",
     "notes": "Terminal Rodoviário, R. Dom António Valente da Fonseca; coords corrected via Nominatim (~840 m off)"
+  },
+  {
+    "id": "landmark.homenagem-chegada-primeiro-comboio",
+    "name": "Homenagem à Chegada do 1.º Comboio a Vila Real",
+    "lat": 41.2952131,
+    "lng": -7.7391591,
+    "team_pool": "neutral",
+    "kind": "monument",
+    "approximate": false,
+    "source": "User-supplied coordinates",
+    "notes": "Field-verify the exact accessible marker before play."
   }
 ]

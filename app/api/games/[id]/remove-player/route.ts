@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type { Player, RemovePlayerResponse } from '@/lib/types'
+import type { RemovePlayerResponse } from '@/lib/types'
 
 const Body = z.object({
   target_player_id: z.string().uuid(),
@@ -31,127 +31,33 @@ export async function POST(
 
   const supabase = createAdminClient()
 
-  // Game must exist and be in lobby.
-  const { data: game, error: gameErr } = await supabase
-    .from('games')
-    .select('id, status')
-    .eq('id', gameId)
-    .single()
-  if (gameErr || !game) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 })
-  }
-  if (game.status !== 'lobby') {
+  const { data, error: removeError } = await supabase.rpc(
+    'remove_lobby_player_atomic',
+    {
+      p_game_id: gameId,
+      p_requester_device_id: device_id,
+      p_target_player_id: target_player_id,
+    },
+  )
+  if (removeError) {
     return NextResponse.json(
-      { error: 'game_not_in_lobby' },
-      { status: 409 },
-    )
-  }
-
-  // Fetch all players in this game (need both requester + target + transfer candidates).
-  const { data: teams, error: teamsErr } = await supabase
-    .from('teams')
-    .select('id')
-    .eq('game_id', gameId)
-  if (teamsErr || !teams || teams.length === 0) {
-    return NextResponse.json({ error: 'team_lookup_failed' }, { status: 500 })
-  }
-  const teamIds = teams.map((t) => t.id)
-
-  const { data: players, error: playersErr } = await supabase
-    .from('players')
-    .select('*')
-    .in('team_id', teamIds)
-    .order('created_at', { ascending: true })
-  if (playersErr || !players) {
-    return NextResponse.json({ error: 'player_lookup_failed' }, { status: 500 })
-  }
-
-  const requester = (players as Player[]).find((p) => p.device_id === device_id)
-  if (!requester) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-  }
-  const target = (players as Player[]).find((p) => p.id === target_player_id)
-  if (!target) {
-    return NextResponse.json({ error: 'target_not_found' }, { status: 404 })
-  }
-
-  const isSelf = requester.id === target.id
-  if (!isSelf && !requester.is_host) {
-    return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-  }
-
-  // Delete the target player.
-  const { error: delErr } = await supabase
-    .from('players')
-    .delete()
-    .eq('id', target.id)
-  if (delErr) {
-    return NextResponse.json(
-      { error: 'player_delete_failed', details: delErr.message },
+      { error: 'player_remove_failed', details: removeError.message },
       { status: 500 },
     )
   }
-
-  // If the host left, transfer to the oldest remaining player.
-  let new_host_id: string | null = null
-  if (target.is_host) {
-    const remaining = (players as Player[]).filter((p) => p.id !== target.id)
-    if (remaining.length > 0) {
-      const heir = remaining[0] // already ordered by created_at asc
-      const { error: heirErr } = await supabase
-        .from('players')
-        .update({ is_host: true })
-        .eq('id', heir.id)
-      if (heirErr) {
-        return NextResponse.json(
-          { error: 'host_transfer_failed', details: heirErr.message },
-          { status: 500 },
-        )
-      }
-      new_host_id = heir.id
-    }
+  const result = data as (RemovePlayerResponse & { error?: string }) | null
+  if (!result || result.error) {
+    const error = result?.error ?? 'player_remove_failed'
+    const status = error === 'not_found' || error === 'target_not_found'
+      ? 404
+      : error === 'forbidden'
+        ? 403
+        : error === 'game_not_in_lobby'
+          ? 409
+          : 500
+    return NextResponse.json({ error }, { status })
   }
 
-  // Append the event.
-  await supabase.from('events').insert({
-    game_id: gameId,
-    type: 'player_left',
-    actor_player_id: isSelf ? null : requester.id,
-    payload: {
-      player_id: target.id,
-      team_id: target.team_id,
-      self: isSelf,
-      was_host: target.is_host,
-      new_host_id,
-    },
-  })
-
-  // If no players remain in the game, delete the game record entirely
-  // (cleanup empty lobbies). Teams, events, etc. cascade.
-  const { count } = await supabase
-    .from('players')
-    .select('id', { count: 'exact', head: true })
-    .in('team_id', teamIds)
-
-  let game_deleted = false
-  if ((count ?? 0) === 0) {
-    const { error: gameDelErr } = await supabase
-      .from('games')
-      .delete()
-      .eq('id', gameId)
-    if (gameDelErr) {
-      return NextResponse.json(
-        { error: 'game_delete_failed', details: gameDelErr.message },
-        { status: 500 },
-      )
-    }
-    game_deleted = true
-  }
-
-  const response: RemovePlayerResponse = {
-    removed_player_id: target.id,
-    game_deleted,
-    new_host_id,
-  }
+  const response: RemovePlayerResponse = result
   return NextResponse.json(response)
 }

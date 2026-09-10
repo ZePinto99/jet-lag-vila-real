@@ -5,6 +5,7 @@
 // (reviewing team) should get "A challenge photo needs your review".
 
 import { mkdirSync } from 'node:fs'
+import { strict as assert } from 'node:assert'
 import {
   launchBrowser,
   makeClient,
@@ -12,6 +13,7 @@ import {
   apiGet,
   apiPost,
   coord,
+  uploadChallengeProof,
   SHOTS,
   sleep,
 } from './harness.mjs'
@@ -23,13 +25,15 @@ mkdirSync(SHOTS, { recursive: true })
 async function westSubmitsPhotoChallenge(g) {
   const ch = await apiGet(`/api/games/${g.gid}/challenges?device_id=${g.wDevice}`)
   const c = ch.active.find((x) => x.photo_required && x.landmark_ref)
+  assert.ok(c, 'West should have an active landmark photo challenge')
   const pos = { ...coord(c.landmark_ref), accuracy: 5, updated_at: Date.now() }
+  const proofUrl = await uploadChallengeProof(g.gid, g.wPlayer, `notification-${Date.now()}`)
   await apiPost(`/api/games/${g.gid}/submit-challenge`, {
     device_id: g.wDevice,
     player_id: g.wPlayer,
     challenge_ref: c.id,
     pos,
-    photo_url: 'http://x/proof.jpg',
+    photo_url: proofUrl,
   })
   return c.location_name
 }
@@ -42,48 +46,37 @@ const past = await westSubmitsPhotoChallenge(g)
 console.log(`history review created: ${past}`)
 
 const browser = await launchBrowser()
-const bib = coord('landmark.biblioteca-municipal')
-const east = await makeClient(browser, { deviceId: g.eDevice, lat: bib.lat, lng: bib.lng })
-await east.goto(`/game/${g.code}`)
-await east.page.waitForSelector('.leaflet-container', { timeout: 20000 })
-
-// F20: history must NOT replay as a toast on load.
-await sleep(4500)
-const replayToasts = await east.page.getByText(/needs your review/i).count()
-await east.shot('notif-east-onload.png')
-console.log(
-  replayToasts === 0
-    ? '  ✅ no history-replay toast on load (F20)'
-    : `  ❌ ${replayToasts} history toast(s) replayed on load`,
-)
-
-// F18/F19: a NEW event pushes a toast live, no refresh.
-console.log('west submits a NEW challenge (live)…')
-const fresh = await westSubmitsPhotoChallenge(g)
-console.log(`fresh review: ${fresh}`)
-let live = false
 try {
+  const bib = coord('landmark.biblioteca-municipal')
+  const east = await makeClient(browser, { deviceId: g.eDevice, lat: bib.lat, lng: bib.lng })
+  await east.goto(`/game/${g.code}`)
+  await east.page.waitForSelector('.leaflet-container', { timeout: 20000 })
+
+  // F20: history must NOT replay as a toast on load.
+  await sleep(4500)
+  const replayToasts = await east.page.getByText(/needs your review/i).count()
+  assert.equal(replayToasts, 0, 'historical notifications must not replay as toasts on load')
+  await east.shot('notif-east-onload.png')
+  console.log('  ✅ no history-replay toast on load (F20)')
+
+  // F18/F19: a NEW event pushes a toast live, no refresh.
+  console.log('west submits a NEW challenge (live)…')
+  const fresh = await westSubmitsPhotoChallenge(g)
+  console.log(`fresh review: ${fresh}`)
   await east.page.getByText(/needs your review/i).first().waitFor({ state: 'visible', timeout: 8000 })
-  live = true
   await east.shot('notif-east-live-toast.png')
   console.log('  ✅ live toast delivered without refresh (F18/F19)')
-} catch {
-  await east.shot('notif-east-no-live.png')
-  console.log('  ❌ no live toast within 8s')
-}
 
-// The pending review should also be actionable in the Actions tab.
-if (live) {
+  // The pending review should also be actionable in the Actions tab.
   await east.tab('Actions')
-  await sleep(1500)
-  const reviewable = await east.page.getByRole('button', { name: /Accept/i }).count()
+  const accept = east.page.getByRole('button', { name: /Accept/i })
+  await accept.first().waitFor({ timeout: 10000 })
+  const reviewable = await accept.count()
+  assert.ok(reviewable >= 1, 'fresh review notification must have an actionable review control')
   await east.shot('notif-east-review-panel.png')
-  console.log(
-    reviewable >= 1
-      ? `  ✅ review panel shows ${reviewable} accept/reject control(s)`
-      : '  ⚠️ no accept controls found',
-  )
+  east.assertNoUnexpectedErrors()
+  console.log(`  ✅ review panel shows ${reviewable} accept/reject control(s)`)
+} finally {
+  await browser.close()
 }
-
-await browser.close()
 console.log('done')

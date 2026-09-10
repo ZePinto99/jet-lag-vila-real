@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { DEFENSE_ZONE_RADIUS_M } from '@/lib/geo/zones'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { notifyPlacedCurseTriggered } from '@/lib/server/placedCursePush'
+import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import cursesCatalog from '@/data/curses.json'
 import type {
   CurseTier,
@@ -24,9 +27,11 @@ import type {
 
 interface CurseDef {
   id: string
+  name: string
   tier: CurseTier
   duration_minutes: number | null
   params: Record<string, unknown>
+  min_team_size?: number
 }
 const CURSES = cursesCatalog as CurseDef[]
 const CURSE_BY_ID = new Map<string, CurseDef>(CURSES.map((c) => [c.id, c]))
@@ -66,6 +71,9 @@ export async function POST(
     )
   }
   const { device_id, player_id, pos } = parsed.data
+  if (!isPositionFresh(pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+  }
 
   const supabase = createAdminClient()
 
@@ -137,6 +145,17 @@ export async function POST(
     return NextResponse.json({ triggered_curse_refs: [] })
   }
 
+  const { count: intruderTeamSize, error: intruderTeamSizeError } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', intruderTeamId)
+  if (intruderTeamSizeError) {
+    return NextResponse.json(
+      { error: 'player_lookup_failed', details: intruderTeamSizeError.message },
+      { status: 500 },
+    )
+  }
+
   // Resolve coords for the placed landmarks (owner-team candidate rows).
   const refs = Array.from(new Set(placements.map((p) => p.landmark_ref)))
   const { data: landmarkData, error: landmarkError } = await supabase
@@ -154,126 +173,63 @@ export async function POST(
   const coordOf = (ownerTeamId: string, ref: string) =>
     landmarks.find((l) => l.ref === ref && l.team_id === ownerTeamId) ?? null
 
-  // Curses already active on the intruder team (for the no-stack rule).
-  const { data: activeData, error: activeError } = await supabase
-    .from('active_curses')
-    .select('curse_ref')
-    .eq('game_id', game.id)
-    .eq('target_team_id', intruderTeamId)
-  if (activeError) {
-    return NextResponse.json(
-      { error: 'active_curse_lookup_failed', details: activeError.message },
-      { status: 500 },
-    )
-  }
-  const activeRefs = new Set(
-    (activeData ?? []).map((r) => (r as { curse_ref: string }).curse_ref),
-  )
-
-  const triggered_curse_refs: string[] = []
-
-  for (const placement of placements) {
-    const lm = coordOf(placement.owner_team_id, placement.landmark_ref)
-    if (!lm) continue
-    const dist = haversineMeters(pos, { lat: lm.lat, lng: lm.lng })
-    if (dist > DEFENSE_ZONE_RADIUS_M) continue
-
-    // Consume the placement first (atomic guard against double-trigger).
-    const { data: consumed, error: consumeError } = await supabase
-      .from('placed_curses')
-      .update({
-        armed: false,
-        triggered_at: new Date().toISOString(),
-        triggered_by_team_id: intruderTeamId,
-      })
-      .eq('id', placement.id)
-      .eq('armed', true)
-      .select()
-      .maybeSingle()
-    if (consumeError) {
-      return NextResponse.json(
-        { error: 'placed_curse_update_failed', details: consumeError.message },
-        { status: 500 },
-      )
-    }
-    if (!consumed) continue // lost the race; someone else consumed it
-
-    const def = CURSE_BY_ID.get(placement.curse_ref)
-    // No-stack: if the intruder team already has this curse, skip casting (the
-    // placement is still consumed — it "fizzles" against the existing effect).
-    if (def && !activeRefs.has(placement.curse_ref)) {
-      const now = new Date()
-      const expires_at =
-        def.duration_minutes == null
-          ? null
-          : new Date(
-              now.getTime() + def.duration_minutes * 60_000,
-            ).toISOString()
-
-      const { error: activeInsertError } = await supabase
-        .from('active_curses')
-        .insert({
-          game_id: game.id,
-          target_team_id: intruderTeamId,
-          curse_ref: placement.curse_ref,
-          started_at: now.toISOString(),
-          expires_at,
-          params: def.params,
-        })
-      if (activeInsertError) {
-        return NextResponse.json(
-          {
-            error: 'active_curse_insert_failed',
-            details: activeInsertError.message,
-          },
-          { status: 500 },
-        )
+  const inRange = placements
+    .map((placement) => {
+      const landmark = coordOf(placement.owner_team_id, placement.landmark_ref)
+      const def = CURSE_BY_ID.get(placement.curse_ref)
+      if (!landmark || !def || !supportsTeamSize(def, intruderTeamSize ?? 0)) {
+        return null
       }
-      activeRefs.add(placement.curse_ref)
-
-      const { error: castEventError } = await supabase.from('events').insert({
-        game_id: game.id,
-        type: 'curse_cast',
-        actor_player_id: intruder.id,
-        payload: {
-          buyer_team_id: placement.owner_team_id,
-          target_team_id: intruderTeamId,
-          curse_ref: placement.curse_ref,
-          tier: def.tier,
-          dice_total: 0,
-          dice_rolls: [],
-          expires_at,
-          source: 'placed_curse',
-        },
-      })
-      if (castEventError) {
-        return NextResponse.json(
-          { error: 'event_insert_failed', details: castEventError.message },
-          { status: 500 },
-        )
-      }
-    }
-
-    // Public trigger event (no landmark_ref → no leak of which candidate).
-    const { error: trigEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'placed_curse_triggered',
-      actor_player_id: intruder.id,
-      payload: {
-        owner_team_id: placement.owner_team_id,
-        target_team_id: intruderTeamId,
-        curse_ref: placement.curse_ref,
-        placed_ref: placement.placed_ref,
-      },
+      const distanceM = haversineMeters(pos, landmark)
+      return distanceM <= DEFENSE_ZONE_RADIUS_M
+        ? { placement, def, distanceM }
+        : null
     })
-    if (trigEventError) {
+    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
+    .sort((a, b) => a.distanceM - b.distanceM || a.placement.id.localeCompare(b.placement.id))
+
+  // Overlapping candidate zones are common in central Vila Real. A single
+  // entry can spring only the nearest armed placement; its stable UUID is the
+  // deterministic tie-breaker.
+  const nearest = inRange[0]
+  const triggered_curse_refs: string[] = []
+  if (nearest) {
+    const { placement, def } = nearest
+    const expiresAt =
+      def.duration_minutes == null
+        ? null
+        : new Date(Date.now() + def.duration_minutes * 60_000).toISOString()
+    const { data: triggerData, error: triggerError } = await supabase.rpc(
+      'trigger_placed_curse_atomic',
+      {
+        p_placement_id: placement.id,
+        p_game_id: game.id,
+        p_intruder_player_id: intruder.id,
+        p_intruder_team_id: intruderTeamId,
+        p_curse_ref: placement.curse_ref,
+        p_tier: def.tier,
+        p_expires_at: expiresAt,
+        p_params: def.params,
+      },
+    )
+    if (triggerError) {
       return NextResponse.json(
-        { error: 'event_insert_failed', details: trigEventError.message },
+        { error: 'placed_curse_trigger_failed', details: triggerError.message },
         { status: 500 },
       )
     }
-
-    triggered_curse_refs.push(placement.curse_ref)
+    const trigger = triggerData as { triggered?: boolean; cast?: boolean } | null
+    if (trigger?.triggered && trigger.cast) {
+      triggered_curse_refs.push(placement.curse_ref)
+      // Match normal curse purchases: a placement that actually disarms and
+      // casts alerts the affected team. Duplicate/no-stack retries do not.
+      await notifyPlacedCurseTriggered({
+        gameId: game.id,
+        gameCode: game.code,
+        targetTeamId: intruderTeamId,
+        curseName: def.name,
+      })
+    }
   }
 
   const response: TriggerPlacedCurseResponse = { triggered_curse_refs }

@@ -15,6 +15,7 @@ import { use, useCallback, useEffect, useMemo, useState, type ReactNode } from '
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { gameClockNow } from '@/lib/gameClock'
 import type {
   Game,
   GameByCodeResponse,
@@ -236,6 +237,7 @@ function Dashboard({
     const minutes = game.config?.duration_minutes ?? DEFAULT_DURATION_MIN
     return new Date(game.started_at).getTime() + minutes * 60_000
   }, [game.started_at, game.config?.duration_minutes])
+  const clockNowMs = gameClockNow(game, now)
 
   // Newest first for the feed.
   const feed = useMemo(
@@ -269,7 +271,7 @@ function Dashboard({
           <span className="text-xs uppercase tracking-wider text-neutral-500">
             Time left
           </span>
-          <Countdown endsAtMs={endsAtMs} nowMs={now} status={game.status} />
+          <Countdown endsAtMs={endsAtMs} nowMs={clockNowMs} status={game.status} />
         </div>
       </header>
 

@@ -5,23 +5,31 @@
 // covered is ruled out / out of bounds".
 //
 // Intel that has a clean geographic implication generates an overlay:
-//   - intel.north-south: half-plane on the wrong side of lat 41.295
+//   - intel.north-south: half-plane on the wrong side of the persisted
+//                         defending candidate-pool pivot (legacy fallback only
+//                         uses the fixed city latitude)
 //   - intel.east-west:   half-plane on the wrong side of caller's home lng
 //   - intel.hot-cold:    annulus complement (outer ring + inner disk)
+//   - intel.direction:   a soft highlight over the matching 90-degree sector
 //
 // Intel that doesn't (eliminate-one/-two, decoy-reveal, surroundings,
-// direction, landmark-type) is handled by marker dimming in GameMap.
+// landmark-type) is handled by marker dimming in GameMap. Direction is kept as
+// a non-eliminating visual hint so it cannot identify a sparse candidate pool.
 
 import type { Card, IntelAnswer } from '@/lib/types'
+import {
+  CITY_MIDLINE_LAT,
+  PLAY_AREA_CENTRE,
+  PLAY_AREA_RADIUS_M,
+} from '@/lib/geo/playArea'
+
+export { PLAY_AREA_CENTRE, PLAY_AREA_RADIUS_M } from '@/lib/geo/playArea'
 
 // Vila Real "action centre" and play-area radius. The out-of-play overlay is
 // the world MINUS this disk. Centred on Avenida Carvalho Araújo after the
 // Mateus-free map redesign (PLAYTEST_TRIAGE P3-1); 1.5 km comfortably covers
 // every remaining seed landmark (the farthest is Parque Florestal at ~1.18 km
 // from this centre).
-export const PLAY_AREA_CENTRE = { lat: 41.2955, lng: -7.7461 }
-export const PLAY_AREA_RADIUS_M = 1500
-
 // Lat/lng bounding box of the play disk, for framing the map on Vila Real
 // (playtest item C9). Used both for the map's initial fit and the
 // "Fit Vila Real" control, so the two never drift apart again.
@@ -36,9 +44,6 @@ export function getPlayAreaBounds(): [[number, number], [number, number]] {
   ]
 }
 
-// Used for I1 N/S half-plane split.
-const CITY_CENTRE_LAT = 41.295
-
 // World-sized outer ring for "everywhere" polygons. The actual map view will
 // only show a tiny corner of this; we just need it bigger than any sane
 // zoom-out so the gray fills the whole viewport.
@@ -50,6 +55,20 @@ const WORLD_RING: Array<[number, number]> = [
 ]
 
 const EARTH_M = 6_371_000
+
+const COMPASS_BEARING: Record<
+  'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW',
+  number
+> = {
+  N: 0,
+  NE: 45,
+  E: 90,
+  SE: 135,
+  S: 180,
+  SW: 225,
+  W: 270,
+  NW: 315,
+}
 
 function circleToRing(
   centre: { lat: number; lng: number },
@@ -71,11 +90,44 @@ function circleToRing(
   return ring
 }
 
+function pointAtBearing(
+  centre: { lat: number; lng: number },
+  radiusM: number,
+  bearingDegrees: number,
+): [number, number] {
+  const angle = (bearingDegrees * Math.PI) / 180
+  const latRad = (centre.lat * Math.PI) / 180
+  const dLat = (radiusM / EARTH_M) * (180 / Math.PI) * Math.cos(angle)
+  const dLng =
+    ((radiusM / EARTH_M) * (180 / Math.PI) * Math.sin(angle)) /
+    Math.cos(latRad)
+  return [centre.lat + dLat, centre.lng + dLng]
+}
+
+function directionSectorRing(
+  bearing: keyof typeof COMPASS_BEARING,
+): Array<[number, number]> {
+  const centre: [number, number] = [PLAY_AREA_CENTRE.lat, PLAY_AREA_CENTRE.lng]
+  const centreBearing = COMPASS_BEARING[bearing]
+  const radiusM = PLAY_AREA_RADIUS_M * 1.1
+  const arc: Array<[number, number]> = []
+  const steps = 16
+  for (let index = 0; index <= steps; index += 1) {
+    const bearingDegrees = centreBearing - 45 + (90 * index) / steps
+    arc.push(pointAtBearing(PLAY_AREA_CENTRE, radiusM, bearingDegrees))
+  }
+  return [centre, ...arc, centre]
+}
+
 export interface MapOverlay {
   /** First element is the outer ring; remaining elements are holes. */
   rings: Array<Array<[number, number]>>
   /** Human-readable note (for debugging / accessibility / tooltips). */
   reason: string
+  /** Optional styling for non-eliminating hints such as Direction. */
+  fillColor?: string
+  fillOpacity?: number
+  strokeColor?: string
 }
 
 export function getOutOfBoundsOverlay(): MapOverlay {
@@ -113,30 +165,31 @@ export function getIntelOverlays(
 
     switch (payload.intel_ref) {
       case 'intel.north-south': {
+        const pivotLat = payload.pivot_lat ?? CITY_MIDLINE_LAT
         // Gray the WRONG half. Real is on `direction` side.
         const ring: Array<[number, number]> =
           payload.direction === 'north'
             ? [
                 [-89, -180],
                 [-89, 180],
-                [CITY_CENTRE_LAT, 180],
-                [CITY_CENTRE_LAT, -180],
+                [pivotLat, 180],
+                [pivotLat, -180],
               ]
             : [
-                [CITY_CENTRE_LAT, -180],
-                [CITY_CENTRE_LAT, 180],
+                [pivotLat, -180],
+                [pivotLat, 180],
                 [89, 180],
                 [89, -180],
               ]
         overlays.push({
           rings: [ring],
-          reason: `Ruled out: not ${payload.direction} of city centre`,
+          reason: `Ruled out: not ${payload.direction} of enemy candidate-pool midline`,
         })
         break
       }
       case 'intel.east-west': {
-        if (myTeamHomeLng == null) break
-        const lng = myTeamHomeLng
+        const lng = payload.pivot_lng ?? myTeamHomeLng
+        if (lng == null) break
         const ring: Array<[number, number]> =
           payload.direction === 'east'
             ? [
@@ -175,6 +228,16 @@ export function getIntelOverlays(
             reason: `Ruled out: < ${minD} m from buy position`,
           })
         }
+        break
+      }
+      case 'intel.direction': {
+        overlays.push({
+          rings: [directionSectorRing(payload.bearing)],
+          reason: `Hint: ${payload.bearing} quadrant from city centre`,
+          fillColor: '#fbbf24',
+          fillOpacity: 0.12,
+          strokeColor: '#f59e0b',
+        })
         break
       }
       default:

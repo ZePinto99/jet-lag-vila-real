@@ -1,7 +1,8 @@
 // Server-only Web Push helper for Jet Lag: Vila Real.
 //
-// Best-effort, fire-and-forget lock-screen notifications. Callers `void`-call
-// the send functions; nothing here ever throws to the caller and everything
+// Best-effort lock-screen notifications. Callers await the send functions so
+// short-lived route runtimes do not discard delivery work; nothing here ever
+// throws to the caller and everything
 // no-ops gracefully when VAPID env vars are missing (so the app runs fine
 // without push configured).
 //

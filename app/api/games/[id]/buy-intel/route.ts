@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
+import { getGameplayActionBlock } from '@/lib/server/actionLock'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { PLAY_AREA_CENTRE } from '@/lib/geo/playArea'
+import { compass4FromPoint, eastWestOf } from '@/lib/intel/direction'
+import { buildHotColdAnswer } from '@/lib/intel/answers'
+import { northSouthPivotForDefendingSide } from '@/lib/intel/northSouth'
 import intelCatalog from '@/data/intel.json'
 import type {
   BuyIntelResponse,
@@ -20,11 +25,6 @@ import type {
 
 // Anti-spam cap: a team may not buy more than 4 intel cards total (any state).
 const INTEL_CAP = 4
-
-// Latitude of Vila Real city centre, used as the N/S boundary for I1 and the
-// origin of the I8 compass bearing.
-const CITY_CENTRE_LAT = 41.295
-const CITY_CENTRE_LNG = -7.726
 
 // ---------------------------------------------------------------------------
 // Body validation
@@ -93,49 +93,6 @@ function pickDistinct<T>(arr: T[], n: number): T[] {
     copy.splice(idx, 1)
   }
   return out
-}
-
-// Initial bearing from `from` to `to`, in degrees (0 = north, clockwise).
-// Standard great-circle formula.
-function initialBearingDegrees(
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number },
-): number {
-  const toRad = (d: number) => (d * Math.PI) / 180
-  const toDeg = (r: number) => (r * 180) / Math.PI
-  const lat1 = toRad(from.lat)
-  const lat2 = toRad(to.lat)
-  const dLng = toRad(to.lng - from.lng)
-  const y = Math.sin(dLng) * Math.cos(lat2)
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
-  const brng = toDeg(Math.atan2(y, x))
-  return (brng + 360) % 360
-}
-
-function snapToCompass8(
-  deg: number,
-): 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW' {
-  // Per spec: 0–22.5 → N, 22.5–67.5 → NE, ..., 292.5–337.5 → NW, 337.5–360 → N.
-  if (deg < 22.5) return 'N'
-  if (deg < 67.5) return 'NE'
-  if (deg < 112.5) return 'E'
-  if (deg < 157.5) return 'SE'
-  if (deg < 202.5) return 'S'
-  if (deg < 247.5) return 'SW'
-  if (deg < 292.5) return 'W'
-  if (deg < 337.5) return 'NW'
-  return 'N'
-}
-
-function hotColdBucket(
-  meters: number,
-): 'under_200m' | 'under_500m' | 'under_1km' | 'over_1km' {
-  if (meters < 200) return 'under_200m'
-  if (meters < 500) return 'under_500m'
-  if (meters < 1000) return 'under_1km'
-  return 'over_1km'
 }
 
 // ---------------------------------------------------------------------------
@@ -234,6 +191,8 @@ export async function POST(
   if (!callerTeam || !enemyTeam) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  const actionBlock = await getGameplayActionBlock(supabase, game.id, caller)
+  if (actionBlock) return NextResponse.json({ error: actionBlock }, { status: 409 })
 
   // 4. Look up the intel definition; bail if unknown.
   const intelDef = INTEL_BY_ID.get(intel_ref)
@@ -286,6 +245,9 @@ export async function POST(
       { status: 400 },
     )
   }
+  if (player_pos && !isPositionFresh(player_pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+  }
 
   // 8. Load the enemy team's 5 candidate landmark rows. We bypass RLS with the
   // admin client so we can read `kind`.
@@ -321,23 +283,34 @@ export async function POST(
   // -------------------------------------------------------------------------
 
   let answer: IntelAnswer
+  let storedAnswer: Record<string, unknown> | null = null
   switch (intel_ref) {
     case 'intel.north-south': {
+      if (!enemyTeam.side) {
+        return NextResponse.json(
+          { error: 'team_side_missing' },
+          { status: 409 },
+        )
+      }
+      const pivotLat = northSouthPivotForDefendingSide(enemyTeam.side)
       answer = {
         intel_ref: 'intel.north-south',
-        direction: realFlag.lat > CITY_CENTRE_LAT ? 'north' : 'south',
+        direction: realFlag.lat > pivotLat ? 'north' : 'south',
+        pivot_lat: pivotLat,
       }
       break
     }
     case 'intel.east-west': {
-      // Caller's team home base seed entry — needed for the east/west pivot.
-      if (!callerTeam.home_landmark_id) {
+      // I2 describes the enemy assignment relative to the defending team's
+      // own home. Using the buyer's home made the clue nearly constant because
+      // the two candidate pools are geographically separated.
+      if (!enemyTeam.home_landmark_id) {
         return NextResponse.json(
           { error: 'home_base_missing' },
           { status: 409 },
         )
       }
-      const homeBase = getSeedLandmarkByRef(callerTeam.home_landmark_id)
+      const homeBase = getSeedLandmarkByRef(enemyTeam.home_landmark_id)
       if (!homeBase) {
         return NextResponse.json(
           { error: 'home_base_missing' },
@@ -346,7 +319,8 @@ export async function POST(
       }
       answer = {
         intel_ref: 'intel.east-west',
-        direction: realFlag.lng > homeBase.lng ? 'east' : 'west',
+        direction: eastWestOf(homeBase.lng, realFlag.lng),
+        pivot_lng: homeBase.lng,
       }
       break
     }
@@ -410,35 +384,57 @@ export async function POST(
           { status: 400 },
         )
       }
-      const meters = haversineMeters(player_pos, realFlag)
-      answer = {
-        intel_ref: 'intel.hot-cold',
-        bucket: hotColdBucket(meters),
-        buy_position: { lat: player_pos.lat, lng: player_pos.lng },
-        // Real-flag coords for the live thermometer reading (E17). The buying
-        // team paid for distance intel, so revealing coords to them is by
-        // design; the reading updates client-side as they move.
-        target: { lat: realFlag.lat, lng: realFlag.lng },
-      }
+      answer = buildHotColdAnswer(player_pos, realFlag)
       break
     }
     case 'intel.surroundings': {
-      // v1 placeholder — uploading a setup-time surroundings photo lands later.
+      const { data: surroundingsRow, error: surroundingsError } = await supabase
+        .from('flag_surroundings')
+        .select('object_path')
+        .eq('game_id', game.id)
+        .eq('team_id', enemyTeam.id)
+        .maybeSingle()
+      if (surroundingsError) {
+        return NextResponse.json(
+          { error: 'surroundings_lookup_failed', details: surroundingsError.message },
+          { status: 500 },
+        )
+      }
+      const objectPath = (surroundingsRow as { object_path: string } | null)
+        ?.object_path
+      if (!objectPath) {
+        return NextResponse.json(
+          { error: 'surroundings_photo_missing' },
+          { status: 409 },
+        )
+      }
+      const { data: signed, error: signError } = await supabase.storage
+        .from('surroundings-photos')
+        .createSignedUrl(objectPath, 5 * 60)
+      if (signError || !signed?.signedUrl) {
+        return NextResponse.json(
+          { error: 'surroundings_sign_failed', details: signError?.message },
+          { status: 500 },
+        )
+      }
       answer = {
         intel_ref: 'intel.surroundings',
-        text:
-          'Surroundings photo not yet supported. Visit the area to scout in person.',
+        photo_url: signed.signedUrl,
+      }
+      // Never persist a signed URL (it expires) and never return this private
+      // object path to a client. live-state resolves the enemy team's hidden
+      // flag_surroundings row and re-signs it on every team-scoped snapshot.
+      // Keeping the path out of cards also prevents it leaking through the
+      // project's deliberately broad v1 read policy on the cards table.
+      storedAnswer = {
+        intel_ref: 'intel.surroundings',
       }
       break
     }
     case 'intel.direction': {
-      const brng = initialBearingDegrees(
-        { lat: CITY_CENTRE_LAT, lng: CITY_CENTRE_LNG },
-        realFlag,
-      )
       answer = {
         intel_ref: 'intel.direction',
-        bearing: snapToCompass8(brng),
+        bearing: compass4FromPoint(PLAY_AREA_CENTRE, realFlag),
       }
       break
     }
@@ -453,109 +449,51 @@ export async function POST(
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Side effects, matching the harden-flag ordering:
-  //   1. coins_deducted event
-  //   2. UPDATE teams.coins  (optimistic guard against race)
-  //   3. INSERT cards row
-  //   4. intel_purchased event (no answer in payload — private state)
-  // -------------------------------------------------------------------------
-
-  const { error: coinsEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'coins_deducted',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: callerTeam.id,
-      amount: cost,
-      reason: 'buy_intel',
-      intel_ref,
+  // Debit, cap/duplicate check, private card insert and public events must be a
+  // single transaction: several team-mates can buy at the same moment.
+  const { data: purchaseData, error: purchaseError } = await supabase.rpc(
+    'purchase_intel_atomic',
+    {
+      p_game_id: game.id,
+      p_team_id: callerTeam.id,
+      p_actor_player_id: caller.id,
+      p_intel_ref: intel_ref,
+      p_cost: cost,
+      p_answer: storedAnswer ?? answer,
     },
-  })
-  if (coinsEventError) {
+  )
+  if (purchaseError) {
     return NextResponse.json(
-      { error: 'event_insert_failed', details: coinsEventError.message },
+      { error: 'intel_purchase_failed', details: purchaseError.message },
       { status: 500 },
     )
   }
-
-  const newCoins = callerTeam.coins - cost
-  const { data: updatedTeamRow, error: teamUpdateError } = await supabase
-    .from('teams')
-    .update({ coins: newCoins })
-    .eq('id', callerTeam.id)
-    .eq('coins', callerTeam.coins) // optimistic: avoid double-debit on retry
-    .select()
-    .maybeSingle()
-
-  if (teamUpdateError) {
-    return NextResponse.json(
-      { error: 'team_update_failed', details: teamUpdateError.message },
-      { status: 500 },
-    )
-  }
-  if (!updatedTeamRow) {
-    // Coins moved under us — re-fetch and surface insufficient_coins.
-    const { data: refreshedTeam } = await supabase
-      .from('teams')
-      .select('coins')
-      .eq('id', callerTeam.id)
-      .maybeSingle()
-    const currentCoins =
-      (refreshedTeam as { coins: number } | null)?.coins ?? 0
+  const purchase = purchaseData as {
+    error?: string
+    coins?: number
+    card?: Card
+    team_coins?: number
+  } | null
+  if (!purchase || purchase.error) {
+    const error = purchase?.error ?? 'intel_purchase_failed'
     return NextResponse.json(
       {
-        error: 'insufficient_coins',
-        details: { coins: currentCoins, cost },
+        error,
+        ...(purchase?.coins !== undefined
+          ? { details: { coins: purchase.coins, cost } }
+          : {}),
       },
-      { status: 409 },
+      { status: error === 'intel_purchase_failed' ? 500 : 409 },
     )
   }
-  const finalCoins = (updatedTeamRow as Team).coins
-
-  // Insert the intel card. The answer is stored on the row (visible to the
-  // owning team via RLS when that lands).
-  const { data: insertedCardRow, error: cardInsertError } = await supabase
-    .from('cards')
-    .insert({
-      game_id: game.id,
-      team_id: callerTeam.id,
-      kind: 'intel',
-      ref: intel_ref,
-      state: 'in_hand',
-      payload: answer,
-    })
-    .select()
-    .maybeSingle()
-
-  if (cardInsertError || !insertedCardRow) {
-    return NextResponse.json(
-      {
-        error: 'card_insert_failed',
-        details: cardInsertError?.message,
-      },
-      { status: 500 },
-    )
+  if (!purchase.card || purchase.team_coins === undefined) {
+    return NextResponse.json({ error: 'intel_purchase_failed' }, { status: 500 })
   }
-  const card = insertedCardRow as Card
-
-  // Append the (public) intel_purchased event — NO answer.
-  const { error: purchaseEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'intel_purchased',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: callerTeam.id,
-      intel_ref,
-      cost,
-    },
-  })
-  if (purchaseEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: purchaseEventError.message },
-      { status: 500 },
-    )
+  const card: Card = {
+    ...purchase.card,
+    payload: answer as unknown as Record<string, unknown>,
   }
+  const finalCoins = purchase.team_coins
 
   const response: BuyIntelResponse = {
     card,

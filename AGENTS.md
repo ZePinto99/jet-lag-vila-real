@@ -6,7 +6,7 @@ This file is for AI assistants. Read it before touching anything else.
 
 ## What this project is
 
-A self-serve referee PWA for a walking-only Capture the Flag game played in Vila Real, Portugal, inspired by the YouTube show *Jet Lag: The Game*. 4–8 players split into two teams, each hiding a flag among decoy landmarks. Teams hunt each other's flag using intel cards, slow each other with curses, and physically tag raiders. The app is the referee: it enforces geofences, manages coins and timers, adjudicates flag photos, and runs the Tag button.
+A self-serve referee PWA for a walking-only Capture the Flag game played in Vila Real, Portugal, inspired by the YouTube show *Jet Lag: The Game*. 2–8 players split into two equal teams, each hiding a flag among decoy landmarks. Teams hunt each other's flag using intel cards, slow each other with curses, and physically tag raiders. The app is the referee: it enforces geofences, manages coins and timers, adjudicates flag photos, and runs the Tag button.
 
 **No human GM. No native app. Just a Next.js PWA + Supabase.**
 
@@ -19,9 +19,9 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | `RULEBOOK.md` | Complete game rules — the source of truth for all business logic |
 | `ARCHITECTURE.md` | Full technical spec: DB schema, API routes, realtime channels, key flows |
 | `data/landmarks.json` | Seed landmark catalog (GPS coords, team pool, kind) |
-| `data/challenges.json` | 18 challenges with coin rewards and location refs |
+| `data/challenges.json` | 15 challenges with coin rewards, proof requirements, and location refs |
 | `data/curses.json` | 16 curses with enforcement category [A/B/C/L] and params |
-| `data/intel.json` | 9 intel card types with costs and reveal descriptions |
+| `data/intel.json` | 8 intel card types with costs and reveal descriptions |
 
 ---
 
@@ -47,17 +47,17 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │   │       ├── Lobby.tsx          ← client lobby view
 │   │       ├── Setup.tsx          ← flag setup phase view
 │   │       └── Live.tsx           ← live game view (map/actions/status tabs)
-│   ├── observer/          ← placeholder for future results view
+│   ├── observer/[code]/   ← redacted live spectator map, clock, scores, and event feed
 │   └── api/games/
 │       ├── route.ts                       ← POST  /api/games (create)
 │       ├── by-code/[code]/route.ts        ← GET   /api/games/by-code/[code]
-│       └── [id]/                          ← 22 routes covering all phases (incl. attempt-start, place-curse, trigger-placed-curse):
+│       └── [id]/                          ← route handlers covering every phase and atomic game action:
 │           ├── join, switch-team, ready, start, remove-player
 │           ├── flag-setup, setup-state, harden-flag
-│           ├── live-state, tag, attempt-flag, complete-run, respawn-clear
-│           ├── buy-intel, buy-curse, expire-curses
-│           ├── challenges, submit-challenge
-│           └── end-by-timeout
+│           ├── live-state, tag, attempt-flag, complete-run, two-stage respawn-clear
+│           ├── buy-intel, buy-curse, expire/extend/complete-pilgrimage
+│           ├── challenges, submit/accept/reject challenge, private curse-proof
+│           └── camping, weather pause, time tick, results, end-by-timeout
 │
 ├── lib/
 │   ├── cn.ts              ← clsx + tailwind-merge helper
@@ -70,7 +70,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │   │   ├── client.ts      ← browser Supabase client
 │   │   ├── server.ts      ← SSR server client (cookie stub — needs auth wiring later)
 │   │   └── admin.ts       ← service-role client for server-side mutations
-│   ├── hooks/             ← 9 client hooks:
+│   ├── hooks/             ← client hooks for GPS, realtime, actions, chat, curses, and recovery:
 │   │   ├── useLobbyRealtime.ts          ← postgres_changes for lobby
 │   │   ├── useLiveGameRealtime.ts       ← postgres_changes for live phase
 │   │   ├── usePresence.ts               ← Realtime Presence for GPS
@@ -96,7 +96,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │   ├── ui/                ← Button, Input, LanguageSwitcher
 │   ├── map/
 │   │   └── GameMap.tsx    ← Leaflet map, dynamic-imported (no SSR)
-│   └── game/              ← 14 phase-specific components:
+│   └── game/              ← phase-specific action, status, chat, pause, and result components:
 │       ├── TagButton, FlagAttemptButton, HardenFlagButton
 │       ├── IntelPurchasePanel, IntelCardDisplay
 │       ├── CursePurchasePanel, ActiveCursesBanner, CurseHistoryList
@@ -109,20 +109,14 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │
 ├── data/                  ← static seed JSON (see above)
 │
-└── supabase/migrations/   ← 10 migrations (0001–0010):
-    ├── 0001_init.sql              ← initial schema (9 tables, append-only events trigger)
-    ├── 0002_adjustments.sql       ← game_code, flag_carrier, captain→host, setup status
-    ├── 0003_realtime_publication.sql
-    ├── 0004_host_role.sql
-    ├── 0005_events_allow_actor_cascade.sql
-    ├── 0006_events_allow_cascade_delete.sql
-    ├── 0007_player_respawning.sql
-    ├── 0008_rls_baseline.sql      ← RLS enabled on all tables
-    ├── 0009_flag_attempt_photos.sql ← public `flag-attempts` Storage bucket + policies
-    └── 0010_placed_curses.sql     ← hidden placed_curses table (no anon RLS, not broadcast)
+└── supabase/migrations/   ← append-only migrations from 0001 through the current release:
+    ├── 0001–0010                 ← base schema, events, realtime, RLS, flag photos, placed curses
+    ├── 0011–0014                 ← push, challenge proof/review, private I7 surroundings photo
+    ├── 0015–0024                 ← atomic economy/adjudication/phase/curse/challenge functions
+    └── 0025–0035                 ← pause/respawn, private proofs, authoritative locks, camping, bulk tag
 ```
 
-> ⚠️ **Migrations `0009` + `0010` may not be applied yet** — flag-attempt photo upload and placed curses fail without them. Run `supabase db push` locally and on hosted Supabase.
+> ⚠️ Apply **every** checked-in migration locally and on hosted Supabase. Missing later migrations breaks private photo proof, atomic actions, weather pause, or two-stage respawn.
 
 ---
 
@@ -130,13 +124,13 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 
 | Term | Meaning |
 |---|---|
-| **Home base** | Each team's anchor landmark: Team West = UTAD, Team East = Casa de Mateus |
+| **Home base** | Each team's anchor landmark: West = Miradouro da Vila Velha, East = Biblioteca Municipal |
 | **Candidate landmark** | One of 5 landmarks a team selects; holds their real flag, decoys, or nothing |
 | **Flag carrier** | Player who photographed the real flag; must reach home base geofence to win |
 | **Raider** | Player physically outside their own defense zone |
 | **Defender** | Player physically inside their own defense zone (within 200 m of any own candidate) |
 | **Defense zone** | 200 m radius around each own candidate landmark; union defines where you can tag |
-| **Tag** | Defender within 5 m of raider AND inside own defense zone → Tag button activates → tagged raiders lose 1 intel card and must respawn at neutral landmark |
+| **Tag** | Defender within 5 m of a raider AND inside own defense zone → tagged raiders lose 1 intel card, reach their assigned nearest neutral, then leave its 45 m radius |
 | **Intel card** | Purchased clue about enemy flag location; max 4 per team per game |
 | **Curse** | Purchased handicap applied to enemy team; 3 tiers (minor/medium/major) rolled with dice |
 | **Enforcement tier** | [A] GPS-verified, [B] photo-verified, [C] honor system, [L] ledger-only |
@@ -157,7 +151,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | DB / Auth | Supabase (Postgres + anon auth) | Anonymous sign-in, no passwords |
 | Realtime | Supabase Realtime | Presence for GPS, postgres_changes for events |
 | Storage | Supabase Storage | Photo uploads (flag attempts, challenge proofs, curse proofs) |
-| Maps | Leaflet + react-leaflet | Dynamic import (no SSR). Tiles: **Carto Voyager** (gamified look). Remember: `import 'leaflet/dist/leaflet.css'` |
+| Maps | Leaflet + react-leaflet + MapLibre | Dynamic import (no SSR). Basemap: locally hosted **OpenFreeMap Liberty** style document with OpenFreeMap vector tiles through the Leaflet adapter. Remember: import both Leaflet and MapLibre CSS. |
 | Validation | Zod | All API route inputs |
 | Geo math | Custom (`lib/geo/`) | haversine, midline half detection, geofence radius |
 | i18n | Custom React context (`lib/i18n/`) | EN + PT-PT (Portugal). `useT()` hook. Toggle in lobby and live header. |
@@ -183,12 +177,12 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 ### Done
 - Game rules fully documented (`RULEBOOK.md`, `PLAYER_GUIDE.md`)
 - Architecture fully documented (`ARCHITECTURE.md`)
-- Database migrations `0001`–`0010` (9 base tables + placed_curses, append-only events trigger, host role, respawning flag, RLS baseline, flag-attempt Storage bucket)
+- Database migrations from `0001` through the current release (base tables, append-only events, storage buckets, private proof metadata, durable curse/respawn state, and atomic Postgres functions)
 - Static seed data (`data/`)
 - Next.js scaffold (config, Tailwind, Supabase clients, PWA manifest)
 - **Full game flow** — lobby → setup → live → results (see backlog steps 1–11 below)
 - **i18n** — EN + PT-PT via `lib/i18n/`, language toggle in lobby and live header (commit `4fe06f2`)
-- **Map polish** — Carto Voyager basemap, tooltips on click only, legend at `top-24 left-3` to clear the GPS toggle and bottom action stack (commits `8da6921`, `8fe574b`, `aa71835`)
+- **Map polish** — OpenFreeMap Liberty vector basemap, tooltips on click only, legend at `top-24 left-3` to clear the GPS toggle and bottom action stack
 - Live game view tabs: map / actions / status
 - **Post-playtest fixes & mechanics (2026-05-31)** — see git history; PLAYTEST_TRIAGE.md was the working doc (deleted on completion):
   - Bug fixes: `useLiveGameRealtime` now subscribes to `teams`+`players` (respawn/coins/flag-carrier propagate); flag-attempt geofence drift buffer (28 m; 12 m hardened); replaced PWA-unreliable `window.confirm`/`prompt` with inline UI across Tag/Attempt/Challenge/Curse/Harden/Intel.
@@ -215,13 +209,14 @@ See `ARCHITECTURE.md §9` for the full ordered backlog. Headline:
 
 ### Known caveats
 - Writes to `/hooks/` at repo root get silently nuked by something in the environment. Use `lib/hooks/` instead — confirmed to persist.
-- `app/observer/` left in place as a placeholder for the future results view.
+- `app/observer/[code]/` is the public, redacted spectator view; keep private cards,
+  curse proofs, flag kinds, and hardening details out of its API response.
 - React StrictMode is enabled and works with `react-leaflet@5`. If you ever downgrade leaflet, you'll re-hit the "Map container is already initialized" StrictMode double-mount bug.
 
-### Security posture (after migration 0008)
+### Security posture (baseline from migration 0008, extended by later migrations)
 
 **Locked down (v1):**
-- RLS is **enabled** on all 9 tables.
+- RLS is **enabled** on every client-facing table, including later proof/state tables.
 - Anon-key clients cannot INSERT/UPDATE/DELETE any row. INSERT returns a 401 with an `42501` RLS violation; UPDATE/DELETE silently no-op (PostgREST returns 204).
 - All server mutations go through API routes using `lib/supabase/admin.ts` (service-role key), which bypasses RLS.
 
@@ -255,3 +250,13 @@ See `ARCHITECTURE.md §9` for the full ordered backlog. Headline:
 - `supabase/migrations/0001_init.sql` — only append new migrations, never edit this one.
 - `data/*.json` — seed data, consumed by both API routes and client. Changing IDs is a breaking change.
 - `RULEBOOK.md` §15 — all open questions are resolved; changes need discussion with the user.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

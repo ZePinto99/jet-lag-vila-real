@@ -3,6 +3,13 @@ import { useTagButton } from '@/lib/hooks/useTagButton'
 import { makeLandmark } from '../test-utils'
 
 const gps = { lat: 41.295, lng: -7.746, accuracy: 5, updated_at: 1000 }
+const enemyLandmark = {
+  id: 'enemy-lm',
+  ref: 'landmark.enemy',
+  lat: 41.3,
+  lng: -7.746,
+  team_id: 'east',
+}
 
 describe('useTagButton', () => {
   it('requires GPS before tagging', () => {
@@ -12,9 +19,11 @@ describe('useTagButton', () => {
         myPlayerId: 'me',
         myTeamId: 'west',
         myTeamLandmarks: [],
+        enemyTeamLandmarks: [],
         presence: {},
         respawning: false,
         campingLocked: false,
+        nowMs: 1000,
       }),
     )
 
@@ -34,6 +43,7 @@ describe('useTagButton', () => {
         myPlayerId: 'me',
         myTeamId: 'west',
         myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
+        enemyTeamLandmarks: [enemyLandmark],
         presence: {
           me: { ...gps, player_id: 'me', team_id: 'west' },
           teammate: { ...gps, player_id: 'mate', team_id: 'west' },
@@ -42,6 +52,7 @@ describe('useTagButton', () => {
         },
         respawning: false,
         campingLocked: false,
+        nowMs: 1001,
       }),
     )
 
@@ -57,11 +68,13 @@ describe('useTagButton', () => {
       myPlayerId: 'me',
       myTeamId: 'west',
       myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
+      enemyTeamLandmarks: [enemyLandmark],
       presence: {
         enemy: { lat: 41.29502, lng: -7.746, accuracy: 5, updated_at: 1001, player_id: 'enemy', team_id: 'east' },
       },
       respawning: false,
       campingLocked: false,
+      nowMs: 1001,
     }
 
     const respawning = renderHook((props) => useTagButton(props), {
@@ -86,5 +99,87 @@ describe('useTagButton', () => {
       initialProps: { ...base, campingLocked: true },
     })
     expect(camping.result.current.reason).toBe('camping_locked')
+  })
+
+  it('treats an opponent on our candidate as a raider despite overlapping defense zones', () => {
+    const { result } = renderHook(() =>
+      useTagButton({
+        myGps: gps,
+        myPlayerId: 'me',
+        myTeamId: 'west',
+        myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
+        enemyTeamLandmarks: [
+          { ...enemyLandmark, lat: gps.lat, lng: gps.lng },
+        ],
+        presence: {
+          enemy: {
+            ...gps,
+            player_id: 'enemy',
+            team_id: 'east',
+          },
+        },
+        respawning: false,
+        campingLocked: false,
+        nowMs: 1000,
+      }),
+    )
+
+    expect(result.current).toMatchObject({
+      enabled: true,
+      reason: 'enabled',
+    })
+    expect(result.current.targets.map((target) => target.player_id)).toEqual(['enemy'])
+  })
+
+  it('preserves defender immunity in a broad overlap more than 50 m from our candidate', () => {
+    const overlapPoint = { ...gps, lat: 41.296 }
+    const { result } = renderHook(() =>
+      useTagButton({
+        myGps: overlapPoint,
+        myPlayerId: 'me',
+        myTeamId: 'west',
+        myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
+        enemyTeamLandmarks: [{ ...enemyLandmark, lat: overlapPoint.lat, lng: overlapPoint.lng }],
+        presence: {
+          enemy: { ...overlapPoint, player_id: 'enemy', team_id: 'east' },
+        },
+        respawning: false,
+        campingLocked: false,
+        nowMs: 1000,
+      }),
+    )
+    expect(result.current).toMatchObject({
+      enabled: false,
+      reason: 'no_enemies_nearby',
+      targets: [],
+    })
+  })
+
+  it('ignores stale local and enemy positions', () => {
+    const base = {
+      myGps: gps,
+      myPlayerId: 'me',
+      myTeamId: 'west',
+      myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
+      enemyTeamLandmarks: [enemyLandmark],
+      presence: {
+        enemy: { ...gps, player_id: 'enemy', team_id: 'east' },
+      },
+      respawning: false,
+      campingLocked: false,
+    }
+    const staleMe = renderHook(() =>
+      useTagButton({ ...base, nowMs: 31_001 }),
+    )
+    expect(staleMe.result.current.reason).toBe('no_gps')
+
+    const staleEnemy = renderHook(() =>
+      useTagButton({
+        ...base,
+        myGps: { ...gps, updated_at: 31_001 },
+        nowMs: 31_001,
+      }),
+    )
+    expect(staleEnemy.result.current.reason).toBe('no_enemies_nearby')
   })
 })

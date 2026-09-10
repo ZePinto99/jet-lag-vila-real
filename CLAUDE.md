@@ -6,7 +6,7 @@ This file is for AI assistants. Read it before touching anything else.
 
 ## What this project is
 
-A self-serve referee PWA for a walking-only Capture the Flag game played in Vila Real, Portugal, inspired by the YouTube show *Jet Lag: The Game*. 4–8 players split into two teams, each hiding a flag among decoy landmarks. Teams hunt each other's flag using intel cards, slow each other with curses, and physically tag raiders. The app is the referee: it enforces geofences, manages coins and timers, adjudicates flag photos, and runs the Tag button.
+A self-serve referee PWA for a walking-only Capture the Flag game played in Vila Real, Portugal, inspired by the YouTube show *Jet Lag: The Game*. 2–8 players split into two equal teams, each hiding a flag among decoy landmarks. Teams hunt each other's flag using intel cards, slow each other with curses, and physically tag raiders. The app is the referee: it enforces geofences, manages coins and timers, adjudicates flag photos, and runs the Tag button.
 
 **No human GM. No native app. Just a Next.js PWA + Supabase.**
 
@@ -133,7 +133,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 
 | Term | Meaning |
 |---|---|
-| **Home base** | Each team's anchor landmark: Team West = UTAD, Team East = Casa de Mateus |
+| **Home base** | Each team's anchor landmark: Team West = Miradouro da Vila Velha, Team East = Biblioteca Municipal |
 | **Candidate landmark** | One of 5 landmarks a team selects; holds their real flag, decoys, or nothing |
 | **Flag carrier** | Player who photographed the real flag; must reach home base geofence to win |
 | **Raider** | Player physically outside their own defense zone |
@@ -160,7 +160,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | DB / Auth | Supabase (Postgres + anon auth) | Anonymous sign-in, no passwords |
 | Realtime | Supabase Realtime | Presence for GPS, postgres_changes for events |
 | Storage | Supabase Storage | Photo uploads (flag attempts, challenge proofs, curse proofs) |
-| Maps | Leaflet + react-leaflet | Dynamic import (no SSR). Tiles: **Carto Voyager** (gamified look). Remember: `import 'leaflet/dist/leaflet.css'` |
+| Maps | Leaflet + react-leaflet + MapLibre | Dynamic import (no SSR). Basemap: locally hosted **OpenFreeMap Liberty** style document with OpenFreeMap vector tiles through the Leaflet adapter. Remember: import both Leaflet and MapLibre CSS. |
 | Validation | Zod | All API route inputs |
 | Geo math | Custom (`lib/geo/`) | haversine, midline half detection, geofence radius |
 | i18n | Custom React context (`lib/i18n/`) | EN + PT-PT (Portugal). `useT()` hook. Toggle in lobby and live header. |
@@ -191,7 +191,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 - Next.js scaffold (config, Tailwind, Supabase clients, PWA manifest)
 - **Full game flow** — lobby → setup → live → results (see backlog steps 1–11 below)
 - **i18n** — EN + PT-PT via `lib/i18n/`, language toggle in lobby and live header (commit `4fe06f2`)
-- **Map polish** — Carto Voyager basemap, tooltips on click only, legend at `top-24 left-3` to clear the GPS toggle and bottom action stack (commits `8da6921`, `8fe574b`, `aa71835`)
+- **Map polish** — OpenFreeMap Liberty vector basemap, tooltips on click only, legend at `top-24 left-3` to clear the GPS toggle and bottom action stack
 - Live game view tabs: map / actions / status
 - **Post-playtest fixes & mechanics (2026-05-31)** — see git history; PLAYTEST_TRIAGE.md was the working doc (deleted on completion):
   - Bug fixes: `useLiveGameRealtime` now subscribes to `teams`+`players` (respawn/coins/flag-carrier propagate); flag-attempt geofence drift buffer (28 m; 12 m hardened); replaced PWA-unreliable `window.confirm`/`prompt` with inline UI across Tag/Attempt/Challenge/Curse/Harden/Intel.

@@ -1,137 +1,197 @@
 'use client'
 
-// Camping detection (rulebook §6 — "the 50 m camping rule").
+// Durable camping enforcement (RULEBOOK §6).
 //
-// Defenders cannot stand within 50 m of any of their own candidate landmarks
-// for more than 2 consecutive minutes. The app warns at 90 s and disables the
-// Tag button at 120 s. To unlock, the player must leave the 50 m radius for at
-// least 60 s.
-//
-// All state lives in this hook. It exposes a derived view (status + seconds in
-// zone) and a `campingLocked` flag the Tag button keys off.
+// GPS itself remains ephemeral. The server derives only whether the player is
+// within 50 m of an own candidate and persists the resulting gameplay-clock
+// counters. This makes warning/lock/cooldown survive reloads while weather
+// pause and offline gaps cannot manufacture elapsed camping time.
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { apiPost } from '@/lib/api'
+import { getDeviceId } from '@/lib/device'
 import { haversineMeters } from '@/lib/geo/haversine'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import type { GpsPosition, Landmark } from '@/lib/types'
 
 export const CAMPING_RADIUS_M = 50
 export const CAMPING_WARNING_S = 90
 export const CAMPING_LOCK_S = 120
 export const CAMPING_COOLDOWN_S = 60
+export const CAMPING_HEARTBEAT_MS = 5_000
+
+// The database deliberately caps inference across a missed heartbeat at 15 s.
+// Keep the optimistic client readout within that same bound.
+const MAX_UNOBSERVED_PROJECTION_S = 15
 
 export type CampingStatus = 'idle' | 'warning' | 'locked'
+
+interface CampingHeartbeatResponse {
+  inside_zone: boolean
+  seconds_in_zone: number
+  seconds_outside: number
+  locked: boolean
+  last_heartbeat_at: string
+}
+
+interface AuthoritativeCampingState extends CampingHeartbeatResponse {
+  receivedAtGameClockMs: number
+}
 
 export interface UseCampingResult {
   status: CampingStatus
   secondsInZone: number
+  secondsOutside: number
   campingLocked: boolean
   warningThresholdSeconds: typeof CAMPING_WARNING_S
   lockThresholdSeconds: typeof CAMPING_LOCK_S
+  lastHeartbeatAt: string | null
+  syncError: string | null
 }
 
 export interface UseCampingParams {
+  gameId: string | null
+  myPlayerId: string | null
   myGps: GpsPosition | null
   myTeamLandmarks: Landmark[]
-}
-
-function nowSeconds(): number {
-  return Date.now() / 1000
+  /** Enables durable state fetches in live, flag-found, and paused phases. */
+  enabled?: boolean
+  /** False while weather-paused: warning and cooldown projections freeze. */
+  gameplayActive?: boolean
+  /** Pause-aware game clock, used only for the on-screen projection. */
+  clockNowMs?: number
+  /** Wall clock, used only for GPS freshness. */
+  wallNowMs?: number
 }
 
 export function useCamping(params: UseCampingParams): UseCampingResult {
-  const { myGps, myTeamLandmarks } = params
+  const {
+    gameId,
+    myPlayerId,
+    myGps,
+    myTeamLandmarks,
+    enabled = true,
+    gameplayActive = true,
+    clockNowMs = Date.now(),
+    wallNowMs = Date.now(),
+  } = params
 
-  // Refs hold the raw state machine. We mutate them on every GPS update and on
-  // every 1s tick, then mirror the derived view into state for the renderer.
-  const enteredAtRef = useRef<number | null>(null)
-  const leftAtRef = useRef<number | null>(null)
-  const lockedRef = useRef(false)
-  const insideRef = useRef(false)
+  const [authoritative, setAuthoritative] =
+    useState<AuthoritativeCampingState | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
+  const gpsRef = useRef(myGps)
+  const gameClockRef = useRef(clockNowMs)
+  const requestInFlightRef = useRef(false)
+  gpsRef.current = myGps
+  gameClockRef.current = clockNowMs
 
-  const [status, setStatus] = useState<CampingStatus>('idle')
-  const [secondsInZone, setSecondsInZone] = useState(0)
-
-  // Update inside/outside state immediately whenever GPS or landmarks change so
-  // the state machine doesn't lag a second behind the position fix.
-  useEffect(() => {
-    if (!myGps || myTeamLandmarks.length === 0) {
-      // Lost GPS or no own landmarks: treat as outside the radius but don't
-      // touch lockedRef / leftAtRef — we need a real reading to start the
-      // 60s cooldown.
-      insideRef.current = false
-      return
-    }
-    let minDistance = Number.POSITIVE_INFINITY
-    for (const lm of myTeamLandmarks) {
-      const d = haversineMeters(
-        { lat: myGps.lat, lng: myGps.lng },
-        { lat: lm.lat, lng: lm.lng },
-      )
-      if (d < minDistance) minDistance = d
-    }
-    const inside = minDistance <= CAMPING_RADIUS_M
-    const t = nowSeconds()
-    if (inside) {
-      if (enteredAtRef.current === null) enteredAtRef.current = t
-      leftAtRef.current = null
-      insideRef.current = true
-    } else {
-      enteredAtRef.current = null
-      // Start cooldown timer only when the player has just left the zone.
-      if (insideRef.current) {
-        leftAtRef.current = t
-      }
-      insideRef.current = false
-    }
+  const locallyInsideZone = useMemo<boolean | null>(() => {
+    if (!myGps || myTeamLandmarks.length === 0) return null
+    return myTeamLandmarks.some(
+      (landmark) => haversineMeters(myGps, landmark) <= CAMPING_RADIUS_M,
+    )
   }, [myGps, myTeamLandmarks])
 
-  // 1 Hz tick that derives the view: how long we've been inside, and whether
-  // the lock should engage / disengage. A separate effect from the GPS one so
-  // the camping clock keeps advancing even when GPS hasn't sent a fresh fix.
+  const gpsReady =
+    myGps !== null && isPositionFresh(myGps.updated_at, wallNowMs)
+
   useEffect(() => {
+    setAuthoritative(null)
+    setSyncError(null)
+  }, [gameId, myPlayerId])
+
+  const sendHeartbeat = useCallback(async () => {
+    if (!enabled || !gameId || !myPlayerId || requestInFlightRef.current) return
+    const gps = gpsRef.current
+    if (!gps || !isPositionFresh(gps.updated_at, Date.now())) return
+
+    requestInFlightRef.current = true
+    try {
+      const state = await apiPost<CampingHeartbeatResponse>(
+        `/api/games/${gameId}/camping-heartbeat`,
+        {
+          device_id: getDeviceId(),
+          player_id: myPlayerId,
+          pos: gps,
+        },
+      )
+      setAuthoritative({
+        ...state,
+        receivedAtGameClockMs: gameClockRef.current,
+      })
+      setSyncError(null)
+    } catch (error) {
+      setSyncError(error instanceof Error ? error.message : 'camping_sync_failed')
+    } finally {
+      requestInFlightRef.current = false
+    }
+  }, [enabled, gameId, myPlayerId])
+
+  // Fetch immediately on mount/reload and when crossing the local 50 m edge;
+  // the steady heartbeat then advances the authoritative timer. The interval
+  // reads the latest GPS from a ref so ordinary location updates do not create
+  // a request storm.
+  useEffect(() => {
+    if (!enabled || !gpsReady) return
+    void sendHeartbeat()
     const id = window.setInterval(() => {
-      const t = nowSeconds()
-      const inside = insideRef.current
-
-      let secs = 0
-      if (inside && enteredAtRef.current !== null) {
-        secs = Math.max(0, Math.floor(t - enteredAtRef.current))
-      }
-
-      // Engage lock when inside for >= 120s.
-      if (inside && secs >= CAMPING_LOCK_S) {
-        lockedRef.current = true
-      }
-
-      // Disengage lock when outside for >= 60s of cooldown.
-      if (!inside && lockedRef.current) {
-        const leftAt = leftAtRef.current
-        if (leftAt !== null && t - leftAt >= CAMPING_COOLDOWN_S) {
-          lockedRef.current = false
-          leftAtRef.current = null
-        }
-      }
-
-      let nextStatus: CampingStatus
-      if (lockedRef.current) {
-        nextStatus = 'locked'
-      } else if (inside && secs >= CAMPING_WARNING_S) {
-        nextStatus = 'warning'
-      } else {
-        nextStatus = 'idle'
-      }
-
-      setSecondsInZone(secs)
-      setStatus((prev) => (prev === nextStatus ? prev : nextStatus))
-    }, 1000)
+      void sendHeartbeat()
+    }, CAMPING_HEARTBEAT_MS)
     return () => window.clearInterval(id)
-  }, [])
+  }, [enabled, gpsReady, locallyInsideZone, sendHeartbeat])
+
+  if (!authoritative) {
+    return {
+      status: 'idle',
+      secondsInZone: 0,
+      secondsOutside: 0,
+      campingLocked: false,
+      warningThresholdSeconds: CAMPING_WARNING_S,
+      lockThresholdSeconds: CAMPING_LOCK_S,
+      lastHeartbeatAt: null,
+      syncError,
+    }
+  }
+
+  const projectedSeconds = gameplayActive && gpsReady
+    ? Math.min(
+        MAX_UNOBSERVED_PROJECTION_S,
+        Math.max(
+          0,
+          Math.floor((clockNowMs - authoritative.receivedAtGameClockMs) / 1000),
+        ),
+      )
+    : 0
+  const secondsInZone = authoritative.seconds_in_zone +
+    (authoritative.inside_zone ? projectedSeconds : 0)
+  const secondsOutside = authoritative.seconds_outside +
+    (!authoritative.inside_zone ? projectedSeconds : 0)
+
+  let campingLocked = authoritative.locked
+  if (authoritative.inside_zone && secondsInZone >= CAMPING_LOCK_S) {
+    campingLocked = true
+  } else if (
+    authoritative.locked &&
+    !authoritative.inside_zone &&
+    secondsOutside >= CAMPING_COOLDOWN_S
+  ) {
+    campingLocked = false
+  }
+
+  const status: CampingStatus = campingLocked
+    ? 'locked'
+    : authoritative.inside_zone && secondsInZone >= CAMPING_WARNING_S
+      ? 'warning'
+      : 'idle'
 
   return {
     status,
     secondsInZone,
-    campingLocked: status === 'locked',
+    secondsOutside,
+    campingLocked,
     warningThresholdSeconds: CAMPING_WARNING_S,
     lockThresholdSeconds: CAMPING_LOCK_S,
+    lastHeartbeatAt: authoritative.last_heartbeat_at,
+    syncError,
   }
 }

@@ -2,14 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Cartoonish basemap: punch up the Carto Voyager raster tiles with a CSS
-   filter for a more vibrant, "gamey" look. Applied ONLY to the tile pane, so
-   our coloured markers / defense zones / overlays stay crisp and accurate.
-   Tuned to add pop while keeping streets + labels legible for wayfinding. */
-.leaflet-tile-pane {
-  filter: saturate(1.55) contrast(1.06) brightness(1.02);
-}
-
 /* Leaflet permanent map labels: tight pill with dark background so they read
    over both light and dark map tiles. */
 .leaflet-tooltip.map-label {
@@ -50,6 +42,26 @@
   border-right-color: rgba(15, 15, 17, 0.85);
 }
 
+/* Setup markers use compact numbers instead of eight overlapping permanent
+   place-name labels. The selected landmark's full name and role controls sit
+   directly below the map. */
+.leaflet-tooltip.setup-map-index {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.leaflet-tooltip.setup-map-index::before {
+  display: none;
+}
+
 /* Big-moment popup (flag capture / tag / trap): a centred card that pops in
    with concentric rings radiating behind it. Pure CSS, no deps. The whole
    overlay fades in then out over its lifetime so it can unmount cleanly. */
@@ -83,7 +95,7 @@
 }
 
 /* Challenge star marker (playtest item C10): a gold ★ glyph with a dark halo
-   so it reads on the light Voyager basemap. divIcon has no background of its
+   so it reads on the Liberty basemap. divIcon has no background of its
    own. */
 .challenge-star-icon {
   background: none;
@@ -153,4 +165,3 @@
 .leaflet-popup-content {
   margin: 10px 12px;
 }
-

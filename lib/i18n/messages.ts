@@ -69,7 +69,10 @@ export const MESSAGES: MessageDict = {
     en: 'Share the code with the other players. Game starts when everyone is ready.',
     pt: 'Partilha o código com os outros jogadores. O jogo começa quando todos estiverem prontos.',
   },
-  'lobby.team_west_full': { en: 'Team West (UTAD)', pt: 'Equipa Oeste (UTAD)' },
+  'lobby.team_west_full': {
+    en: 'Team West (Vila Velha)',
+    pt: 'Equipa Oeste (Vila Velha)',
+  },
   'lobby.team_east_full': { en: 'Team East (Biblioteca)', pt: 'Equipa Este (Biblioteca)' },
   'lobby.no_players': { en: 'No players yet.', pt: 'Ainda sem jogadores.' },
   'lobby.team_not_initialised': { en: 'Team not initialised yet…', pt: 'Equipa ainda não inicializada…' },
@@ -83,11 +86,23 @@ export const MESSAGES: MessageDict = {
   'lobby.start_game': { en: 'Start game', pt: 'Começar jogo' },
   'lobby.starting': { en: 'Starting…', pt: 'A começar…' },
   'lobby.need_both_teams': { en: 'Both teams need at least one player.', pt: 'Ambas as equipas precisam de pelo menos um jogador.' },
+  'lobby.need_team_sizes': {
+    en: 'Teams must be equal, with 1–4 players on each side.',
+    pt: 'As equipas têm de ser iguais, com 1–4 jogadores de cada lado.',
+  },
+  'lobby.other_team_full': {
+    en: 'The other team is full (4 players).',
+    pt: 'A outra equipa está cheia (4 jogadores).',
+  },
   'lobby.need_all_ready': { en: 'All players must mark ready.', pt: 'Todos os jogadores têm de marcar pronto.' },
   'lobby.leave': { en: 'Leave game', pt: 'Sair do jogo' },
   'lobby.leaving': { en: 'Leaving…', pt: 'A sair…' },
   'lobby.kick_confirm': { en: 'Remove this player from the game?', pt: 'Remover este jogador do jogo?' },
   'lobby.leave_confirm': { en: 'Leave this game?', pt: 'Sair deste jogo?' },
+  'lobby.kick_title': { en: 'Remove player?', pt: 'Remover jogador?' },
+  'lobby.leave_title': { en: 'Leave game?', pt: 'Sair do jogo?' },
+  'lobby.kick_action': { en: 'Remove', pt: 'Remover' },
+  'lobby.leave_action': { en: 'Leave', pt: 'Sair' },
   'lobby.not_in_game': { en: 'You are not in this game.', pt: 'Não estás neste jogo.' },
   'lobby.join_this_game': { en: 'Join this game', pt: 'Entrar neste jogo' },
 
@@ -108,7 +123,21 @@ export const MESSAGES: MessageDict = {
     pt: 'Selecionados: {real} real (precisas 1) · {decoy} enganos (precisas 2) · {empty} vazios (precisas 2) — {unused} por usar',
   },
   'setup.submit_assignment': { en: 'Submit assignment', pt: 'Submeter escolha' },
-  'setup.role_none': { en: '—', pt: '—' },
+  'setup.role_none': { en: 'Clear', pt: 'Limpar' },
+  'setup.surroundings_title': {
+    en: 'Real-flag surroundings photo',
+    pt: 'Foto dos arredores da bandeira real',
+  },
+  'setup.surroundings_hint': {
+    en: 'Take one photo within 30 m of the real flag without showing the marker. It stays private unless the other team buys Surroundings intel.',
+    pt: 'Tira uma foto a menos de 30 m da bandeira real sem mostrar o marcador. Fica privada, salvo se a outra equipa comprar a intel Arredores.',
+  },
+  'setup.surroundings_add': { en: '📷 Add surroundings photo', pt: '📷 Adicionar foto dos arredores' },
+  'setup.surroundings_ready': { en: '✓ Surroundings photo ready', pt: '✓ Foto dos arredores pronta' },
+  'setup.surroundings_required': {
+    en: 'Add the surroundings photo before submitting.',
+    pt: 'Adiciona a foto dos arredores antes de submeter.',
+  },
 
   // ---------- live: header + tabs ----------
   'live.tab_map': { en: 'Map', pt: 'Mapa' },
@@ -119,6 +148,24 @@ export const MESSAGES: MessageDict = {
   'live.gps_on': { en: 'GPS: ON', pt: 'GPS: LIGADO' },
   'live.gps_off': { en: 'GPS: OFF', pt: 'GPS: DESLIGADO' },
   'live.loading_live': { en: 'Loading live state…', pt: 'A carregar estado do jogo…' },
+
+  // ---------- live settings ----------
+  'settings.open': { en: 'Open settings', pt: 'Abrir definições' },
+  'settings.title': { en: 'Settings', pt: 'Definições' },
+  'settings.preferences': { en: 'Preferences', pt: 'Preferências' },
+  'settings.map': { en: 'Map', pt: 'Mapa' },
+  'settings.language': { en: 'Language', pt: 'Idioma' },
+  'settings.sound': { en: 'Sound', pt: 'Som' },
+  'settings.notifications': { en: 'Notifications', pt: 'Notificações' },
+  'settings.notifications_on': { en: 'Lock-screen notifications are on', pt: 'Notificações no ecrã bloqueado ativas' },
+  'settings.notifications_unavailable': { en: 'Not available on this device', pt: 'Não disponível neste dispositivo' },
+  'settings.gps': { en: 'Location', pt: 'Localização' },
+  'settings.gps_accuracy': { en: 'Accuracy ±{m} m', pt: 'Precisão ±{m} m' },
+  'settings.gps_error': { en: 'GPS error: {error}', pt: 'Erro de GPS: {error}' },
+  'settings.gps_acquiring': { en: 'Acquiring position…', pt: 'A obter posição…' },
+  'settings.intel_filter': { en: 'Intel Filter', pt: 'Filtro de Intel' },
+  'settings.intel_filter_hint': { en: 'Dim locations ruled out by your clues', pt: 'Escurece os locais excluídos pelas tuas pistas' },
+  'settings.intel_filter_unavailable': { en: 'Buy map-based intel to reveal ruled-out areas', pt: 'Compra intel de mapa para revelar áreas excluídas' },
 
   // ---------- map controls ----------
   'map.fit_vila_real': { en: 'Fit Vila Real', pt: 'Centrar Vila Real' },
@@ -156,7 +203,6 @@ export const MESSAGES: MessageDict = {
     pt: 'Caminha até um marco NEUTRO (Sé, Pelourinho, Teatro, Rodoviária) e toca abaixo quando lá chegares.',
   },
   'respawn.button': { en: "I'm at a neutral landmark", pt: 'Estou num marco neutro' },
-  'respawn.checking': { en: 'Checking…', pt: 'A verificar…' },
   'respawn.need_gps': { en: 'Enable GPS to confirm position', pt: 'Ativa o GPS para confirmar a posição' },
   'respawn.too_far': { en: "You're {m} m from the nearest neutral — keep walking.", pt: 'Estás a {m} m do marco neutro mais próximo — continua a andar.' },
 
@@ -187,17 +233,22 @@ export const MESSAGES: MessageDict = {
   'gameover.reason_timeout_points': { en: 'Won on points after 3-hour timeout', pt: 'Vencedor por pontos após 3 horas' },
   'gameover.reason_timeout_tiebreaker': { en: 'Won on tiebreaker after 3-hour timeout', pt: 'Vencedor por desempate após 3 horas' },
   'gameover.reason_timeout_tied': { en: 'Tied — all tiebreakers exhausted', pt: 'Empate — todos os desempates esgotados' },
+  'gameover.reason_timeout_coin_flip': {
+    en: 'Won by coin flip after all tiebreakers were tied',
+    pt: 'Vencedor por lançamento de moeda após todos os desempates',
+  },
   'gameover.you_won': { en: 'Congratulations.', pt: 'Parabéns.' },
   'gameover.you_lost': { en: 'Better luck next round.', pt: 'Para a próxima.' },
   'gameover.row_real_flag': { en: 'Real flag photographed', pt: 'Bandeira fotografada' },
   'gameover.row_challenges': { en: 'Challenges completed', pt: 'Desafios completados' },
   'gameover.row_tags': { en: 'Tags made', pt: 'Apanhas' },
-  'gameover.row_curses': { en: 'Curses cast', pt: 'Maldições lançadas' },
-  'gameover.row_coins': { en: 'Coins remaining', pt: 'Moedas restantes' },
+  'gameover.row_curses': { en: 'Curses cast (stat)', pt: 'Maldições lançadas (estatística)' },
+  'gameover.row_coins': { en: 'Coins (tiebreaker)', pt: 'Moedas (desempate)' },
   'gameover.row_total': { en: 'Total', pt: 'Total' },
   'gameover.winner_badge': { en: 'winner', pt: 'vencedor' },
   'gameover.recent_events': { en: 'Last 20 events', pt: 'Últimos 20 eventos' },
   'gameover.view_timeline': { en: 'View full timeline', pt: 'Ver cronologia completa' },
+  'gameover.no_events': { en: 'No events recorded.', pt: 'Sem eventos registados.' },
 
   // ---------- actions tab: intel ----------
   'intel.panel_title': { en: 'Buy Intel', pt: 'Comprar Intel' },
@@ -211,6 +262,11 @@ export const MESSAGES: MessageDict = {
   'intel.reason_insufficient': { en: 'Need {n} more coins', pt: 'Faltam {n} moedas' },
   'intel.reason_needs_gps': { en: 'Enable GPS to buy', pt: 'Ativa o GPS para comprar' },
   'intel.acquired': { en: 'Intel acquired — see Status tab', pt: 'Intel adquirida — vê o separador Estado' },
+  'intel.panel_hint': {
+    en: 'Each card reveals one clue about the enemy real flag. The 4-card cap applies to the whole game.',
+    pt: 'Cada carta revela uma pista sobre a bandeira verdadeira adversária. O limite de 4 cartas aplica-se ao jogo inteiro.',
+  },
+  'intel.owned': { en: 'Owned', pt: 'Comprada' },
 
   // ---------- actions tab: curses ----------
   'curse.panel_title': { en: 'Cast a Curse', pt: 'Lançar Maldição' },
@@ -233,9 +289,21 @@ export const MESSAGES: MessageDict = {
   'curse.dismiss': { en: 'Dismiss', pt: 'Dispensar' },
   'curse.banner_title': { en: 'Curses on us', pt: 'Maldições em nós' },
   'curse.expired_hint': { en: '(expired — refreshing…)', pt: '(expirada — a atualizar…)' },
+  'curse.rolling': { en: 'Rolling…', pt: 'A lançar…' },
+  'curse.duration': { en: 'Duration: {n} min', pt: 'Duração: {n} min' },
+  'curse.ledger_coin_drain': { en: 'Enemy team lost {amount} coins (now {balance}).', pt: 'A equipa adversária perdeu {amount} moedas (tem agora {balance}).' },
+  'curse.ledger_intel_loss': { en: 'Enemy team lost an intel card ({name}).', pt: 'A equipa adversária perdeu uma carta de intel ({name}).' },
+  'curse.ledger_no_intel': { en: 'Enemy team had no intel cards to lose.', pt: 'A equipa adversária não tinha cartas de intel para perder.' },
+  'curse.ledger_full_stop': { en: 'Enemy team is locked out of app actions for the duration.', pt: 'As ações da app da equipa adversária ficam bloqueadas durante a maldição.' },
+  'curse.ledger_check_in': { en: 'Affected players acknowledge in-app prompts every 2 minutes; misses are logged.', pt: 'Os jogadores afetados confirmam avisos da app a cada 2 minutos; as falhas ficam registadas.' },
 
   // ---------- actions tab: challenges ----------
   'challenge.panel_title': { en: 'Challenges', pt: 'Desafios' },
+  'challenge.active_count': { en: '{n} active', pt: '{n} ativos' },
+  'challenge.panel_hint': {
+    en: 'Earn coins by completing location-based tasks. Photo tasks are verified by the other team.',
+    pt: 'Ganha moedas ao completar tarefas em locais específicos. A outra equipa verifica as tarefas com foto.',
+  },
   'challenge.reward': { en: '+{n} coins', pt: '+{n} moedas' },
   'challenge.available_anywhere': { en: 'Available anywhere', pt: 'Disponível em qualquer lugar' },
   'challenge.distance': { en: '~{m} m away', pt: 'a ~{m} m' },
@@ -245,11 +313,22 @@ export const MESSAGES: MessageDict = {
   'challenge.reason_not_live': { en: 'Available during live game', pt: 'Disponível durante o jogo' },
   'challenge.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
   'challenge.reason_no_gps': { en: 'Enable GPS', pt: 'Ativa o GPS' },
-  'challenge.reason_too_far': { en: 'Get closer (currently {m} m)', pt: 'Aproxima-te (atualmente a {m} m)' },
+  'challenge.reason_too_far': { en: 'Get closer (currently {m})', pt: 'Aproxima-te (atualmente a {m})' },
   'challenge.toast_reward': { en: '+{n} coins', pt: '+{n} moedas' },
   'challenge.toast_first_blood': { en: ' (+30 first blood!)', pt: ' (+30 primeiro sangue!)' },
   'challenge.history_title': { en: 'Challenge history', pt: 'Histórico de desafios' },
   'challenge.history_empty': { en: 'No challenges completed yet.', pt: 'Nenhum desafio completado ainda.' },
+  'challenge.loading': { en: 'Loading challenges…', pt: 'A carregar desafios…' },
+  'challenge.none_active': { en: 'No active challenges right now.', pt: 'Não há desafios ativos neste momento.' },
+  'challenge.submission_required': { en: 'A submission is required for this challenge.', pt: 'Este desafio exige uma resposta.' },
+  'challenge.answer_windows': { en: 'How many windows? (number)', pt: 'Quantas janelas? (número)' },
+  'challenge.answer_rivers': { en: 'Name the two rivers', pt: 'Indica os dois rios' },
+  'challenge.answer_latin': { en: 'Latin name from the placard', pt: 'Nome em latim indicado na placa' },
+  'challenge.answer_quote': { en: 'Paste the quote from the local', pt: 'Copia a frase do local' },
+  'challenge.answer': { en: 'Challenge answer', pt: 'Resposta ao desafio' },
+  'challenge.gps_off': { en: 'GPS off', pt: 'GPS desligado' },
+  'challenge.away': { en: '{distance} away', pt: 'a {distance}' },
+  'challenge.photo_verified': { en: '📷 verified', pt: '📷 verificado' },
 
   // ---------- status tab ----------
   'status.coins': { en: 'Team coins', pt: 'Moedas da equipa' },
@@ -262,11 +341,49 @@ export const MESSAGES: MessageDict = {
   'status.timeline': { en: 'Event timeline', pt: 'Cronologia de eventos' },
   'status.timeline_empty': { en: 'No events yet.', pt: 'Sem eventos ainda.' },
   'status.harden_button': { en: 'Harden flag (150 coins)', pt: 'Reforçar bandeira (150 moedas)' },
+  'status.harden_action': { en: 'Harden flag · {cost} coins', pt: 'Reforçar bandeira · {cost} moedas' },
   'status.harden_confirm': {
     en: 'Spend 150 coins to harden your real flag? You can only do this once.',
     pt: 'Gastar 150 moedas para reforçar a bandeira real? Só podes fazer isto uma vez.',
   },
   'status.hardening': { en: 'Hardening…', pt: 'A reforçar…' },
+  'status.team_balance': { en: 'Team {side} balance', pt: 'Saldo da Equipa {side}' },
+  'status.none': { en: 'None.', pt: 'Nenhuma.' },
+  'status.timeline_short': { en: 'Timeline', pt: 'Cronologia' },
+  'status.event_by': { en: 'by {actor}', pt: 'por {actor}' },
+  'status.someone': { en: 'someone', pt: 'alguém' },
+  'status.system': { en: 'system', pt: 'sistema' },
+  'status.harden_title': { en: 'Harden your flag', pt: 'Reforça a tua bandeira' },
+  'status.harden_hint': {
+    en: 'Spend {cost} coins to upgrade your real flag challenge to a harder variant. Once per game.',
+    pt: 'Gasta {cost} moedas para tornar o desafio da bandeira verdadeira mais difícil. Uma vez por jogo.',
+  },
+  'status.hardened': { en: 'Already hardened', pt: 'Já reforçada' },
+  'status.harden_success': { en: 'Flag challenge hardened.', pt: 'Desafio da bandeira reforçado.' },
+  'status.harden_no_flag': { en: 'No real flag assigned yet', pt: 'Ainda não há bandeira verdadeira atribuída' },
+  'status.harden_unavailable': { en: 'Not available right now', pt: 'Não disponível neste momento' },
+  'status.harden_cost': { en: 'Costs {cost} coins — you have {coins}', pt: 'Custa {cost} moedas — tens {coins}' },
+  'status.curse_received': { en: 'Curse received: {name}', pt: 'Maldição recebida: {name}' },
+  'status.curse_expired': { en: 'Curse expired: {name}', pt: 'Maldição terminada: {name}' },
+  'status.coin_drain': { en: 'Coin drain: -{n} coins', pt: 'Dreno de moedas: -{n} moedas' },
+  'status.coin_drain_applied': { en: 'Coin drain applied', pt: 'Dreno de moedas aplicado' },
+  'status.intel_lost': { en: 'Intel lost: {name}', pt: 'Intel perdida: {name}' },
+  'status.intel_lost_generic': { en: 'Intel lost', pt: 'Intel perdida' },
+  'status.proof_submitted': { en: 'Proof submitted: {name}{index}', pt: 'Prova submetida: {name}{index}' },
+  'status.first_blood': { en: 'first blood', pt: 'primeiro sangue' },
+  'status.intel_cards_title': { en: 'My intel cards', pt: 'As minhas cartas de intel' },
+  'status.intel_cards_empty': { en: 'No intel purchased yet. Buy intel from the Actions tab.', pt: 'Ainda não compraste intel. Compra-a no separador Ações.' },
+  'status.real_flag_north_south': { en: 'Real flag is to the {direction} of the city centre.', pt: 'A bandeira verdadeira fica a {direction} do centro da cidade.' },
+  'status.real_flag_east_west': { en: 'Real flag is to the {direction} of the enemy home base.', pt: 'A bandeira verdadeira fica a {direction} da base adversária.' },
+  'status.not_real': { en: '{name} is NOT the real flag.', pt: '{name} NÃO tem a bandeira verdadeira.' },
+  'status.not_real_two': { en: '{first} and {second} are NOT the real flag.', pt: '{first} e {second} NÃO têm a bandeira verdadeira.' },
+  'status.is_decoy': { en: '{name} is a decoy.', pt: '{name} é um engano.' },
+  'status.hot_cold_bought': { en: 'Real flag distance when bought: {bucket}', pt: 'Distância à bandeira quando compraste: {bucket}' },
+  'status.enable_gps_live': { en: ' · enable GPS for a live reading', pt: ' · ativa o GPS para uma leitura em direto' },
+  'status.surroundings': { en: 'Surroundings near the real flag:', pt: 'Arredores da bandeira verdadeira:' },
+  'status.surroundings_alt': { en: 'Surroundings near the enemy real flag', pt: 'Arredores da bandeira verdadeira adversária' },
+  'status.bearing': { en: 'Bearing from city centre: {bearing}', pt: 'Direção a partir do centro da cidade: {bearing}' },
+  'status.unknown_intel': { en: '(unknown intel)', pt: '(intel desconhecida)' },
 
   // ---------- curse enforcement (banner + prompts) ----------
   // (reuses existing curse.banner_title / curse.expired_hint above)
@@ -275,12 +392,45 @@ export const MESSAGES: MessageDict = {
     en: 'Actions locked — Full Stop in effect',
     pt: 'Ações bloqueadas — Paragem Total em vigor',
   },
+  'curse.pilgrimage_locked': {
+    en: 'Actions locked — complete the Pilgrimage first',
+    pt: 'Ações bloqueadas — completa primeiro a Peregrinação',
+  },
+  'curse.readout_nearest_pair': {
+    en: 'Nearest teammates {m} m apart',
+    pt: 'Colegas mais próximos a {m} m',
+  },
+  'curse.readout_pilgrimage': {
+    en: 'Pilgrimage: {name} · {m} m away',
+    pt: 'Peregrinação: {name} · a {m} m',
+  },
+  'curse.prompt.mute': {
+    en: 'Still muted? Communicate only through in-app chat.',
+    pt: 'Ainda em silêncio? Comunica apenas pelo chat da app.',
+  },
+  'curse.prompt.backwards': {
+    en: 'Keep walking backwards; a teammate may guide you.',
+    pt: 'Continua a andar de costas; um colega pode guiar-te.',
+  },
+  'curse.prompt.detour': {
+    en: 'Detour active — stay off {name}.',
+    pt: 'Desvio ativo — evita {name}.',
+  },
+  'curse.detour_unknown_street': {
+    en: 'the banned street',
+    pt: 'a rua proibida',
+  },
+  'curse.readout_detour': {
+    en: '{name}: {m} m away',
+    pt: '{name}: a {m} m',
+  },
   'curse.checkin_prompt': { en: 'Check in now', pt: 'Faz check-in já' },
   'curse.checkin_ack': { en: '✓ Checked in', pt: '✓ Check-in feito' },
   // Live readouts for [A] movement curses — informational, no auto-penalty.
   'curse.readout_speed': { en: 'Speed {kmh} km/h', pt: 'Velocidade {kmh} km/h' },
   'curse.readout_drift': { en: 'Drift {m} m from start', pt: 'Desvio {m} m do início' },
   'curse.readout_spread': { en: 'Team spread {m} m', pt: 'Dispersão da equipa {m} m' },
+  'curse.readout_quarantine': { en: 'Quarantine spread {m} m', pt: 'Dispersão na quarentena {m} m' },
   // Timed prompt labels for [B] photo curses.
   'curse.prompt_window': { en: '{label} · {s}s', pt: '{label} · {s}s' },
   'curse.prompt.single-file': {
@@ -295,6 +445,22 @@ export const MESSAGES: MessageDict = {
   'curse.prompt.pose-patrol': {
     en: 'Strike the pose, then photograph',
     pt: 'Faz a pose e fotografa',
+  },
+  'curse.proof_add': { en: '📷 Add proof photo', pt: '📷 Adicionar foto de prova' },
+  'curse.proof_ready': { en: '✓ Photo ready', pt: '✓ Foto pronta' },
+  'curse.proof_submit': { en: 'Submit proof', pt: 'Submeter prova' },
+  'curse.proof_submitting': { en: 'Submitting…', pt: 'A submeter…' },
+  'curse.proof_required': {
+    en: 'A real photo is required before this window closes.',
+    pt: 'É necessária uma foto real antes de esta janela fechar.',
+  },
+  'curse.proof_submitted': {
+    en: '✓ Proof photo submitted',
+    pt: '✓ Foto de prova submetida',
+  },
+  'curse.proof_error': {
+    en: 'Could not submit proof ({error}).',
+    pt: 'Não foi possível submeter a prova ({error}).',
   },
 
   // ---------- flag attempt window / lockout (P2-1 / P2-3 / P2-4) ----------
@@ -360,6 +526,22 @@ export const MESSAGES: MessageDict = {
     en: 'You walked into a trap — a curse hit your team!',
     pt: 'Caíste numa armadilha — uma maldição atingiu a tua equipa!',
   },
+  'push.enable': {
+    en: 'Enable lock-screen notifications',
+    pt: 'Ativar notificações no ecrã bloqueado',
+  },
+  'push.enabling': {
+    en: 'Enabling notifications…',
+    pt: 'A ativar notificações…',
+  },
+  'push.denied': {
+    en: 'Notifications are blocked in browser settings.',
+    pt: 'As notificações estão bloqueadas nas definições do navegador.',
+  },
+  'push.error': {
+    en: 'Notifications could not be enabled. Try again.',
+    pt: 'Não foi possível ativar as notificações. Tenta novamente.',
+  },
 
   // Big-moment popups (animated). Capture / tag / trap. Player gametags are
   // woven in so 2+ player teams know who did what.
@@ -410,14 +592,10 @@ export const MESSAGES: MessageDict = {
     pt: '⚠️ Portador a {home} m de ganhar — intercetem-no!',
   },
 
-  // Time bonus / power hour.
-  'powerhour.next': {
+  // Time bonus.
+  'timebonus.next': {
     en: '⏱️ +{amount} coins in {time}',
     pt: '⏱️ +{amount} moedas em {time}',
-  },
-  'powerhour.next_power': {
-    en: '⚡ Power Hour! +{amount} coins in {time}',
-    pt: '⚡ Hora de Poder! +{amount} moedas em {time}',
   },
 
   // Post-game recap.
@@ -487,6 +665,76 @@ export const MESSAGES: MessageDict = {
   'chat.connecting': { en: 'Connecting…', pt: 'A ligar…' },
   'chat.unread': { en: '{n} new', pt: '{n} novas' },
 
+  // ---------- two-team weather pause ----------
+  'weather.title': { en: 'Weather pause', pt: 'Pausa meteorológica' },
+  'weather.two_team_hint': {
+    en: 'Either team can request it; the other team must confirm within 5 minutes.',
+    pt: 'Qualquer equipa pode pedir; a outra tem de confirmar em 5 minutos.',
+  },
+  'weather.paused_title': { en: 'Weather pause — Paused', pt: 'Pausa meteorológica — Em pausa' },
+  'weather.paused_body': {
+    en: 'Gameplay, the match clock, and curse timers are frozen.',
+    pt: 'As ações, o relógio do jogo e os temporizadores das maldições estão parados.',
+  },
+  'weather.request_pause': { en: 'Request weather pause', pt: 'Pedir pausa' },
+  'weather.confirm_pause': { en: 'Confirm weather pause', pt: 'Confirmar pausa' },
+  'weather.pause_requested': { en: 'Pause requested', pt: 'Pausa pedida' },
+  'weather.request_resume': { en: 'Request resume', pt: 'Pedir retoma' },
+  'weather.confirm_resume': { en: 'Confirm resume', pt: 'Confirmar retoma' },
+  'weather.resume_requested': { en: 'Resume requested', pt: 'Retoma pedida' },
+  'weather.waiting_other': {
+    en: 'Waiting for the other team to confirm.',
+    pt: 'À espera que a outra equipa confirme.',
+  },
+  'weather.other_requested': {
+    en: 'The other team requested this.',
+    pt: 'A outra equipa fez este pedido.',
+  },
+  'weather.expires_in': { en: 'Expires in {time}.', pt: 'Expira em {time}.' },
+  'weather.saving': { en: 'Submitting…', pt: 'A enviar…' },
+  'weather.actions_locked': {
+    en: 'Game paused for weather — all gameplay actions are locked.',
+    pt: 'Jogo em pausa devido ao tempo — todas as ações estão bloqueadas.',
+  },
+
+  // ---------- two-stage respawn ----------
+  'respawn.tagged': { en: 'You were tagged.', pt: 'Foste apanhado.' },
+  'respawn.gameplay_locked': {
+    en: 'Respawn required — reach and leave your assigned neutral before using game actions.',
+    pt: 'Respawn obrigatório — chega ao ponto neutro atribuído e afasta-te antes de usar ações do jogo.',
+  },
+  'respawn.assigned_neutral': {
+    en: 'the assigned neutral landmark',
+    pt: 'o ponto neutro atribuído',
+  },
+  'respawn.target_hint': {
+    en: 'Your required respawn point is {target}. Go there, then confirm your arrival.',
+    pt: 'O teu ponto de respawn obrigatório é {target}. Vai até lá e confirma a chegada.',
+  },
+  'respawn.arrived_hint': {
+    en: 'Arrival confirmed at {target}. Walk at least 45 m away, then confirm to rejoin.',
+    pt: 'Chegada confirmada em {target}. Afasta-te pelo menos 45 m e confirma para voltares ao jogo.',
+  },
+  'respawn.checking': { en: 'Checking…', pt: 'A verificar…' },
+  'respawn.reached_target': { en: "I've reached {target}", pt: 'Cheguei a {target}' },
+  'respawn.left_target': { en: "I've left {target}", pt: 'Afastei-me de {target}' },
+  'respawn.enable_gps': {
+    en: 'Enable GPS to confirm position.',
+    pt: 'Ativa o GPS para confirmar a posição.',
+  },
+  'respawn.wrong_target': {
+    en: 'Wrong neutral — go to {target} ({distance} m away).',
+    pt: 'Ponto neutro errado — vai até {target} (a {distance} m).',
+  },
+  'respawn.go_to_target': {
+    en: 'Go to {target} ({distance} m away).',
+    pt: 'Vai até {target} (a {distance} m).',
+  },
+  'respawn.must_leave': {
+    en: 'Arrival confirmed. Walk at least {distance} m away from {target} to rejoin.',
+    pt: 'Chegada confirmada. Afasta-te pelo menos {distance} m de {target} para voltares ao jogo.',
+  },
+
   // ---------- challenge peer-verification (D14) ----------
   'challenge.photo_add': { en: '📷 Add photo', pt: '📷 Adicionar foto' },
   'challenge.photo_change': { en: '✓ Photo ready', pt: '✓ Foto pronta' },
@@ -495,8 +743,8 @@ export const MESSAGES: MessageDict = {
     pt: 'Precisa de foto que a outra equipa vai verificar.',
   },
   'challenge.pending_review': {
-    en: 'Waiting for the other team to verify…',
-    pt: 'À espera que a outra equipa verifique…',
+    en: 'Waiting for the other team — auto-accepts after 120 seconds unless rejected.',
+    pt: 'À espera da outra equipa — aceite automaticamente após 120 segundos se não for rejeitado.',
   },
   'challenge.rejected_resubmit': {
     en: 'Rejected — submit a new photo.',
@@ -533,12 +781,40 @@ export const MESSAGES: MessageDict = {
   },
 
   // ---------- setup: map-first flag selection (A2/A3/A4) ----------
+  'setup.intro': {
+    en: 'Team {side}: meet at {home}, then choose five candidate landmarks.',
+    pt: 'Equipa {side}: reúne-te em {home} e escolhe cinco locais candidatos.',
+  },
+  'setup.step_choose': { en: 'Step 1', pt: 'Passo 1' },
+  'setup.choose_title': {
+    en: 'Choose and assign landmarks',
+    pt: 'Escolhe e atribui os locais',
+  },
+  'setup.assignment_rule': {
+    en: 'Assign exactly 1 real flag, 2 decoys, and 2 empty locations.',
+    pt: 'Atribui exatamente 1 bandeira verdadeira, 2 enganos e 2 locais vazios.',
+  },
   'setup.tab_map': { en: 'Map', pt: 'Mapa' },
   'setup.tab_list': { en: 'List', pt: 'Lista' },
   'setup.map_hint': {
-    en: 'Tap a point to cycle its role: real → decoy → empty → none.',
-    pt: 'Toca num ponto para mudar o papel: real → engano → vazio → nenhum.',
+    en: 'Only your team pool is shown. Tap a numbered marker, then choose its role below.',
+    pt: 'Só aparecem os locais da tua equipa. Toca num marcador numerado e escolhe a função abaixo.',
   },
+  'setup.your_pool': { en: 'Your candidate pool', pt: 'Os teus locais candidatos' },
+  'setup.selected_landmark': { en: 'Selected landmark', pt: 'Local selecionado' },
+  'setup.select_landmark': {
+    en: 'Tap a numbered marker to select a landmark.',
+    pt: 'Toca num marcador numerado para selecionar um local.',
+  },
+  'setup.home_base': { en: 'Home base', pt: 'Base' },
+  'setup.choose_role': {
+    en: 'Choose this landmark’s role:',
+    pt: 'Escolhe a função deste local:',
+  },
+  'setup.unassigned': { en: 'Unassigned', pt: 'Sem função' },
+  'setup.progress': { en: '{count} of 5 assigned', pt: '{count} de 5 atribuídos' },
+  'setup.selection_complete': { en: 'Ready', pt: 'Pronto' },
+  'setup.step_photo': { en: 'Step 2', pt: 'Passo 2' },
 }
 
 export type MessageKey = keyof typeof MESSAGES

@@ -16,6 +16,7 @@ const roleEnum = z.enum(['real', 'decoy', 'empty']) satisfies z.ZodType<FlagRole
 
 const FlagSetupBody = z.object({
   device_id: z.string().min(1).max(128),
+  surroundings_photo_path: z.string().min(1).max(1024),
   assignments: z
     .array(
       z.object({
@@ -33,6 +34,8 @@ const ROLE_TO_KIND: Record<FlagRole, LandmarkKind> = {
 }
 
 const FLAG_KINDS: LandmarkKind[] = ['flag_real', 'flag_decoy', 'flag_empty']
+const SURROUNDINGS_BUCKET = 'surroundings-photos'
+const MAX_SURROUNDINGS_PHOTO_BYTES = 10 * 1024 * 1024
 
 export async function POST(
   request: Request,
@@ -58,7 +61,7 @@ export async function POST(
     )
   }
 
-  const { device_id, assignments } = parsed.data
+  const { device_id, assignments, surroundings_photo_path } = parsed.data
 
   const supabase = createAdminClient()
 
@@ -130,6 +133,61 @@ export async function POST(
     return NextResponse.json(
       { error: 'team_side_missing' },
       { status: 500 },
+    )
+  }
+
+  // The private object must belong to this exact game/team prefix. Validate
+  // storage metadata server-side; a path alone is not proof that an image was
+  // uploaded, and setup must not persist arbitrary/empty/oversized files.
+  const expectedPrefix = `${game.id}/${callerTeam.id}/`
+  if (
+    !surroundings_photo_path.startsWith(expectedPrefix) ||
+    surroundings_photo_path.includes('..') ||
+    surroundings_photo_path.includes('//')
+  ) {
+    return NextResponse.json(
+      { error: 'invalid_surroundings_photo_path' },
+      { status: 400 },
+    )
+  }
+  const relative = surroundings_photo_path.slice(expectedPrefix.length)
+  if (!relative || relative.includes('/')) {
+    return NextResponse.json(
+      { error: 'invalid_surroundings_photo_path' },
+      { status: 400 },
+    )
+  }
+  const { data: storedObjects, error: objectLookupError } = await supabase.storage
+    .from(SURROUNDINGS_BUCKET)
+    .list(`${game.id}/${callerTeam.id}`, {
+      limit: 10,
+      search: relative,
+    })
+  if (objectLookupError) {
+    return NextResponse.json(
+      { error: 'surroundings_photo_lookup_failed', details: objectLookupError.message },
+      { status: 500 },
+    )
+  }
+  const storedObject = (storedObjects ?? []).find((object) => object.name === relative)
+  const metadata = storedObject?.metadata as
+    | { mimetype?: unknown; size?: unknown }
+    | undefined
+  const mimetype = typeof metadata?.mimetype === 'string' ? metadata.mimetype : ''
+  const size = typeof metadata?.size === 'number' ? metadata.size : Number(metadata?.size)
+  if (
+    !storedObject ||
+    !mimetype.startsWith('image/') ||
+    !Number.isFinite(size) ||
+    size <= 0 ||
+    size > MAX_SURROUNDINGS_PHOTO_BYTES
+  ) {
+    return NextResponse.json(
+      {
+        error: 'invalid_surroundings_photo',
+        details: { max_bytes: MAX_SURROUNDINGS_PHOTO_BYTES },
+      },
+      { status: 400 },
     )
   }
 
@@ -217,102 +275,72 @@ export async function POST(
     }
   })
 
-  const { data: insertedRows, error: insertError } = await supabase
-    .from('landmarks')
-    .insert(rowsToInsert)
-    .select()
-
-  if (insertError || !insertedRows) {
+  // Persist the five hidden landmarks, the private surroundings reference,
+  // flags_assigned, and (when this is the second team) setup -> live plus
+  // game_live in one transaction. The game-row lock also makes same-team
+  // duplicate submissions deterministic.
+  const { data: setupData, error: setupError } = await supabase.rpc(
+    'submit_flag_setup_atomic',
+    {
+      p_game_id: game.id,
+      p_team_id: callerTeam.id,
+      p_actor_player_id: caller.id,
+      p_object_path: surroundings_photo_path,
+      p_rows: rowsToInsert.map(({ ref, lat, lng, kind }) => ({
+        ref,
+        lat,
+        lng,
+        kind,
+      })),
+    },
+  )
+  if (setupError) {
+    const { data: referenced } = await supabase
+      .from('flag_surroundings')
+      .select('id')
+      .eq('object_path', surroundings_photo_path)
+      .limit(1)
+    if ((referenced ?? []).length === 0) {
+      await supabase.storage
+        .from(SURROUNDINGS_BUCKET)
+        .remove([surroundings_photo_path])
+    }
     return NextResponse.json(
-      { error: 'landmark_insert_failed', details: insertError?.message },
+      { error: 'flag_setup_failed', details: setupError.message },
       { status: 500 },
     )
   }
-  const myLandmarks = insertedRows as Landmark[]
-
-  // Append flags_assigned event. Do NOT leak the assignments in the payload.
-  const { error: eventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'flags_assigned',
-    actor_player_id: caller.id,
-    payload: { team_id: callerTeam.id },
-  })
-  if (eventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: eventError.message },
-      { status: 500 },
-    )
+  const setup = setupData as {
+    error?: string
+    game?: Game
+    both_teams_done?: boolean
+  } | null
+  if (!setup?.game || setup.error) {
+    const error = setup?.error ?? 'flag_setup_failed'
+    const status = error === 'already_submitted' || error === 'game_not_in_setup'
+      ? 409
+      : error === 'forbidden' ? 403
+      : error === 'not_found' ? 404
+      : error === 'invalid_assignments' ? 400
+      : 500
+    return NextResponse.json({ error }, { status })
   }
 
-  // Compute whether both teams are now done by counting landmarks per team.
-  const { data: doneRows, error: doneError } = await supabase
+  const { data: myLandmarkRows, error: myLandmarksError } = await supabase
     .from('landmarks')
-    .select('team_id')
+    .select('*')
     .eq('game_id', game.id)
+    .eq('team_id', callerTeam.id)
     .in('kind', FLAG_KINDS)
-
-  if (doneError) {
+  if (myLandmarksError) {
     return NextResponse.json(
-      { error: 'landmark_lookup_failed', details: doneError.message },
+      { error: 'landmark_lookup_failed', details: myLandmarksError.message },
       { status: 500 },
     )
   }
-  const counts = new Map<string, number>()
-  for (const r of (doneRows ?? []) as Array<{ team_id: string | null }>) {
-    if (!r.team_id) continue
-    counts.set(r.team_id, (counts.get(r.team_id) ?? 0) + 1)
-  }
-  const both_teams_done =
-    teams.length === 2 && teams.every((t) => (counts.get(t.id) ?? 0) >= 5)
-
-  let finalGame: Game = game
-  if (both_teams_done) {
-    const startedAt = new Date().toISOString()
-    const { data: updatedGameRow, error: updateError } = await supabase
-      .from('games')
-      .update({ status: 'live', started_at: startedAt })
-      .eq('id', game.id)
-      .eq('status', 'setup') // optimistic guard
-      .select()
-      .maybeSingle()
-
-    if (updateError) {
-      return NextResponse.json(
-        { error: 'game_update_failed', details: updateError.message },
-        { status: 500 },
-      )
-    }
-    if (updatedGameRow) {
-      finalGame = updatedGameRow as Game
-      // Append game_live event (only when we actually transitioned).
-      const { error: liveEventError } = await supabase.from('events').insert({
-        game_id: finalGame.id,
-        type: 'game_live',
-        actor_player_id: caller.id,
-        payload: {},
-      })
-      if (liveEventError) {
-        return NextResponse.json(
-          { error: 'event_insert_failed', details: liveEventError.message },
-          { status: 500 },
-        )
-      }
-    } else {
-      // Lost the race (already transitioned): re-fetch the current row.
-      const { data: refetched, error: refetchError } = await supabase
-        .from('games')
-        .select('*')
-        .eq('id', game.id)
-        .maybeSingle()
-      if (refetchError || !refetched) {
-        return NextResponse.json(
-          { error: 'game_lookup_failed', details: refetchError?.message },
-          { status: 500 },
-        )
-      }
-      finalGame = refetched as Game
-    }
-  }
+  const myLandmarks = (myLandmarkRows ?? []) as Landmark[]
+  const both_teams_done = setup.both_teams_done === true
+  const finalGame = setup.game
 
   const response: FlagSetupResponse = {
     game: finalGame,

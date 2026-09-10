@@ -1,6 +1,6 @@
 'use client'
 
-// IntelPurchasePanel (rulebook §11) — lists all 9 intel cards and lets the
+// IntelPurchasePanel (rulebook §11) — lists all 8 intel cards and lets the
 // player's team buy one. Lives in the Actions tab.
 //
 // Rules enforced in the UI (server is authoritative for everything):
@@ -18,7 +18,8 @@ import intelSeed from '@/data/intel.json'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
-import { useT } from '@/lib/i18n/context'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import { ConfirmSpendModal } from '@/components/game/ConfirmSpendModal'
 import type {
   BuyIntelRequest,
@@ -48,6 +49,7 @@ interface IntelPurchasePanelProps {
   myIntelCards: Card[]
   myGps: GpsPosition | null
   actionsLocked?: boolean
+  onPurchased?: (purchase: BuyIntelResponse) => void
 }
 
 export function IntelPurchasePanel({
@@ -58,8 +60,9 @@ export function IntelPurchasePanel({
   myIntelCards,
   myGps,
   actionsLocked = false,
+  onPurchased,
 }: IntelPurchasePanelProps) {
-  const t = useT()
+  const { t, locale } = useI18n()
   const [busyRef, setBusyRef] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -89,8 +92,12 @@ export function IntelPurchasePanel({
       body.player_pos = myGps
     }
     try {
-      await apiPost<BuyIntelResponse>(`/api/games/${gameId}/buy-intel`, body)
-      setSuccess(`${intel.name} acquired — see Status tab.`)
+      const purchase = await apiPost<BuyIntelResponse>(`/api/games/${gameId}/buy-intel`, body)
+      // Apply the authoritative response immediately. Realtime still keeps
+      // team-mates in sync, but the buyer's map must not depend on a websocket
+      // event arriving after the purchase request has already succeeded.
+      onPurchased?.(purchase)
+      setSuccess(t('intel.acquired'))
       setPending(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
@@ -102,15 +109,12 @@ export function IntelPurchasePanel({
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium text-neutral-100">Buy intel</h2>
+        <h2 className="text-sm font-medium text-neutral-100">{t('intel.panel_title')}</h2>
         <p className="text-[11px] text-neutral-500">
-          {intelCount}/{INTEL_CAP} cards used
+          {t('intel.cap', { used: intelCount, cap: INTEL_CAP })}
         </p>
       </div>
-      <p className="mt-1 text-xs text-neutral-400">
-        Each card reveals one clue about the enemy real flag. The 4-card cap is
-        for the whole game.
-      </p>
+      <p className="mt-1 text-xs text-neutral-400">{t('intel.panel_hint')}</p>
 
       <ul className="mt-3 flex flex-col gap-2">
         {INTEL_CATALOG.map((intel) => (
@@ -125,6 +129,7 @@ export function IntelPurchasePanel({
             busy={busyRef === intel.id}
             anyBusy={busyRef !== null}
             lockedLabel={lockedLabel}
+            locale={locale}
             onBuy={(i) => {
               setError(null)
               setPending(i)
@@ -146,7 +151,7 @@ export function IntelPurchasePanel({
 
       <ConfirmSpendModal
         open={pending !== null}
-        itemName={pending?.name ?? ''}
+        itemName={pending ? localizeCatalogField(pending.id, 'name', pending.name, locale) : ''}
         cost={pending?.cost_coins ?? 0}
         balance={teamCoins}
         busy={busyRef !== null}
@@ -173,6 +178,7 @@ function IntelRow({
   busy,
   anyBusy,
   lockedLabel,
+  locale,
   onBuy,
 }: {
   intel: IntelSeed
@@ -184,8 +190,10 @@ function IntelRow({
   busy: boolean
   anyBusy: boolean
   lockedLabel: string | null
+  locale: import('@/lib/i18n/messages').Locale
   onBuy: (intel: IntelSeed) => void
 }) {
+  const { t } = useI18n()
   const needsGps = intel.id === HOT_COLD_REF && !myGps
   const insufficient = teamCoins < intel.cost_coins
   const coinShortfall = Math.max(0, intel.cost_coins - teamCoins)
@@ -194,15 +202,15 @@ function IntelRow({
   const disabledReason: string | null = lockedLabel
     ? lockedLabel
     : gameNotLive
-    ? 'Available during live game'
+    ? t('intel.reason_not_live')
     : owned
-      ? 'Already purchased'
+      ? t('intel.reason_already_purchased')
       : capReached
-        ? `Intel cap reached (${INTEL_CAP})`
+        ? t('intel.reason_cap_reached')
         : insufficient
-          ? `Need ${coinShortfall} more coins`
+          ? t('intel.reason_insufficient', { n: coinShortfall })
           : needsGps
-            ? 'Enable GPS to buy'
+            ? t('intel.reason_needs_gps')
             : null
 
   const disabled = busy || anyBusy || disabledReason !== null
@@ -213,14 +221,14 @@ function IntelRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <p className="truncate text-sm font-medium text-neutral-100">
-              {intel.name}
+              {localizeCatalogField(intel.id, 'name', intel.name, locale)}
             </p>
             <p className="shrink-0 text-xs font-semibold text-amber-300 tabular-nums">
-              {intel.cost_coins} coins
+              {intel.cost_coins} {t('common.coins')}
             </p>
           </div>
           <p className="mt-0.5 text-[11px] leading-snug text-neutral-400">
-            {intel.reveals}
+            {localizeCatalogField(intel.id, 'reveals', intel.reveals, locale)}
           </p>
         </div>
       </div>
@@ -244,7 +252,7 @@ function IntelRow({
               : 'bg-amber-500 text-neutral-950 hover:bg-amber-400',
           )}
         >
-          {busy ? 'Buying…' : owned ? 'Owned' : 'Buy'}
+          {busy ? t('intel.buying') : owned ? t('intel.owned') : t('intel.buy')}
         </button>
       </div>
     </li>

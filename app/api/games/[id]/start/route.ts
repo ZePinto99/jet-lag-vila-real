@@ -95,64 +95,47 @@ export async function POST(
   // Recompute all_ready server-side.
   const totalPlayers = allPlayers.length
   const everyReady = totalPlayers > 0 && allPlayers.every((p) => p.ready)
-  const everyTeamHasPlayer = teams.every((t) =>
-    allPlayers.some((p) => p.team_id === t.id),
+  const teamCounts = teams.map(
+    (team) => allPlayers.filter((player) => player.team_id === team.id).length,
   )
-  const all_ready = everyReady && everyTeamHasPlayer && totalPlayers >= 2
+  const validRoster =
+    teams.length === 2 &&
+    teamCounts.every((count) => count >= 1 && count <= 4) &&
+    teamCounts[0] === teamCounts[1]
+  const all_ready = everyReady && validRoster
 
   if (!all_ready) {
-    return NextResponse.json({ error: 'not_all_ready' }, { status: 409 })
-  }
-
-  // Transition lobby -> setup. We do NOT set started_at here; the 3-hour
-  // game timer begins when both teams complete flag setup and we transition
-  // setup -> live (handled by the flag-setup route).
-  const { data: updatedGameRow, error: updateError } = await supabase
-    .from('games')
-    .update({ status: 'setup' })
-    .eq('id', game.id)
-    .eq('status', 'lobby') // optimistic guard: only transition from lobby
-    .select()
-    .maybeSingle()
-
-  if (updateError) {
     return NextResponse.json(
-      { error: 'game_update_failed', details: updateError.message },
-      { status: 500 },
-    )
-  }
-  if (!updatedGameRow) {
-    // Lost the race: someone else transitioned the game. Re-fetch and return.
-    const { data: refetched, error: refetchError } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', game.id)
-      .maybeSingle()
-    if (refetchError || !refetched) {
-      return NextResponse.json(
-        { error: 'game_update_failed' },
-        { status: 500 },
-      )
-    }
-    const response: StartGameResponse = { game: refetched as Game }
-    return NextResponse.json(response)
-  }
-  const updatedGame = updatedGameRow as Game
-
-  // Emit game_started event.
-  const { error: eventError } = await supabase.from('events').insert({
-    game_id: updatedGame.id,
-    type: 'game_started',
-    actor_player_id: caller.id,
-    payload: {},
-  })
-  if (eventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: eventError.message },
-      { status: 500 },
+      {
+        error: everyReady ? 'invalid_team_sizes' : 'not_all_ready',
+        ...(everyReady ? { details: { team_counts: teamCounts } } : {}),
+      },
+      { status: 409 },
     )
   }
 
-  const response: StartGameResponse = { game: updatedGame }
+  // Commit lobby -> setup and game_started together. The RPC repeats roster
+  // validation under the game-row lock so a concurrent request cannot create
+  // a phase transition without its append-only event.
+  const { data: startData, error: startError } = await supabase.rpc(
+    'start_game_setup_atomic',
+    { p_game_id: game.id, p_actor_player_id: caller.id },
+  )
+  if (startError) {
+    return NextResponse.json(
+      { error: 'game_start_failed', details: startError.message },
+      { status: 500 },
+    )
+  }
+  const started = startData as { error?: string; game?: Game } | null
+  if (!started?.game || started.error) {
+    const error = started?.error ?? 'game_start_failed'
+    const status = error === 'not_all_ready' || error === 'invalid_team_sizes'
+      ? 409
+      : error === 'not_found' ? 404 : 500
+    return NextResponse.json({ error }, { status })
+  }
+
+  const response: StartGameResponse = { game: started.game }
   return NextResponse.json(response)
 }

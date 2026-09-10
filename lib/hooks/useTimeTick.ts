@@ -2,8 +2,8 @@
 
 // useTimeTick — while the game is in play, this hook POSTs
 // /api/games/[id]/time-tick once on mount and then every 30 s. The route is
-// idempotent housekeeping: it credits the time bonus (+20, or +40 on a Power
-// Hour) to BOTH teams for any 30-min interval that has elapsed but not yet
+// idempotent housekeeping: it credits the +20 time bonus to BOTH teams for
+// any 30-min interval that has elapsed but not yet
 // been credited. Any player can poke it.
 //
 // Mirrors useCurseExpiryPoll. SSR-safe: setInterval only runs in the browser.

@@ -15,13 +15,13 @@ import { useEffect, useMemo } from 'react'
 import 'leaflet/dist/leaflet.css'
 import {
   MapContainer,
-  TileLayer,
   CircleMarker,
   Tooltip,
   useMap,
 } from 'react-leaflet'
 import type { LatLngBoundsExpression } from 'leaflet'
 import type { Team } from '@/lib/types'
+import { LibertyBasemap } from '@/components/map/LibertyBasemap'
 
 interface ObserverLandmark {
   id: string
@@ -34,12 +34,6 @@ interface ObserverLandmark {
 const WEST_COLOR = '#3b82f6'
 const EAST_COLOR = '#ec4899'
 const NEUTRAL_COLOR = '#737373'
-
-// Carto Voyager basemap — matches the gamified look used elsewhere.
-const TILE_URL =
-  'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-const TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
 
 export default function ObserverMap({
   landmarks,
@@ -84,7 +78,7 @@ export default function ObserverMap({
       className="h-full min-h-[300px] w-full"
       style={{ background: '#0a0a0a' }}
     >
-      <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+      <LibertyBasemap />
       <FitToBounds bounds={bounds} />
       {landmarks.map((l) => {
         const color = colorFor(l)

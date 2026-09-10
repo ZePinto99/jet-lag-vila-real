@@ -143,6 +143,45 @@
     }
   },
   {
+    "landmark_ref": "landmark.miradouro-meia-laranja",
+    "pt": {
+      "title": "A outra metade da laranja",
+      "task": "Fotografa a vista a partir do miradouro com a bandeira em primeiro plano e aponta para o elemento mais distante que consigas identificar.",
+      "question": "Que ponto de Vila Real reconheces na paisagem?"
+    },
+    "en": {
+      "title": "The other half of the orange",
+      "task": "Photograph the view from the viewpoint with the marker in the foreground, pointing at the farthest feature you can identify.",
+      "question": "Which Vila Real landmark can you recognise in the view?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.miradouro-vila-velha",
+    "pt": {
+      "title": "Vila entre dois rios",
+      "task": "Fotografa a vista do miradouro com a bandeira em primeiro plano e os dois vales visíveis atrás de ti.",
+      "question": "Quais são os dois rios que moldam este promontório?"
+    },
+    "en": {
+      "title": "Town between two rivers",
+      "task": "Photograph the view from the lookout with the marker in the foreground and both valleys visible behind you.",
+      "question": "Which two rivers shape this promontory?"
+    }
+  },
+  {
+    "landmark_ref": "landmark.capela-sao-lazaro",
+    "pt": {
+      "title": "São Lázaro, 1520",
+      "task": "Fotografa a fachada da capela com a bandeira visível e imita a forma do elemento arquitetónico que mais te chamar a atenção.",
+      "question": "Que nome antigo teve esta capela?"
+    },
+    "en": {
+      "title": "São Lázaro, 1520",
+      "task": "Photograph the chapel facade with the marker visible, copying the shape of the architectural feature that catches your eye most.",
+      "question": "What former name did this chapel have?"
+    }
+  },
+  {
     "landmark_ref": "landmark.mercado-municipal",
     "pt": {
       "title": "Pregão do mercado",
@@ -153,6 +192,19 @@
       "title": "Market cry",
       "task": "Photograph the marker by a stall (or at the entrance if closed) and the team pointing at the most colourful product.",
       "question": "What's the cheapest product you can see? Write the price."
+    }
+  },
+  {
+    "landmark_ref": "landmark.ponte-metalica-do-corgo",
+    "pt": {
+      "title": "Sobre o Corgo",
+      "task": "Fotografa o rio a partir da ponte com a bandeira em primeiro plano e faz um arco com os braços a imitar a estrutura.",
+      "question": "De que material é feita a estrutura principal da ponte?"
+    },
+    "en": {
+      "title": "Above the Corgo",
+      "task": "Photograph the river from the bridge with the marker in the foreground, making an arch with your arms to copy the structure.",
+      "question": "What material is the bridge's main structure made from?"
     }
   },
   {

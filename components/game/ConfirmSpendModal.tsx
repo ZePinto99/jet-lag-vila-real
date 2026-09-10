@@ -6,7 +6,9 @@
 // confirm/cancel handlers. Replaces the inconsistent inline confirms (some
 // spends had a two-step inline confirm, some had none).
 
+import { useId } from 'react'
 import { useT } from '@/lib/i18n/context'
+import { useModalDialog } from '@/lib/hooks/useModalDialog'
 
 export interface ConfirmSpendModalProps {
   open: boolean
@@ -32,6 +34,10 @@ export function ConfirmSpendModal({
   onCancel,
 }: ConfirmSpendModalProps) {
   const t = useT()
+  const titleId = useId()
+  const descriptionId = useId()
+  const dialogRef = useModalDialog({ open, busy, onCancel })
+
   if (!open) return null
 
   const after = balance - cost
@@ -43,39 +49,43 @@ export function ConfirmSpendModal({
       onClick={busy ? undefined : onCancel}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
     >
       <div
+        ref={dialogRef}
         className="w-full max-w-xs rounded-2xl border border-neutral-700 bg-neutral-900 p-5 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-base font-semibold text-neutral-100">
+        <h2 id={titleId} className="text-base font-semibold text-neutral-100">
           {t('spend.title')}
         </h2>
 
-        <dl className="mt-4 flex flex-col gap-2 text-sm">
+        <dl id={descriptionId} className="mt-4 flex flex-col gap-2 text-sm">
           <Row label={t('spend.item')} value={itemName} />
-          <Row label={t('spend.cost')} value={`−${cost}`} valueClass="text-amber-300 tabular-nums" />
+          <Row
+            label={t('spend.cost')}
+            value={`−${cost}`}
+            valueClass="text-amber-300 tabular-nums"
+          />
           <Row label={t('spend.balance_now')} value={String(balance)} valueClass="tabular-nums" />
           <div className="my-1 border-t border-neutral-800" />
           <Row
             label={t('spend.balance_after')}
             value={String(after)}
             valueClass={
-              'font-semibold tabular-nums ' +
-              (insufficient ? 'text-red-400' : 'text-emerald-300')
+              'font-semibold tabular-nums ' + (insufficient ? 'text-red-400' : 'text-emerald-300')
             }
           />
         </dl>
 
         {insufficient && (
-          <p className="mt-3 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
+          <p role="alert" className="mt-3 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
             {t('spend.insufficient')}
           </p>
         )}
         {error && (
-          <p className="mt-3 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
-            {error}
-          </p>
+          <p role="alert" className="mt-3 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">{error}</p>
         )}
 
         <div className="mt-5 flex gap-2">
@@ -83,6 +93,7 @@ export function ConfirmSpendModal({
             type="button"
             onClick={onCancel}
             disabled={busy}
+            data-dialog-autofocus
             className="flex-1 rounded-xl bg-neutral-800 px-4 py-3 text-sm font-semibold text-neutral-300 transition hover:bg-neutral-700 disabled:opacity-50"
           >
             {t('common.cancel')}

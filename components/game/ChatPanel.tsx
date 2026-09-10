@@ -15,6 +15,8 @@ interface ChatPanelProps {
   connected: boolean
   myPlayerId: string
   teamColorClass: string
+  actionsLocked?: boolean
+  lockedReason?: string | null
 }
 
 export function ChatPanel({
@@ -23,16 +25,15 @@ export function ChatPanel({
   connected,
   myPlayerId,
   teamColorClass,
+  actionsLocked = false,
+  lockedReason,
 }: ChatPanelProps) {
   const t = useT()
   const [scope, setScope] = useState<ChatScope>('global')
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement | null>(null)
 
-  const visible = useMemo(
-    () => messages.filter((m) => m.scope === scope),
-    [messages, scope],
-  )
+  const visible = useMemo(() => messages.filter((m) => m.scope === scope), [messages, scope])
 
   // Keep pinned to the newest message.
   useEffect(() => {
@@ -42,6 +43,7 @@ export function ChatPanel({
 
   function onSend(e: FormEvent) {
     e.preventDefault()
+    if (actionsLocked) return
     const text = draft.trim()
     if (!text) return
     send(scope, text)
@@ -69,29 +71,26 @@ export function ChatPanel({
 
       <div
         ref={listRef}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+        aria-label={t('chat.title')}
         className="mt-3 flex-1 space-y-2 overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-950/60 p-3"
       >
         {visible.length === 0 ? (
-          <p className="py-8 text-center text-xs text-neutral-500">
-            {t('chat.empty')}
-          </p>
+          <p className="py-8 text-center text-xs text-neutral-500">{t('chat.empty')}</p>
         ) : (
           visible.map((m) => {
             const mine = m.playerId === myPlayerId
             return (
-              <div
-                key={m.id}
-                className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}
-              >
+              <div key={m.id} className={cn('flex flex-col', mine ? 'items-end' : 'items-start')}>
                 <span className="px-1 text-[10px] text-neutral-500">
                   {mine ? t('chat.you') : m.name}
                 </span>
                 <span
                   className={cn(
                     'max-w-[80%] rounded-2xl px-3 py-1.5 text-sm',
-                    mine
-                      ? 'bg-emerald-600/80 text-white'
-                      : 'bg-neutral-800 text-neutral-100',
+                    mine ? 'bg-emerald-600/80 text-white' : 'bg-neutral-800 text-neutral-100',
                   )}
                 >
                   {m.text}
@@ -102,17 +101,25 @@ export function ChatPanel({
         )}
       </div>
 
+      {actionsLocked && (
+        <p role="alert" className="mt-2 rounded-lg border border-amber-800 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+          {lockedReason ?? t('curse.actions_locked')}
+        </p>
+      )}
+
       <form onSubmit={onSend} className="mt-2 flex gap-2">
         <input
+          aria-label={t('chat.placeholder')}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={t('chat.placeholder')}
           maxLength={500}
+          disabled={!connected || actionsLocked}
           className="flex-1 rounded-full border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none"
         />
         <button
           type="submit"
-          disabled={!draft.trim()}
+          disabled={!connected || actionsLocked || !draft.trim()}
           className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-50"
         >
           {t('chat.send')}
@@ -137,11 +144,10 @@ function ScopeTab({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
         'rounded-full px-3 py-1 text-xs font-medium transition',
-        active
-          ? 'bg-neutral-800 text-neutral-100'
-          : 'text-neutral-500 hover:text-neutral-300',
+        active ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-500 hover:text-neutral-300',
         active && accentClass,
       )}
     >

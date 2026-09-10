@@ -5,19 +5,18 @@
 //
 // Inputs are read from the live state: my team's intel cards (any state — we
 // only consider `in_hand`), the enemy team's visible landmarks (refs + coords
-// only), my team's home base lng for I2, and the seed catalog for I9's kind
-// lookup.
+// only), and my team's home-base longitude for legacy I2 payloads. The
+// seed lookup remains in the shared call contract for compatibility with map
+// consumers that predate the removal of I9.
 
 import { haversineMeters } from '@/lib/geo/haversine'
+import { CITY_MIDLINE_LAT } from '@/lib/geo/playArea'
 import type {
   Card,
   EnemyLandmark,
   IntelAnswer,
   SeedLandmark,
 } from '@/lib/types'
-
-const CITY_CENTRE_LAT = 41.295
-const CITY_CENTRE_LNG = -7.726
 
 function bucketRange(
   bucket: 'under_200m' | 'under_500m' | 'under_1km' | 'over_1km',
@@ -32,26 +31,6 @@ function bucketRange(
     case 'over_1km':
       return [1000, Infinity]
   }
-}
-
-function bearingFromCityCentre(p: { lat: number; lng: number }): string {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const lat1 = toRad(CITY_CENTRE_LAT)
-  const lat2 = toRad(p.lat)
-  const dLng = toRad(p.lng - CITY_CENTRE_LNG)
-  const y = Math.sin(dLng) * Math.cos(lat2)
-  const x =
-    Math.cos(lat1) * Math.sin(lat2) -
-    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)
-  const bearing = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
-  if (bearing < 22.5 || bearing >= 337.5) return 'N'
-  if (bearing < 67.5) return 'NE'
-  if (bearing < 112.5) return 'E'
-  if (bearing < 157.5) return 'SE'
-  if (bearing < 202.5) return 'S'
-  if (bearing < 247.5) return 'SW'
-  if (bearing < 292.5) return 'W'
-  return 'NW'
 }
 
 export interface NarrowingInput {
@@ -81,8 +60,9 @@ export function computeNarrowedRefs(input: NarrowingInput): Set<string> {
 
     switch (payload.intel_ref) {
       case 'intel.north-south': {
+        const pivotLat = payload.pivot_lat ?? CITY_MIDLINE_LAT
         for (const e of enemyLandmarks) {
-          const isNorth = e.lat > CITY_CENTRE_LAT
+          const isNorth = e.lat > pivotLat
           if ((isNorth ? 'north' : 'south') !== payload.direction) {
             narrowed.add(e.ref)
           }
@@ -90,9 +70,10 @@ export function computeNarrowedRefs(input: NarrowingInput): Set<string> {
         break
       }
       case 'intel.east-west': {
-        if (myTeamHomeLng == null) break
+        const pivotLng = payload.pivot_lng ?? myTeamHomeLng
+        if (pivotLng == null) break
         for (const e of enemyLandmarks) {
-          const isEast = e.lng > myTeamHomeLng
+          const isEast = e.lng > pivotLng
           if ((isEast ? 'east' : 'west') !== payload.direction) {
             narrowed.add(e.ref)
           }
@@ -124,11 +105,10 @@ export function computeNarrowedRefs(input: NarrowingInput): Set<string> {
         // No mechanical narrowing.
         break
       case 'intel.direction': {
-        for (const e of enemyLandmarks) {
-          if (bearingFromCityCentre(e) !== payload.bearing) {
-            narrowed.add(e.ref)
-          }
-        }
+        // Direction is intentionally a soft map hint. Automatically dimming
+        // every candidate outside the sector made a 50-coin card reveal the
+        // answer outright in sparse pools. The map highlights the broad
+        // quadrant while leaving candidate interpretation to the players.
         break
       }
     }

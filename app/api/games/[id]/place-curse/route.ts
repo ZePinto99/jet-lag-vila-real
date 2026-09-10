@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPlacedCurseDef } from '@/lib/placedCurses'
+import { getGameplayActionBlock } from '@/lib/server/actionLock'
+import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import type {
   Game,
   Landmark,
@@ -111,6 +113,26 @@ export async function POST(
   if (!callerTeam) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  const actionBlock = await getGameplayActionBlock(supabase, game.id, caller)
+  if (actionBlock) return NextResponse.json({ error: actionBlock }, { status: 409 })
+
+  const targetTeam = teams.find((team) => team.id !== callerTeam.id)
+  if (!targetTeam) {
+    return NextResponse.json({ error: 'target_team_not_found' }, { status: 409 })
+  }
+  const { count: targetTeamSize, error: targetTeamSizeError } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', targetTeam.id)
+  if (targetTeamSizeError) {
+    return NextResponse.json(
+      { error: 'player_lookup_failed', details: targetTeamSizeError.message },
+      { status: 500 },
+    )
+  }
+  if (!supportsTeamSize(def, targetTeamSize ?? 0)) {
+    return NextResponse.json({ error: 'placed_curse_not_available_for_team_size' }, { status: 409 })
+  }
 
   // Landmark must be the caller's OWN candidate.
   const { data: landmarkRow, error: landmarkError } = await supabase
@@ -134,119 +156,53 @@ export async function POST(
     return NextResponse.json({ error: 'not_own_candidate' }, { status: 409 })
   }
 
-  // Already an armed placement here?
-  const { data: existingRows, error: existingError } = await supabase
-    .from('placed_curses')
-    .select('id')
-    .eq('game_id', game.id)
-    .eq('owner_team_id', callerTeam.id)
-    .eq('landmark_ref', landmark_ref)
-    .eq('armed', true)
-    .limit(1)
-  if (existingError) {
-    return NextResponse.json(
-      { error: 'placed_curse_lookup_failed', details: existingError.message },
-      { status: 500 },
-    )
-  }
-  if ((existingRows ?? []).length > 0) {
-    return NextResponse.json({ error: 'already_placed_here' }, { status: 409 })
-  }
-
-  // Coin check + deduct (events first, then materialized counter — same pattern
-  // as buy-curse).
   const cost = def.cost_coins
-  if (callerTeam.coins < cost) {
+  const { data: placeData, error: placeError } = await supabase.rpc(
+    'place_curse_atomic',
+    {
+      p_game_id: game.id,
+      p_team_id: callerTeam.id,
+      p_landmark_ref: landmark_ref,
+      p_placed_ref: placed_ref,
+      p_curse_ref: def.casts_curse_ref,
+      p_actor_player_id: caller.id,
+      p_cost: cost,
+    },
+  )
+  if (placeError) {
     return NextResponse.json(
-      { error: 'insufficient_coins', details: { coins: callerTeam.coins, cost } },
-      { status: 409 },
-    )
-  }
-
-  const { error: coinsEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'coins_deducted',
-    actor_player_id: caller.id,
-    payload: { team_id: callerTeam.id, amount: cost, reason: 'place_curse' },
-  })
-  if (coinsEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: coinsEventError.message },
+      { error: 'placed_curse_insert_failed', details: placeError.message },
       { status: 500 },
     )
   }
-
-  const { data: updatedTeamRow, error: teamUpdateError } = await supabase
-    .from('teams')
-    .update({ coins: callerTeam.coins - cost })
-    .eq('id', callerTeam.id)
-    .eq('coins', callerTeam.coins) // optimistic guard
-    .select()
-    .maybeSingle()
-  if (teamUpdateError) {
-    return NextResponse.json(
-      { error: 'team_update_failed', details: teamUpdateError.message },
-      { status: 500 },
-    )
-  }
-  if (!updatedTeamRow) {
-    const { data: refreshed } = await supabase
-      .from('teams')
-      .select('coins')
-      .eq('id', callerTeam.id)
-      .maybeSingle()
+  const placement = placeData as {
+    error?: string
+    coins?: number
+    placed?: PlacedCurse
+    team_coins?: number
+  } | null
+  if (!placement || placement.error) {
+    const error = placement?.error ?? 'placed_curse_insert_failed'
     return NextResponse.json(
       {
-        error: 'insufficient_coins',
-        details: { coins: (refreshed as { coins: number } | null)?.coins ?? 0, cost },
+        error,
+        ...(placement?.coins !== undefined
+          ? { details: { coins: placement.coins, cost } }
+          : {}),
       },
-      { status: 409 },
+      { status: error === 'placed_curse_insert_failed' ? 500 : 409 },
     )
   }
-  const teamCoins = (updatedTeamRow as Team).coins
-
-  // Insert the (hidden) placement.
-  const { data: placedRow, error: placeError } = await supabase
-    .from('placed_curses')
-    .insert({
-      game_id: game.id,
-      owner_team_id: callerTeam.id,
-      landmark_ref,
-      placed_ref,
-      curse_ref: def.casts_curse_ref,
-      armed: true,
-    })
-    .select()
-    .maybeSingle()
-  if (placeError || !placedRow) {
+  if (!placement.placed || placement.team_coins === undefined) {
     return NextResponse.json(
-      { error: 'placed_curse_insert_failed', details: placeError?.message },
-      { status: 500 },
-    )
-  }
-
-  // Public event — deliberately WITHOUT landmark_ref OR placed_ref. recent_events
-  // is broadcast to both teams (no per-team redaction in v1), so leaking the
-  // landmark would reveal which candidate (likely the real flag) was armed, and
-  // leaking placed_ref would reveal the curse type. RULEBOOK §8.2: the placement
-  // is hidden from the enemy. The owning team reads its own placements from
-  // live-state's `my_placed_curses` instead. (No client consumes this payload.)
-  const { error: armedEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'placed_curse_armed',
-    actor_player_id: caller.id,
-    payload: { team_id: callerTeam.id },
-  })
-  if (armedEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: armedEventError.message },
+      { error: 'placed_curse_insert_failed' },
       { status: 500 },
     )
   }
 
   const response: PlaceCurseResponse = {
-    placed: placedRow as PlacedCurse,
-    team_coins: teamCoins,
+    placed: placement.placed,
+    team_coins: placement.team_coins,
   }
   return NextResponse.json(response)
 }

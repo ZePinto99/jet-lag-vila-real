@@ -6,11 +6,15 @@
 //  - 'curse_expired' targeting my team     → "Curse expired: <name>"
 //  - 'coin_drain' ledger effect on my team → "Coin drain: -N coins"
 //  - 'intel_lost' ledger effect on my team → "Intel lost: <ref>"
+//  - 'curse_proof_submitted' on my team    → path-free compliance receipt
 //
 // Curse refs resolve to names via data/curses.json. Shows the last 10
 // entries newest-first.
 
 import cursesSeed from '@/data/curses.json'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
+import type { Locale } from '@/lib/i18n/messages'
 import type { GameEvent } from '@/lib/types'
 
 interface CurseSeed {
@@ -20,11 +24,12 @@ interface CurseSeed {
 
 const CURSE_CATALOG: CurseSeed[] = cursesSeed as CurseSeed[]
 
-function curseName(ref: string): string {
-  return CURSE_CATALOG.find((c) => c.id === ref)?.name ?? ref
+function curseName(ref: string, locale: Locale): string {
+  const fallback = CURSE_CATALOG.find((c) => c.id === ref)?.name ?? ref
+  return localizeCatalogField(ref, 'name', fallback, locale)
 }
 
-type HistoryKind = 'received' | 'expired' | 'coin_drain' | 'intel_lost'
+type HistoryKind = 'received' | 'expired' | 'coin_drain' | 'intel_lost' | 'proof'
 
 interface HistoryEntry {
   id: string
@@ -42,13 +47,14 @@ export function CurseHistoryList({
   events,
   myTeamId,
 }: CurseHistoryListProps) {
-  const entries = buildHistory(events, myTeamId).slice(0, 10)
+  const { t, locale } = useI18n()
+  const entries = buildHistory(events, myTeamId, locale, t).slice(0, 10)
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-      <h2 className="text-sm font-medium text-neutral-100">Curse history</h2>
+      <h2 className="text-sm font-medium text-neutral-100">{t('status.curse_history')}</h2>
       {entries.length === 0 ? (
-        <p className="mt-2 text-xs text-neutral-500">No curse activity yet.</p>
+        <p className="mt-2 text-xs text-neutral-500">{t('status.curse_history_empty')}</p>
       ) : (
         <ul className="mt-2 flex flex-col gap-1">
           {entries.map((entry) => (
@@ -71,6 +77,8 @@ export function CurseHistoryList({
 function buildHistory(
   events: GameEvent[],
   myTeamId: string,
+  locale: Locale,
+  t: (key: string, tokens?: Record<string, string | number>) => string,
 ): HistoryEntry[] {
   const out: HistoryEntry[] = []
   // Walk newest-first.
@@ -90,7 +98,7 @@ function buildHistory(
           id: e.id,
           kind: 'received',
           createdAt: e.created_at,
-          text: `Curse received: ${curseName(ref)}`,
+          text: t('status.curse_received', { name: curseName(ref, locale) }),
         })
         break
       }
@@ -102,7 +110,7 @@ function buildHistory(
           id: e.id,
           kind: 'expired',
           createdAt: e.created_at,
-          text: `Curse expired: ${curseName(ref)}`,
+          text: t('status.curse_expired', { name: curseName(ref, locale) }),
         })
         break
       }
@@ -118,8 +126,8 @@ function buildHistory(
           createdAt: e.created_at,
           text:
             amount != null
-              ? `Coin drain: -${amount} coins`
-              : 'Coin drain applied',
+              ? t('status.coin_drain', { n: amount })
+              : t('status.coin_drain_applied'),
         })
         break
       }
@@ -131,7 +139,27 @@ function buildHistory(
           id: e.id,
           kind: 'intel_lost',
           createdAt: e.created_at,
-          text: ref ? `Intel lost: ${ref}` : 'Intel lost',
+          text: ref
+            ? t('status.intel_lost', {
+                name: localizeCatalogField(ref, 'name', ref, locale),
+              })
+            : t('status.intel_lost_generic'),
+        })
+        break
+      }
+      case 'curse_proof_submitted': {
+        if (targetTeamId !== myTeamId) continue
+        const ref = pickString(payload, 'curse_ref')
+        const promptIndex = pickNumber(payload, 'prompt_index')
+        if (!ref) continue
+        out.push({
+          id: e.id,
+          kind: 'proof',
+          createdAt: e.created_at,
+          text: t('status.proof_submitted', {
+            name: curseName(ref, locale),
+            index: promptIndex == null ? '' : ` · #${promptIndex + 1}`,
+          }),
         })
         break
       }
@@ -168,6 +196,8 @@ function kindClass(kind: HistoryKind): string {
       return 'text-amber-200'
     case 'intel_lost':
       return 'text-red-200'
+    case 'proof':
+      return 'text-emerald-200'
   }
 }
 

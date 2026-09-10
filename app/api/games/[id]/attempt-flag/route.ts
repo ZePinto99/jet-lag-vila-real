@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { haversineMeters } from '@/lib/geo/haversine'
+import { isTeamActionLocked } from '@/lib/server/actionLock'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { validatePublicProofPhoto } from '@/lib/server/storageProof'
+import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
 import type {
   AttemptFlagResponse,
-  Card,
   FlagAttemptResult,
   Game,
   Landmark,
@@ -90,6 +93,9 @@ export async function POST(
   }
   const { device_id, player_id, landmark_ref, pos, photo_url, answer } =
     parsed.data
+  if (!isPositionFresh(pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+  }
 
   const supabase = createAdminClient()
 
@@ -169,6 +175,22 @@ export async function POST(
   // 4. Caller cannot be respawning.
   if (caller.respawning) {
     return NextResponse.json({ error: 'player_respawning' }, { status: 409 })
+  }
+  if (await isTeamActionLocked(supabase, game.id, caller.team_id)) {
+    return NextResponse.json({ error: 'actions_locked' }, { status: 409 })
+  }
+  const proof = await validatePublicProofPhoto({
+    supabase,
+    bucket: 'flag-attempts',
+    publicUrl: photo_url,
+    gameId: game.id,
+    playerId: caller.id,
+  })
+  if (!proof.ok) {
+    return NextResponse.json(
+      { error: proof.error ?? 'invalid_photo_url' },
+      { status: 400 },
+    )
   }
 
   // 5. Resolve the landmark row for this game + ref.
@@ -268,211 +290,53 @@ export async function POST(
     )
   }
 
-  // 7b. Persist the submitted photo (stored for the opposing team to eyeball /
-  // dispute). Best-effort: a photo failure shouldn't block the game outcome.
-  const { error: photoError } = await supabase.from('photos').insert({
-    game_id: game.id,
-    player_id: caller.id,
-    url: photo_url,
-    lat: pos.lat,
-    lng: pos.lng,
-    taken_at: new Date(pos.updated_at).toISOString(),
-    kind: 'flag_attempt',
-  })
-  if (photoError) {
+  const respawnTarget = result === 'decoy' ? nearestNeutralLandmark(pos) : null
+  if (result === 'decoy' && !respawnTarget) {
+    return NextResponse.json({ error: 'respawn_target_missing' }, { status: 500 })
+  }
+  const { data: attemptData, error: attemptError } = await supabase.rpc(
+    'attempt_flag_atomic',
+    {
+      p_game_id: game.id,
+      p_player_id: caller.id,
+      p_team_id: caller.team_id,
+      p_landmark_ref: landmark_ref,
+      p_result: result,
+      p_photo_url: photo_url,
+      p_lat: pos.lat,
+      p_lng: pos.lng,
+      p_taken_at: new Date(pos.updated_at).toISOString(),
+      p_answer: answer ?? null,
+      p_respawn_target_ref: respawnTarget?.landmark.id ?? null,
+    },
+  )
+  if (attemptError) {
     return NextResponse.json(
-      { error: 'photo_insert_failed', details: photoError.message },
+      { error: 'flag_attempt_failed', details: attemptError.message },
       { status: 500 },
     )
   }
-
-  // 8. Side effects per result.
-  if (result === 'real') {
-    // Mark caller as the flag carrier.
-    const { error: carrierError } = await supabase
-      .from('players')
-      .update({ flag_carrier: true })
-      .eq('id', caller.id)
-    if (carrierError) {
-      return NextResponse.json(
-        { error: 'player_update_failed', details: carrierError.message },
-        { status: 500 },
-      )
-    }
-
-    // Transition game to flag_found (optimistic guard).
-    const { data: updatedGameRow, error: gameUpdateError } = await supabase
-      .from('games')
-      .update({ status: 'flag_found' })
-      .eq('id', game.id)
-      .eq('status', 'live')
-      .select()
-      .maybeSingle()
-    if (gameUpdateError) {
-      return NextResponse.json(
-        { error: 'game_update_failed', details: gameUpdateError.message },
-        { status: 500 },
-      )
-    }
-    if (updatedGameRow) {
-      game = updatedGameRow as Game
-    }
-
-    // Append flag_attempt event.
-    const { error: attemptEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'flag_attempt',
-      actor_player_id: caller.id,
-      payload: {
-        landmark_ref,
-        result,
-        team_id: caller.team_id,
-        photo_url,
-        ...(answer ? { answer } : {}),
-      },
-    })
-    if (attemptEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: attemptEventError.message },
-        { status: 500 },
-      )
-    }
-
-    // Append flag_found event.
-    const { error: foundEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'flag_found',
-      actor_player_id: caller.id,
-      payload: {
-        player_id: caller.id,
-        landmark_ref,
-        team_id: caller.team_id,
-      },
-    })
-    if (foundEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: foundEventError.message },
-        { status: 500 },
-      )
-    }
-  } else if (result === 'decoy') {
-    // Expire ALL in_hand intel cards on caller's team (RULEBOOK §5.2: loses
-    // all intel cards). Mirrors the targeted-expire pattern in tag/route.ts.
-    const { data: intelCardsData, error: intelLookupError } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('game_id', game.id)
-      .eq('team_id', caller.team_id)
-      .eq('kind', 'intel')
-      .eq('state', 'in_hand')
-
-    if (intelLookupError) {
-      return NextResponse.json(
-        { error: 'cards_lookup_failed', details: intelLookupError.message },
-        { status: 500 },
-      )
-    }
-    const intelCards = (intelCardsData ?? []) as Card[]
-    if (intelCards.length > 0) {
-      const { error: expireError } = await supabase
-        .from('cards')
-        .update({ state: 'expired', updated_at: new Date().toISOString() })
-        .eq('game_id', game.id)
-        .eq('team_id', caller.team_id)
-        .eq('kind', 'intel')
-        .eq('state', 'in_hand')
-      if (expireError) {
-        return NextResponse.json(
-          { error: 'card_update_failed', details: expireError.message },
-          { status: 500 },
-        )
-      }
-    }
-
-    const { error: attemptEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'flag_attempt',
-      actor_player_id: caller.id,
-      payload: {
-        landmark_ref,
-        result,
-        team_id: caller.team_id,
-        photo_url,
-        ...(answer ? { answer } : {}),
-      },
-    })
-    if (attemptEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: attemptEventError.message },
-        { status: 500 },
-      )
-    }
-
-    // RULEBOOK §5.2: after a decoy the raider must return to a neutral landmark
-    // before raiding again. Reuse the tag respawn machinery — set respawning so
-    // the RespawnBanner + /respawn-clear (neutral geofence) flow takes over.
-    const { error: respawnError } = await supabase
-      .from('players')
-      .update({ respawning: true })
-      .eq('id', caller.id)
-    if (respawnError) {
-      return NextResponse.json(
-        { error: 'player_update_failed', details: respawnError.message },
-        { status: 500 },
-      )
-    }
-    const { error: respawnEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'player_respawning_set',
-      actor_player_id: caller.id,
-      payload: {
-        player_id: caller.id,
-        team_id: caller.team_id,
-        reason: 'decoy',
-      },
-    })
-    if (respawnEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: respawnEventError.message },
-        { status: 500 },
-      )
-    }
-  } else {
-    // empty
-    const { error: attemptEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'flag_attempt',
-      actor_player_id: caller.id,
-      payload: {
-        landmark_ref,
-        result,
-        team_id: caller.team_id,
-        photo_url,
-        ...(answer ? { answer } : {}),
-      },
-    })
-    if (attemptEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: attemptEventError.message },
-        { status: 500 },
-      )
-    }
-  }
-
-  // 9. Re-fetch the (possibly updated) game row so the response reflects the
-  // committed status even if our optimistic transition lost a race.
-  const { data: finalGameRow, error: finalGameError } = await supabase
-    .from('games')
-    .select('*')
-    .eq('id', game.id)
-    .maybeSingle()
-  if (finalGameError || !finalGameRow) {
+  const adjudication = attemptData as {
+    error?: string
+    unlocks_at?: string
+    game?: Game
+  } | null
+  if (!adjudication || adjudication.error) {
+    const error = adjudication?.error ?? 'flag_attempt_failed'
     return NextResponse.json(
-      { error: 'game_lookup_failed', details: finalGameError?.message },
-      { status: 500 },
+      {
+        error,
+        ...(adjudication?.unlocks_at
+          ? { details: { unlocks_at: adjudication.unlocks_at } }
+          : {}),
+      },
+      { status: error === 'flag_attempt_failed' ? 500 : 409 },
     )
   }
-  const finalGame = finalGameRow as Game
+  if (!adjudication.game) {
+    return NextResponse.json({ error: 'flag_attempt_failed' }, { status: 500 })
+  }
+  const finalGame = adjudication.game
 
   const response: AttemptFlagResponse = {
     result,

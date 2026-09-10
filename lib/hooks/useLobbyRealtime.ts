@@ -6,7 +6,8 @@ import { useGameStore } from '@/store/gameStore'
 import type { Game, Player, Team } from '@/lib/types'
 
 // Subscribes to Realtime postgres_changes for the lobby of a given game.
-// Watches: games (by id), teams (by game_id), players (by team_id for each team in the snapshot).
+// Watches: games (by id), teams (by game_id), players (one unfiltered table
+// subscription, then client-side game-team scoping).
 // Forwards inserts/updates/deletes into the Zustand store.
 export function useLobbyRealtime(gameId: string | null) {
   const teams = useGameStore((s) => s.teams)
@@ -43,21 +44,24 @@ export function useLobbyRealtime(gameId: string | null) {
       },
     )
 
-    const teamIds = teamIdsKey ? teamIdsKey.split(',') : []
-    for (const teamId of teamIds) {
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `team_id=eq.${teamId}` },
-        (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const old = payload.old as { id?: string }
-            if (old.id) removePlayer(old.id)
-            return
-          }
-          upsertPlayer(payload.new as Player)
-        },
-      )
-    }
+    const teamIds = new Set(teamIdsKey ? teamIdsKey.split(',') : [])
+    // PostgreSQL DELETE payloads only include the primary key under the
+    // default replica identity, so a server-side `team_id` filter silently
+    // drops them. Subscribe once without a filter: DELETE can remove by id;
+    // INSERT/UPDATE are scoped to this game's two known team ids here.
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'players' },
+      (payload) => {
+        if (payload.eventType === 'DELETE') {
+          const old = payload.old as { id?: string }
+          if (old.id) removePlayer(old.id)
+          return
+        }
+        const player = payload.new as Player
+        if (teamIds.has(player.team_id)) upsertPlayer(player)
+      },
+    )
 
     channel.subscribe()
 

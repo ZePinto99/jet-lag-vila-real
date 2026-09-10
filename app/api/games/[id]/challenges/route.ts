@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import challengesCatalog from '@/data/challenges.json'
 import type {
   Card,
@@ -33,14 +34,6 @@ const CATALOG_BY_ID = new Map<string, ChallengeDefinition>(
 const QuerySchema = z.object({
   device_id: z.string().min(1).max(128),
 })
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]
-}
 
 // ---------------------------------------------------------------------------
 // Route handler
@@ -128,6 +121,22 @@ export async function GET(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
+  const { count: teamSizeCount, error: teamSizeError } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', callerTeam.id)
+  if (teamSizeError) {
+    return NextResponse.json(
+      { error: 'player_lookup_failed', details: teamSizeError.message },
+      { status: 500 },
+    )
+  }
+  const teamSize = teamSizeCount ?? 0
+  const eligibleCatalog = CATALOG.filter((candidate) =>
+    supportsTeamSize(candidate, teamSize),
+  )
+  const eligibleRefs = new Set(eligibleCatalog.map((candidate) => candidate.id))
+
   // 4. Load all the team's challenge cards (any state). We need every state to
   //    determine which catalog entries are "unused" (never drawn).
   const { data: challengeCardsData, error: challengeCardsError } =
@@ -146,55 +155,64 @@ export async function GET(
   }
   const challengeCards = (challengeCardsData ?? []) as Card[]
 
+  // A game created before team-size eligibility was introduced may already
+  // have an impossible teammate challenge in hand. Retire only unsubmitted
+  // cards so the active slots can be refilled from the eligible catalog.
+  const ineligibleAvailableIds = challengeCards
+    .filter((card) => card.state === 'available' && !eligibleRefs.has(card.ref))
+    .map((card) => card.id)
+  if (ineligibleAvailableIds.length > 0) {
+    const { error: retireError } = await supabase
+      .from('cards')
+      .update({ state: 'expired' })
+      .in('id', ineligibleAvailableIds)
+    if (retireError) {
+      return NextResponse.json(
+        { error: 'card_update_failed', details: retireError.message },
+        { status: 500 },
+      )
+    }
+  }
+  const eligibleChallengeCards = challengeCards.filter(
+    (card) => !ineligibleAvailableIds.includes(card.id),
+  )
+
   // 5. Lazy initialisation: top up `available` to 3 from the unused pool.
   //    Pending (awaiting peer review) cards count toward the active cap so we
   //    don't refill past 3 while some are under review (D14).
-  let available = challengeCards.filter((c) => c.state === 'available')
-  const pendingCards = challengeCards.filter((c) => c.state === 'pending')
-  const drawnRefs = new Set(challengeCards.map((c) => c.ref))
-  const unusedPool = CATALOG.filter((c) => !drawnRefs.has(c.id))
-
+  let available = eligibleChallengeCards.filter((c) => c.state === 'available')
+  const pendingCards = eligibleChallengeCards.filter((c) => c.state === 'pending')
   const needed =
     ACTIVE_CHALLENGES_TARGET - available.length - pendingCards.length
-  if (needed > 0 && unusedPool.length > 0) {
-    const remaining = unusedPool.slice()
-    const toInsert: Array<{
-      game_id: string
-      team_id: string
-      kind: 'challenge'
-      ref: string
-      state: 'available'
-      payload: Record<string, unknown>
-    }> = []
-    for (let i = 0; i < needed && remaining.length > 0; i++) {
-      const idx = Math.floor(Math.random() * remaining.length)
-      const pick = remaining[idx]
-      remaining.splice(idx, 1)
-      toInsert.push({
-        game_id: game.id,
-        team_id: callerTeam.id,
-        kind: 'challenge',
-        ref: pick.id,
-        state: 'available',
-        payload: {},
-      })
+  if (needed > 0) {
+    const { error: drawError } = await supabase.rpc('draw_challenges_atomic', {
+      p_game_id: game.id,
+      p_team_id: callerTeam.id,
+      p_catalog_refs: eligibleCatalog.map((candidate) => candidate.id),
+      p_target_count: ACTIVE_CHALLENGES_TARGET,
+    })
+    if (drawError) {
+      return NextResponse.json(
+        { error: 'card_insert_failed', details: drawError.message },
+        { status: 500 },
+      )
     }
-
-    if (toInsert.length > 0) {
-      const { data: insertedRows, error: insertError } = await supabase
-        .from('cards')
-        .insert(toInsert)
-        .select()
-
-      if (insertError) {
-        return NextResponse.json(
-          { error: 'card_insert_failed', details: insertError.message },
-          { status: 500 },
-        )
-      }
-      const inserted = (insertedRows ?? []) as Card[]
-      available = available.concat(inserted)
+    const { data: refreshedRows, error: refreshError } = await supabase
+      .from('cards')
+      .select('*')
+      .eq('game_id', game.id)
+      .eq('team_id', callerTeam.id)
+      .eq('kind', 'challenge')
+    if (refreshError) {
+      return NextResponse.json(
+        { error: 'cards_lookup_failed', details: refreshError.message },
+        { status: 500 },
+      )
     }
+    const refreshed = (refreshedRows ?? []) as Card[]
+    available = refreshed.filter(
+      (card) => card.state === 'available' && eligibleRefs.has(card.ref),
+    )
   }
 
   // 6. Resolve active challenges to their definitions. Drop any cards whose

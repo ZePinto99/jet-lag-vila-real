@@ -6,14 +6,15 @@
 // Peer verification (D14): challenges with `photo_required` now upload a proof
 // photo and enter a `pending` state for the OTHER team to accept/reject. Coins
 // are credited only on accept; on reject the challenge returns for resubmission.
-// Non-photo challenges (window count, quote) still auto-complete on submit.
+// Non-photo challenges (such as the window count) auto-complete on submit.
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiGet, apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
 import { createClient } from '@/lib/supabase/client'
-import { useT } from '@/lib/i18n/context'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import type {
@@ -30,26 +31,17 @@ import type {
 // Loose client-side pre-check; the server is authoritative at 100 m.
 const CLIENT_PROXIMITY_LIMIT_M = 150
 
-async function uploadChallengePhoto(
-  gameId: string,
-  playerId: string,
-  file: File,
-): Promise<string> {
+async function uploadChallengePhoto(gameId: string, playerId: string, file: File): Promise<string> {
   const supabase = createClient()
-  const ext =
-    (file.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') ||
-    'jpg'
+  const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
   const path = `${gameId}/${playerId}-${Date.now()}.${ext}`
-  const { error } = await supabase.storage
-    .from('challenge-photos')
-    .upload(path, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type || 'image/jpeg',
-    })
+  const { error } = await supabase.storage.from('challenge-photos').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type || 'image/jpeg',
+  })
   if (error) throw error
-  return supabase.storage.from('challenge-photos').getPublicUrl(path).data
-    .publicUrl
+  return supabase.storage.from('challenge-photos').getPublicUrl(path).data.publicUrl
 }
 
 interface ChallengesPanelProps {
@@ -74,7 +66,7 @@ export function ChallengesPanel({
   actionsLocked = false,
   events,
 }: ChallengesPanelProps) {
-  const t = useT()
+  const { t, locale } = useI18n()
   const lockedLabel = actionsLocked ? t('curse.actions_locked') : null
   const [active, setActive] = useState<ChallengeDefinition[] | null>(null)
   const [pending, setPending] = useState<PendingChallenge[]>([])
@@ -129,15 +121,12 @@ export function ChallengesPanel({
   const gameNotLive = gameStatus !== 'live' && gameStatus !== 'flag_found'
 
   const handleSubmit = useCallback(
-    async (
-      challenge: ChallengeDefinition,
-      opts: { text?: string; file?: File | null },
-    ) => {
+    async (challenge: ChallengeDefinition, opts: { text?: string; file?: File | null }) => {
       setSubmitError(null)
       setToast(null)
 
-      if (textPromptForChallenge(challenge) && !opts.text?.trim()) {
-        setSubmitError('A submission is required for this challenge.')
+      if (textPromptForChallenge(challenge, t) && !opts.text?.trim()) {
+        setSubmitError(t('challenge.submission_required'))
         return
       }
       if (challenge.photo_required && !opts.file) {
@@ -167,9 +156,7 @@ export function ChallengesPanel({
         if (res.status === 'pending') {
           setToast(t('challenge.pending_review'))
         } else {
-          const bonusStr = res.first_blood
-            ? t('challenge.toast_first_blood')
-            : ''
+          const bonusStr = res.first_blood ? t('challenge.toast_first_blood') : ''
           setToast(`+${res.reward_coins} ${t('common.coins')}${bonusStr}`)
         }
         await fetchChallenges()
@@ -185,30 +172,21 @@ export function ChallengesPanel({
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-sm font-medium text-neutral-100">
-          {t('challenge.panel_title')}
-        </h2>
+        <h2 className="text-sm font-medium text-neutral-100">{t('challenge.panel_title')}</h2>
         <p className="text-[11px] text-neutral-500">
-          {active ? `${active.length} active` : ''}
+          {active ? t('challenge.active_count', { n: active.length }) : ''}
         </p>
       </div>
-      <p className="mt-1 text-xs text-neutral-400">
-        Earn coins by completing location-based tasks. Photo tasks are verified
-        by the other team.
-      </p>
+      <p className="mt-1 text-xs text-neutral-400">{t('challenge.panel_hint')}</p>
 
       {loading && active === null && (
-        <p className="mt-3 text-xs text-neutral-500">Loading challenges…</p>
+        <p className="mt-3 text-xs text-neutral-500">{t('challenge.loading')}</p>
       )}
       {loadError && (
-        <p className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
-          {loadError}
-        </p>
+        <p className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">{loadError}</p>
       )}
       {active && active.length === 0 && pending.length === 0 && !loading && (
-        <p className="mt-3 text-xs text-neutral-500">
-          No active challenges right now.
-        </p>
+        <p className="mt-3 text-xs text-neutral-500">{t('challenge.none_active')}</p>
       )}
 
       {active && active.length > 0 && (
@@ -224,6 +202,7 @@ export function ChallengesPanel({
               anyBusy={busyRef !== null}
               lockedLabel={lockedLabel}
               rejected={rejectedRefs.has(c.id)}
+              locale={locale}
               onSubmit={handleSubmit}
             />
           ))}
@@ -241,7 +220,14 @@ export function ChallengesPanel({
                 key={p.card_id}
                 className="flex items-center justify-between gap-2 text-[11px] text-sky-100"
               >
-                <span className="truncate">{p.challenge.location_name}</span>
+                <span className="truncate">
+                  {localizeCatalogField(
+                    p.challenge.id,
+                    'location_name',
+                    p.challenge.location_name,
+                    locale,
+                  )}
+                </span>
                 {p.photo_url && (
                   <a
                     href={p.photo_url}
@@ -259,12 +245,12 @@ export function ChallengesPanel({
       )}
 
       {toast && (
-        <p className="mt-3 rounded bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-200">
+        <p role="status" className="mt-3 rounded bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-200">
           {toast}
         </p>
       )}
       {submitError && (
-        <p className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
+        <p role="alert" className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
           {submitError}
         </p>
       )}
@@ -281,6 +267,7 @@ function ChallengeRow({
   anyBusy,
   lockedLabel,
   rejected,
+  locale,
   onSubmit,
 }: {
   challenge: ChallengeDefinition
@@ -291,48 +278,40 @@ function ChallengeRow({
   anyBusy: boolean
   lockedLabel: string | null
   rejected: boolean
-  onSubmit: (
-    c: ChallengeDefinition,
-    opts: { text?: string; file?: File | null },
-  ) => void
+  locale: import('@/lib/i18n/messages').Locale
+  onSubmit: (c: ChallengeDefinition, opts: { text?: string; file?: File | null }) => void
 }) {
-  const t = useT()
-  const promptLabel = textPromptForChallenge(challenge)
+  const { t } = useI18n()
+  const promptLabel = textPromptForChallenge(challenge, t)
   const [textValue, setTextValue] = useState('')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
 
-  const seed = challenge.landmark_ref
-    ? getSeedLandmarkByRef(challenge.landmark_ref)
-    : null
+  const seed = challenge.landmark_ref ? getSeedLandmarkByRef(challenge.landmark_ref) : null
   const distanceMeters =
-    seed && myGps
-      ? haversineMeters({ lat: myGps.lat, lng: myGps.lng }, seed)
-      : null
+    seed && myGps ? haversineMeters({ lat: myGps.lat, lng: myGps.lng }, seed) : null
 
   const needsGps = challenge.landmark_ref != null && !myGps
-  const outOfRange =
-    distanceMeters != null && distanceMeters > CLIENT_PROXIMITY_LIMIT_M
+  const outOfRange = distanceMeters != null && distanceMeters > CLIENT_PROXIMITY_LIMIT_M
 
   const disabledReason: string | null = lockedLabel
     ? lockedLabel
     : gameNotLive
-      ? 'Available during live game'
+      ? t('challenge.reason_not_live')
       : respawning
-        ? 'You are respawning'
+        ? t('challenge.reason_respawning')
         : needsGps
-          ? 'Enable GPS to submit'
+          ? t('challenge.reason_no_gps')
           : outOfRange && distanceMeters != null
-            ? `Get closer (currently ${formatDistance(distanceMeters)})`
+            ? t('challenge.reason_too_far', { m: formatDistance(distanceMeters) })
             : null
 
   const needsText = promptLabel != null
   const textMissing = needsText && textValue.trim().length === 0
   const photoMissing = challenge.photo_required && photoFile == null
-  const disabled =
-    busy || anyBusy || disabledReason !== null || textMissing || photoMissing
+  const disabled = busy || anyBusy || disabledReason !== null || textMissing || photoMissing
+  const formControlsDisabled = busy || anyBusy || disabledReason !== null
 
-  const showOutOfRangeHint =
-    !outOfRange && distanceMeters != null && distanceMeters > 100
+  const showOutOfRangeHint = !outOfRange && distanceMeters != null && distanceMeters > 100
 
   return (
     <li className="rounded border border-neutral-800 bg-neutral-950 px-3 py-2">
@@ -340,14 +319,19 @@ function ChallengeRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <p className="truncate text-sm font-medium text-neutral-100">
-              {challenge.location_name}
+              {localizeCatalogField(
+                challenge.id,
+                'location_name',
+                challenge.location_name,
+                locale,
+              )}
             </p>
             <p className="shrink-0 text-xs font-semibold text-emerald-300 tabular-nums">
               +{challenge.reward_coins} {t('common.coins')}
             </p>
           </div>
           <p className="mt-0.5 text-[11px] leading-snug text-neutral-400">
-            {challenge.task}
+            {localizeCatalogField(challenge.id, 'task', challenge.task, locale)}
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             {challenge.landmark_ref == null ? (
@@ -365,16 +349,16 @@ function ChallengeRow({
                       : 'bg-emerald-900/50 text-emerald-200',
                 )}
               >
-                {formatDistance(distanceMeters)} away
+                {t('challenge.away', { distance: formatDistance(distanceMeters) })}
               </span>
             ) : (
               <span className="rounded bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-400">
-                GPS off
+                {t('challenge.gps_off')}
               </span>
             )}
             {challenge.photo_required && (
               <span className="rounded bg-sky-900/50 px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-sky-200">
-                📷 verified
+                {t('challenge.photo_verified')}
               </span>
             )}
           </div>
@@ -389,10 +373,11 @@ function ChallengeRow({
       {needsText && (
         <input
           type="text"
+          aria-label={promptLabel ?? t('challenge.answer')}
           value={textValue}
           onChange={(e) => setTextValue(e.target.value)}
           placeholder={promptLabel ?? ''}
-          disabled={busy || anyBusy}
+          disabled={formControlsDisabled}
           className="mt-2 w-full rounded border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-100 placeholder:text-neutral-500 focus:border-emerald-500 focus:outline-none disabled:opacity-50"
         />
       )}
@@ -404,29 +389,23 @@ function ChallengeRow({
             photoFile
               ? 'border-emerald-500/60 bg-emerald-950/40 text-emerald-200'
               : 'border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-neutral-600',
-            (busy || anyBusy) && 'pointer-events-none opacity-50',
+            formControlsDisabled && 'pointer-events-none opacity-50',
           )}
         >
           <input
             type="file"
             accept="image/*"
             capture="environment"
-            className="hidden"
+            className="sr-only"
+            disabled={formControlsDisabled}
             onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
           />
-          {photoFile
-            ? t('challenge.photo_change')
-            : t('challenge.photo_add')}
+          {photoFile ? t('challenge.photo_change') : t('challenge.photo_add')}
         </label>
       )}
 
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p
-          className={cn(
-            'text-[11px]',
-            disabledReason ? 'text-neutral-500' : 'text-neutral-600',
-          )}
-        >
+        <p className={cn('text-[11px]', disabledReason ? 'text-neutral-500' : 'text-neutral-600')}>
           {disabledReason ?? (challenge.photo_required ? t('challenge.photo_required_hint') : ' ')}
         </p>
         <button
@@ -452,26 +431,30 @@ function ChallengeRow({
   )
 }
 
-function textPromptForChallenge(c: ChallengeDefinition): string | null {
+function textPromptForChallenge(
+  c: ChallengeDefinition,
+  t: (key: string, tokens?: Record<string, string | number>) => string,
+): string | null {
   const id = c.id
   const notes = (c.notes ?? '').toLowerCase()
   const task = c.task.toLowerCase()
-  const wantsNumber =
-    task.includes('submit number') || notes.includes('number')
+  const wantsNumber = task.includes('submit number') || notes.includes('number')
   const wantsQuote = task.includes('submit a quote') || notes.includes('quote')
   const wantsLatinName =
-    task.includes('submit the name') ||
-    task.includes('latin name') ||
-    notes.includes('latin name')
+    task.includes('submit the name') || task.includes('latin name') || notes.includes('latin name')
+  const wantsRiverNames = task.includes('name the cabril and corgo') || notes.includes('river names')
 
   if (id === 'challenge.igreja-dos-clerigos-windows' || wantsNumber) {
-    return 'How many windows? (number)'
+    return t('challenge.answer_windows')
   }
-  if (id === 'challenge.pastel-de-nata-quote' || wantsQuote) {
-    return 'Paste the quote from the local'
+  if (wantsQuote) {
+    return t('challenge.answer_quote')
   }
-  if (id === 'challenge.utad-botanical-latin-name' || wantsLatinName) {
-    return 'Latin name from the placard'
+  if (id === 'challenge.utad-botanical-latin-name' || wantsRiverNames) {
+    return t('challenge.answer_rivers')
+  }
+  if (wantsLatinName) {
+    return t('challenge.answer_latin')
   }
   return null
 }

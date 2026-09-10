@@ -9,7 +9,9 @@ import { useState } from 'react'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
-import { useT } from '@/lib/i18n/context'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
+import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import { ConfirmSpendModal } from '@/components/game/ConfirmSpendModal'
 import { getPlacedCurseCatalog } from '@/lib/placedCurses'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
@@ -30,6 +32,7 @@ interface PlacedCursePanelProps {
   myCandidateLandmarks: Landmark[]
   placedCurses: PlacedCurse[]
   actionsLocked?: boolean
+  targetTeamSize?: number
 }
 
 function landmarkName(ref: string): string {
@@ -43,13 +46,17 @@ export function PlacedCursePanel({
   myCandidateLandmarks,
   placedCurses,
   actionsLocked = false,
+  targetTeamSize = 8,
 }: PlacedCursePanelProps) {
-  const t = useT()
+  const { t, locale } = useI18n()
   const addPlacedCurse = useGameStore((s) => s.addPlacedCurse)
   const [busyRef, setBusyRef] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Confirm-spend modal (G21).
   const [pending, setPending] = useState<(typeof CATALOG)[number] | null>(null)
+  const availableDefinitions = CATALOG.filter((definition) =>
+    supportsTeamSize(definition, targetTeamSize),
+  )
 
   const armedRefs = new Set(placedCurses.map((p) => p.landmark_ref))
   const availableLandmarks = myCandidateLandmarks.filter(
@@ -131,7 +138,7 @@ export function PlacedCursePanel({
           </select>
 
           <ul className="mt-3 flex flex-col gap-2">
-            {CATALOG.map((def) => {
+            {availableDefinitions.map((def) => {
               const insufficient = teamCoins < def.cost_coins
               const shortfall = Math.max(0, def.cost_coins - teamCoins)
               const disabled =
@@ -151,14 +158,14 @@ export function PlacedCursePanel({
                 >
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="text-sm font-medium text-neutral-100">
-                      {def.name}
+                      {localizeCatalogField(def.id, 'name', def.name, locale)}
                     </p>
                     <p className="shrink-0 text-xs font-semibold tabular-nums text-amber-300">
                       {def.cost_coins}
                     </p>
                   </div>
                   <p className="mt-0.5 text-[11px] leading-snug text-neutral-400">
-                    {def.description}
+                    {localizeCatalogField(def.id, 'description', def.description, locale)}
                   </p>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="text-[11px] text-neutral-500">
@@ -198,7 +205,7 @@ export function PlacedCursePanel({
 
       <ConfirmSpendModal
         open={pending !== null}
-        itemName={pending?.name ?? ''}
+        itemName={pending ? localizeCatalogField(pending.id, 'name', pending.name, locale) : ''}
         cost={pending?.cost_coins ?? 0}
         balance={teamCoins}
         busy={busyRef !== null}

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { isTeamActionLocked } from '@/lib/server/actionLock'
 import type {
   CompleteRunResponse,
   Game,
@@ -51,6 +53,9 @@ export async function POST(
     )
   }
   const { device_id, player_id, pos } = parsed.data
+  if (!isPositionFresh(pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+  }
 
   const supabase = createAdminClient()
 
@@ -70,10 +75,11 @@ export async function POST(
   if (!gameRow) {
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
   }
-  let game = gameRow as Game
+  const game = gameRow as Game
 
-  // 2. Game must be in 'flag_found'.
-  if (game.status !== 'flag_found') {
+  // 2. A finished game is allowed through for retry-stable winner lookup in
+  // the atomic RPC. Other phases cannot complete a run.
+  if (game.status !== 'flag_found' && game.status !== 'finished') {
     return NextResponse.json(
       { error: 'game_not_in_flag_found' },
       { status: 409 },
@@ -114,6 +120,9 @@ export async function POST(
   if (!caller || caller.id !== player_id || !caller.flag_carrier) {
     return NextResponse.json({ error: 'not_flag_carrier' }, { status: 403 })
   }
+  if (caller.respawning) {
+    return NextResponse.json({ error: 'player_respawning' }, { status: 409 })
+  }
 
   // 4. Resolve caller's team's home base from the seed catalog.
   const team = teams.find((t) => t.id === caller.team_id)
@@ -122,6 +131,9 @@ export async function POST(
   }
   if (!team.home_landmark_id) {
     return NextResponse.json({ error: 'home_base_missing' }, { status: 500 })
+  }
+  if (await isTeamActionLocked(supabase, game.id, team.id)) {
+    return NextResponse.json({ error: 'actions_locked' }, { status: 409 })
   }
   const homeSeed = getSeedLandmarkByRef(team.home_landmark_id)
   if (!homeSeed) {
@@ -139,67 +151,35 @@ export async function POST(
     )
   }
 
-  // 5. Transition status='flag_found' → 'finished' atomically.
-  const endedAt = new Date().toISOString()
-  const { data: updatedGameRow, error: gameUpdateError } = await supabase
-    .from('games')
-    .update({ status: 'finished', ended_at: endedAt })
-    .eq('id', game.id)
-    .eq('status', 'flag_found')
-    .select()
-    .maybeSingle()
-
-  if (gameUpdateError) {
+  // 5. Commit the terminal status and exactly one winner event in the same
+  // transaction. Concurrent/retried calls return the persisted winner.
+  const { data: finishData, error: finishError } = await supabase.rpc(
+    'complete_flag_run_atomic',
+    { p_game_id: game.id, p_carrier_player_id: caller.id },
+  )
+  if (finishError) {
     return NextResponse.json(
-      { error: 'game_update_failed', details: gameUpdateError.message },
+      { error: 'game_finish_failed', details: finishError.message },
       { status: 500 },
     )
   }
-
-  if (!updatedGameRow) {
-    // Lost the race (already finished). Re-fetch and short-circuit without
-    // appending a duplicate game_won event.
-    const { data: refetched, error: refetchError } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', game.id)
-      .maybeSingle()
-    if (refetchError || !refetched) {
-      return NextResponse.json(
-        { error: 'game_lookup_failed', details: refetchError?.message },
-        { status: 500 },
-      )
-    }
-    const finalGame = refetched as Game
-    const response: CompleteRunResponse = {
-      game: finalGame,
-      winner_team_id: caller.team_id,
-    }
-    return NextResponse.json(response)
-  }
-
-  game = updatedGameRow as Game
-
-  // 6. Append game_won event.
-  const { error: wonEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'game_won',
-    actor_player_id: caller.id,
-    payload: {
-      winner_team_id: caller.team_id,
-      flag_carrier_player_id: caller.id,
-    },
-  })
-  if (wonEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: wonEventError.message },
-      { status: 500 },
-    )
+  const finish = finishData as {
+    error?: string
+    game?: Game
+    winner_team_id?: string
+  } | null
+  if (!finish?.game || !finish.winner_team_id || finish.error) {
+    const error = finish?.error ?? 'game_finish_failed'
+    const status =
+      error === 'not_flag_carrier' ? 403 :
+      error === 'game_not_in_flag_found' || error === 'player_respawning' ? 409 :
+      error === 'not_found' ? 404 : 500
+    return NextResponse.json({ error }, { status })
   }
 
   const response: CompleteRunResponse = {
-    game,
-    winner_team_id: caller.team_id,
+    game: finish.game,
+    winner_team_id: finish.winner_team_id,
   }
   return NextResponse.json(response)
 }

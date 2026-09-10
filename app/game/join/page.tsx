@@ -127,7 +127,7 @@ function JoinForm() {
           <legend className="text-sm font-medium">Preferred side</legend>
           <div className="grid grid-cols-2 gap-3">
             <SideOption
-              label="West (UTAD)"
+              label="West (Vila Velha)"
               value="west"
               selected={side === 'west'}
               onSelect={() => setSide('west')}

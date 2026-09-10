@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Jet Lag Vila Real flag">
+  <rect width="512" height="512" rx="96" fill="#0b0b0e"/>
+  <circle cx="256" cy="256" r="194" fill="#171717" stroke="#f5f5f5" stroke-width="16"/>
+  <path d="M174 378V126" fill="none" stroke="#f5f5f5" stroke-width="28" stroke-linecap="round"/>
+  <path d="M190 142h176l-38 62 38 62H190z" fill="#ec4899"/>
+  <path d="M190 142h88v124h-88z" fill="#3b82f6"/>
+  <circle cx="174" cy="126" r="22" fill="#fbbf24"/>
+  <path d="M139 393h70" fill="none" stroke="#f5f5f5" stroke-width="24" stroke-linecap="round"/>
+</svg>

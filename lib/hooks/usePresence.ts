@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import type { GpsPosition, PresencePayload } from '@/lib/types'
 
 // Wraps a Supabase Realtime Presence channel keyed by player_id. The channel
@@ -65,7 +66,11 @@ export function usePresence(
             best = e
           }
         }
-        if (best) {
+        if (
+          best &&
+          best.player_id === key &&
+          isPositionFresh(best.updated_at, Date.now())
+        ) {
           next[key] = best
         }
       }
@@ -110,6 +115,24 @@ export function usePresence(
       setPresence({})
     }
   }, [gameId, myPlayerId, retryTick])
+
+  // Presence leave events are not instantaneous on a dropped mobile network.
+  // Prune any last-known fix that has not been refreshed for 30 seconds, as
+  // required by ARCHITECTURE §8, so radar/tagging cannot use ghost players.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const nowMs = Date.now()
+      setPresence((prev) => {
+        const next = Object.fromEntries(
+          Object.entries(prev).filter(([, entry]) =>
+            isPositionFresh(entry.updated_at, nowMs),
+          ),
+        )
+        return Object.keys(next).length === Object.keys(prev).length ? prev : next
+      })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   // 2) Publish my position when it changes (and ids are known).
   useEffect(() => {

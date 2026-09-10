@@ -1,0 +1,34 @@
+[
+  {
+    "id": "street.avenida-carvalho-araujo",
+    "name": "Avenida Carvalho Araújo",
+    "corridor_m": 18,
+    "polyline": [
+      [41.29363, -7.74609],
+      [41.29430, -7.74620],
+      [41.29510, -7.74667],
+      [41.29633, -7.74652]
+    ]
+  },
+  {
+    "id": "street.rua-dom-pedro-de-castro",
+    "name": "Rua Dom Pedro de Castro",
+    "corridor_m": 18,
+    "polyline": [
+      [41.29878, -7.74672],
+      [41.29948, -7.74603],
+      [41.30019, -7.74528]
+    ]
+  },
+  {
+    "id": "street.rua-senhora-de-lourdes",
+    "name": "Rua Senhora de Lourdes",
+    "enabled": false,
+    "corridor_m": 18,
+    "polyline": [
+      [41.28587, -7.73882],
+      [41.28639, -7.73961],
+      [41.28703, -7.74046]
+    ]
+  }
+]

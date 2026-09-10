@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { haversineMeters } from '@/lib/geo/haversine'
-import { getSeedLandmarksByPool } from '@/lib/landmarks'
+import { getSeedLandmarkByRef } from '@/lib/landmarks'
+import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import type {
   Game,
   Player,
@@ -15,6 +17,9 @@ import type {
 // 30 m gives enough headroom for GPS drift while keeping the player visibly at
 // the landmark.
 const NEUTRAL_CLEAR_RADIUS_M = 30
+// Hysteresis prevents noisy GPS at exactly 30 m from immediately clearing the
+// immunity stage; the raider must visibly leave the neutral's vicinity.
+const NEUTRAL_LEAVE_RADIUS_M = 45
 
 const GpsPositionSchema = z.object({
   lat: z.number(),
@@ -53,6 +58,9 @@ export async function POST(
     )
   }
   const { device_id, player_id, pos } = parsed.data
+  if (!isPositionFresh(pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+  }
 
   const supabase = createAdminClient()
 
@@ -121,64 +129,79 @@ export async function POST(
     return NextResponse.json({ error: 'not_respawning' }, { status: 409 })
   }
 
-  // 5. Position must be within radius of any neutral landmark from the seed catalog.
-  const neutrals = getSeedLandmarksByPool('neutral')
-  let nearestRef: string | null = null
-  let nearestDistance = Number.POSITIVE_INFINITY
-  for (const n of neutrals) {
-    const d = haversineMeters(pos, { lat: n.lat, lng: n.lng })
-    if (d < nearestDistance) {
-      nearestDistance = d
-      nearestRef = n.id
+  const targetRef = caller.respawn_target_ref
+  const target = targetRef ? getSeedLandmarkByRef(targetRef) : null
+  if (!target || target.team_pool !== 'neutral') {
+    return NextResponse.json({ error: 'respawn_target_missing' }, { status: 500 })
+  }
+  const distance_m = haversineMeters(pos, target)
+  let stage: 'arrive' | 'clear'
+  if (!caller.respawn_arrived) {
+    if (distance_m > NEUTRAL_CLEAR_RADIUS_M) {
+      const nearestNow = nearestNeutralLandmark(pos)
+      const atWrongNeutral = nearestNow !== null &&
+        nearestNow.landmark.id !== target.id &&
+        nearestNow.distance_m <= NEUTRAL_CLEAR_RADIUS_M
+      return NextResponse.json(
+        {
+          error: atWrongNeutral
+            ? 'wrong_respawn_landmark'
+            : 'not_at_respawn_landmark',
+          details: {
+            required_ref: target.id,
+            required_name: target.name,
+            distance_m,
+          },
+        },
+        { status: 409 },
+      )
     }
+    stage = 'arrive'
+  } else {
+    if (distance_m <= NEUTRAL_LEAVE_RADIUS_M) {
+      return NextResponse.json(
+        {
+          error: 'must_leave_neutral',
+          details: {
+            required_ref: target.id,
+            required_name: target.name,
+            distance_m,
+            leave_radius_m: NEUTRAL_LEAVE_RADIUS_M,
+          },
+        },
+        { status: 409 },
+      )
+    }
+    stage = 'clear'
   }
 
-  if (nearestRef === null || nearestDistance > NEUTRAL_CLEAR_RADIUS_M) {
-    return NextResponse.json(
-      {
-        error: 'not_at_neutral_landmark',
-        details: { nearest_m: nearestDistance },
-      },
-      { status: 409 },
-    )
-  }
-
-  // 6. Clear respawning flag.
-  const { data: updatedPlayerRow, error: updateError } = await supabase
-    .from('players')
-    .update({ respawning: false })
-    .eq('id', caller.id)
-    .select()
-    .maybeSingle()
-
-  if (updateError || !updatedPlayerRow) {
-    return NextResponse.json(
-      { error: 'player_update_failed', details: updateError?.message },
-      { status: 500 },
-    )
-  }
-  const updatedPlayer = updatedPlayerRow as Player
-
-  // 7. Append `player_respawning_cleared` event.
-  const { error: eventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'player_respawning_cleared',
-    actor_player_id: caller.id,
-    payload: {
-      player_id: caller.id,
-      at_neutral_ref: nearestRef,
+  const { data: transitionData, error: transitionError } = await supabase.rpc(
+    'advance_respawn_atomic',
+    {
+      p_game_id: game.id,
+      p_player_id: caller.id,
+      p_expected_target_ref: target.id,
+      p_stage: stage,
     },
-  })
-  if (eventError) {
+  )
+  if (transitionError) {
     return NextResponse.json(
-      { error: 'event_insert_failed', details: eventError.message },
+      { error: 'respawn_update_failed', details: transitionError.message },
       { status: 500 },
     )
+  }
+  const transition = transitionData as { error?: string; player?: Player } | null
+  if (!transition?.player || transition.error) {
+    const error = transition?.error ?? 'respawn_update_failed'
+    const status = ['not_respawning', 'already_arrived', 'neutral_not_reached', 'respawn_target_changed']
+      .includes(error) ? 409 : error === 'not_found' ? 404 : 500
+    return NextResponse.json({ error }, { status })
   }
 
   const response: RespawnClearResponse = {
-    player: updatedPlayer,
-    cleared_at_neutral_ref: nearestRef,
+    player: transition.player,
+    stage: stage === 'arrive' ? 'arrived' : 'cleared',
+    respawn_target_ref: target.id,
   }
   return NextResponse.json(response)
 }

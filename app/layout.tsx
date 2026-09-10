@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   title: 'Jet Lag: Vila Real',
   description: 'Self-serve referee app for a walking-only capture-the-flag game in Vila Real.',
   manifest: '/manifest.webmanifest',
+  icons: { icon: '/icon.svg', apple: '/icon.svg' },
 }
 
 export const viewport: Viewport = {

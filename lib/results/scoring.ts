@@ -12,8 +12,6 @@ import type { GameEvent, Player, Team, TeamScore } from '@/lib/types'
 const FLAG_PTS = 10
 const CHALLENGE_PTS = 1
 const TAG_PTS = 1
-const CURSE_PTS = 0.5
-const COINS_PER_POINT = 50
 
 interface ScoringInput {
   events: GameEvent[]
@@ -88,8 +86,10 @@ export function computeScores({ events, teams, players }: ScoringInput): TeamSco
     s.flag_points = s.found_real_flag ? FLAG_PTS : 0
     s.challenge_points = s.challenges_completed * CHALLENGE_PTS
     s.tag_points = s.tags_made * TAG_PTS
-    s.curse_points = s.curses_cast * CURSE_PTS
-    s.coin_points = Math.floor(s.coins_remaining / COINS_PER_POINT)
+    // Spending on intel/curses is core play and must never lower the primary
+    // score. Curses remain a stat; coins are only the second tiebreaker.
+    s.curse_points = 0
+    s.coin_points = 0
     s.total =
       s.flag_points +
       s.challenge_points +

@@ -11,6 +11,7 @@
 import { useEffect } from 'react'
 import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
+import { useGameStore } from '@/store/gameStore'
 import type {
   ExpireCursesRequest,
   ExpireCursesResponse,
@@ -22,6 +23,7 @@ export function useCurseExpiryPoll(
   gameId: string | null,
   activeCurseCount: number,
 ): void {
+  const removeActiveCurse = useGameStore((state) => state.removeActiveCurse)
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!gameId) return
@@ -33,10 +35,13 @@ export function useCurseExpiryPoll(
       if (cancelled || !gameId) return
       const body: ExpireCursesRequest = { device_id: getDeviceId() }
       try {
-        await apiPost<ExpireCursesResponse>(
+        const response = await apiPost<ExpireCursesResponse>(
           `/api/games/${gameId}/expire-curses`,
           body,
         )
+        if (!cancelled) {
+          for (const curseId of response.expired_curse_ids) removeActiveCurse(curseId)
+        }
       } catch {
         // Swallow errors; this is best-effort housekeeping and will retry
         // on the next tick.
@@ -48,5 +53,5 @@ export function useCurseExpiryPoll(
       cancelled = true
       window.clearInterval(id)
     }
-  }, [gameId, activeCurseCount])
+  }, [gameId, activeCurseCount, removeActiveCurse])
 }

@@ -9,8 +9,7 @@ describe('results scoring', () => {
   const westPlayer = makePlayer({ id: 'west-player', team_id: west.id })
   const eastPlayer = makePlayer({ id: 'east-player', team_id: east.id })
 
-  it('scores flags, challenges, tags, curses, and remaining coins', () => {
-    // RULEBOOK §13.2: timeout scoring uses flag, challenges, tags, curses, and coins.
+  it('scores flags, challenges, and tags without punishing strategic spending', () => {
     const scores = computeScores({
       teams: [west, east],
       players: [westPlayer, eastPlayer],
@@ -28,14 +27,23 @@ describe('results scoring', () => {
       challenge_points: 2,
       tag_points: 0,
       curse_points: 0,
-      coin_points: 2,
-      total: 14,
+      coin_points: 0,
+      total: 12,
     })
     expect(scores.find((s) => s.team_id === east.id)).toMatchObject({
       tag_points: 1,
-      curse_points: 0.5,
+      curse_points: 0,
       coin_points: 0,
-      total: 1.5,
+      total: 1,
+    })
+  })
+
+  it('keeps remaining coins out of primary points but uses them after challenge ties', () => {
+    const scores = computeScores({ teams: [west, east], players: [], events: [] })
+    expect(scores.map((score) => score.total)).toEqual([0, 0])
+    expect(pickTimeoutWinner(scores)).toEqual({
+      winner_team_id: west.id,
+      reason: 'timeout_tiebreaker',
     })
   })
 

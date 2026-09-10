@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
+import { ConfirmActionModal } from '@/components/game/ConfirmActionModal'
 import { useT } from '@/lib/i18n/context'
 import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
@@ -44,6 +45,11 @@ export function Lobby({ initial, code }: LobbyProps) {
 
   const [error, setError] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const [confirmRemoval, setConfirmRemoval] = useState<{
+    targetId: string
+    name: string
+    isSelf: boolean
+  } | null>(null)
 
   // Initial hydration: identify "me" by device_id from the snapshot.
   useEffect(() => {
@@ -94,16 +100,26 @@ export function Lobby({ initial, code }: LobbyProps) {
     return players.every((p) => p.ready)
   }, [players])
 
-  const bothTeamsManned = useMemo(() => {
+  const teamCounts = useMemo(() => {
     const west = teamsBySide.west
     const east = teamsBySide.east
-    if (!west || !east) return false
-    const w = playersByTeam.get(west.id)?.length ?? 0
-    const e = playersByTeam.get(east.id)?.length ?? 0
-    return w >= 1 && e >= 1
+    return {
+      west: west ? playersByTeam.get(west.id)?.length ?? 0 : 0,
+      east: east ? playersByTeam.get(east.id)?.length ?? 0 : 0,
+    }
   }, [teamsBySide, playersByTeam])
+  const validTeamSizes =
+    teamCounts.west === teamCounts.east &&
+    teamCounts.west >= 1 &&
+    teamCounts.west <= 4
+  const mySide = teams.find((tm) => tm.id === me?.team_id)?.side
+  const otherTeamFull = mySide === 'west'
+    ? teamCounts.east >= 4
+    : mySide === 'east'
+      ? teamCounts.west >= 4
+      : false
 
-  const canStart = allReady && bothTeamsManned && game?.status === 'lobby'
+  const canStart = allReady && validTeamSizes && game?.status === 'lobby'
 
   async function toggleReady() {
     if (!me || !game) return
@@ -157,8 +173,6 @@ export function Lobby({ initial, code }: LobbyProps) {
   async function removePlayer(targetId: string) {
     if (!game) return
     const isSelf = targetId === me?.id
-    if (isSelf && !confirm(t('lobby.leave_confirm'))) return
-    if (!isSelf && !confirm(t('lobby.kick_confirm'))) return
     setError(null)
     setPendingAction(isSelf ? 'leave' : `kick:${targetId}`)
     try {
@@ -172,12 +186,24 @@ export function Lobby({ initial, code }: LobbyProps) {
       )
       if (isSelf) {
         router.push('/')
+      } else {
+        setConfirmRemoval(null)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
       setPendingAction(null)
     }
+  }
+
+  function requestRemovePlayer(targetId: string) {
+    const target = players.find((player) => player.id === targetId)
+    if (!target) return
+    setConfirmRemoval({
+      targetId,
+      name: target.display_name,
+      isSelf: targetId === me?.id,
+    })
   }
 
   if (!game) {
@@ -215,6 +241,7 @@ export function Lobby({ initial, code }: LobbyProps) {
   if (
     game.status === 'live' ||
     game.status === 'flag_found' ||
+    game.status === 'paused' ||
     game.status === 'finished'
   ) {
     return <Live />
@@ -242,7 +269,7 @@ export function Lobby({ initial, code }: LobbyProps) {
           players={teamsBySide.west ? playersByTeam.get(teamsBySide.west.id) ?? [] : []}
           meId={me?.id ?? null}
           meIsHost={me?.is_host ?? false}
-          onKick={removePlayer}
+          onKick={requestRemovePlayer}
           pendingAction={pendingAction}
         />
         <TeamColumn
@@ -251,7 +278,7 @@ export function Lobby({ initial, code }: LobbyProps) {
           players={teamsBySide.east ? playersByTeam.get(teamsBySide.east.id) ?? [] : []}
           meId={me?.id ?? null}
           meIsHost={me?.is_host ?? false}
-          onKick={removePlayer}
+          onKick={requestRemovePlayer}
           pendingAction={pendingAction}
         />
       </section>
@@ -289,14 +316,22 @@ export function Lobby({ initial, code }: LobbyProps) {
             <Button
               variant="secondary"
               onClick={switchTeam}
-              disabled={me.ready || pendingAction !== null || game.status !== 'lobby'}
+              disabled={
+                me.ready ||
+                otherTeamFull ||
+                pendingAction !== null ||
+                game.status !== 'lobby'
+              }
               className="flex-1 py-4 text-base"
             >
               {pendingAction === 'switch' ? t('lobby.switching') : t('lobby.switch_team')}
             </Button>
           </div>
+          {otherTeamFull && !me.ready && (
+            <p className="text-xs text-neutral-500">{t('lobby.other_team_full')}</p>
+          )}
           <button
-            onClick={() => removePlayer(me.id)}
+            onClick={() => requestRemovePlayer(me.id)}
             disabled={pendingAction !== null}
             className="self-end text-xs text-neutral-500 underline-offset-2 hover:text-red-300 hover:underline disabled:opacity-50"
           >
@@ -315,8 +350,8 @@ export function Lobby({ initial, code }: LobbyProps) {
         </Button>
         {!canStart && (
           <p className="text-xs text-neutral-500">
-            {!bothTeamsManned
-              ? t('lobby.need_both_teams')
+            {!validTeamSizes
+              ? t('lobby.need_team_sizes')
               : !allReady
                 ? t('lobby.need_all_ready')
                 : null}
@@ -325,10 +360,24 @@ export function Lobby({ initial, code }: LobbyProps) {
       </section>
 
       {error && (
-        <div className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200">
+        <div role="alert" className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200">
           {error}
         </div>
       )}
+      <ConfirmActionModal
+        open={confirmRemoval !== null}
+        title={confirmRemoval?.isSelf ? t('lobby.leave_title') : t('lobby.kick_title')}
+        body={confirmRemoval?.isSelf
+          ? t('lobby.leave_confirm')
+          : `${t('lobby.kick_confirm')} ${confirmRemoval?.name ?? ''}`}
+        confirmLabel={confirmRemoval?.isSelf ? t('lobby.leave_action') : t('lobby.kick_action')}
+        busy={pendingAction === 'leave' || pendingAction?.startsWith('kick:')}
+        danger
+        onConfirm={() => {
+          if (confirmRemoval) void removePlayer(confirmRemoval.targetId)
+        }}
+        onCancel={() => setConfirmRemoval(null)}
+      />
     </main>
   )
 }

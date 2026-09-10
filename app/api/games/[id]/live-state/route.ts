@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { sanitizeIntelCard } from '@/lib/intel/sanitize'
 import type {
   ActiveCurse,
   Card,
+  CurseProofReceipt,
   EnemyLandmark,
   Game,
   GameEvent,
@@ -155,6 +157,22 @@ export async function GET(
   }
   const activeCurses = (activeCursesData ?? []) as ActiveCurse[]
 
+  // Private curse photos never leave Storage. The affected team receives only
+  // durable receipts so a completed prompt remains acknowledged after reload.
+  const { data: curseProofData, error: curseProofError } = await supabase
+    .from('curse_proofs')
+    .select('id,game_id,curse_id,curse_ref,target_team_id,prompt_index,submitted_by,submitted_at')
+    .eq('game_id', game.id)
+    .eq('target_team_id', myTeam.id)
+
+  if (curseProofError) {
+    return NextResponse.json(
+      { error: 'curse_proofs_lookup_failed', details: curseProofError.message },
+      { status: 500 },
+    )
+  }
+  const myCurseProofs = (curseProofData ?? []) as CurseProofReceipt[]
+
   // 8. Load my team's cards (challenge/curse/intel, any state).
   const { data: myCardsData, error: myCardsError } = await supabase
     .from('cards')
@@ -169,7 +187,87 @@ export async function GET(
       { status: 500 },
     )
   }
-  const myCards = (myCardsData ?? []) as Card[]
+  const myCards: Card[] = []
+  for (const rawCard of (myCardsData ?? []) as Card[]) {
+    if (rawCard.kind === 'intel' && rawCard.ref === 'intel.hot-cold') {
+      // Legacy Hot/Cold cards briefly stored the real flag coordinates under
+      // `target`. Never let that secret cross the curated API boundary.
+      myCards.push(sanitizeIntelCard(rawCard))
+      continue
+    }
+    if (rawCard.kind !== 'intel' || rawCard.ref !== 'intel.surroundings') {
+      myCards.push(rawCard)
+      continue
+    }
+    // The private object path is intentionally not persisted in cards. Resolve
+    // it from the hidden server-only table so direct card reads cannot reveal
+    // even the storage key. The payload fallback supports cards bought before
+    // this hardening migration landed, but it is always redacted outward.
+    const { data: surroundingsRow, error: surroundingsError } = await supabase
+      .from('flag_surroundings')
+      .select('object_path')
+      .eq('game_id', game.id)
+      .in('team_id', enemyTeamIds)
+      .maybeSingle()
+    if (surroundingsError) {
+      return NextResponse.json(
+        {
+          error: 'surroundings_lookup_failed',
+          details: surroundingsError.message,
+        },
+        { status: 500 },
+      )
+    }
+    const objectPath =
+      (surroundingsRow as { object_path?: string } | null)?.object_path ??
+      (typeof rawCard.payload?.object_path === 'string'
+        ? rawCard.payload.object_path
+        : null)
+    if (!objectPath) {
+      // Legacy/invalid I7 rows are redacted rather than leaking an unexpected
+      // payload. The card remains visible so support can diagnose its state.
+      myCards.push({
+        ...rawCard,
+        payload: { intel_ref: 'intel.surroundings' },
+      })
+      continue
+    }
+    const { data: signed, error: signError } = await supabase.storage
+      .from('surroundings-photos')
+      .createSignedUrl(objectPath, 5 * 60)
+    if (signError || !signed?.signedUrl) {
+      return NextResponse.json(
+        { error: 'surroundings_sign_failed', details: signError?.message },
+        { status: 500 },
+      )
+    }
+    myCards.push({
+      ...rawCard,
+      payload: {
+        intel_ref: 'intel.surroundings',
+        photo_url: signed.signedUrl,
+      },
+    })
+  }
+
+  // Peer review is durable card state, not a notification. Return the complete
+  // unresolved union for both teams so a review remains actionable after more
+  // than 50 unrelated events or a reconnect on either side.
+  const { data: pendingReviewsData, error: pendingReviewsError } = await supabase
+    .from('cards')
+    .select('*')
+    .eq('game_id', game.id)
+    .eq('kind', 'challenge')
+    .eq('state', 'pending')
+    .in('team_id', teamIds)
+    .order('updated_at', { ascending: true })
+  if (pendingReviewsError) {
+    return NextResponse.json(
+      { error: 'pending_reviews_lookup_failed', details: pendingReviewsError.message },
+      { status: 500 },
+    )
+  }
+  const pendingChallengeReviews = (pendingReviewsData ?? []) as Card[]
 
   // 8b. My team's armed placed curses (hidden from the enemy — server-only read).
   const { data: placedData, error: placedError } = await supabase
@@ -213,8 +311,10 @@ export async function GET(
     my_team_landmarks: myLandmarks,
     enemy_landmarks: enemyLandmarks,
     active_curses: activeCurses,
+    my_curse_proofs: myCurseProofs,
     my_cards: myCards,
     my_placed_curses: myPlacedCurses,
+    pending_challenge_reviews: pendingChallengeReviews,
     recent_events: recentEvents,
   }
   return NextResponse.json(response)

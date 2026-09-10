@@ -13,12 +13,16 @@
 
 import { useState } from 'react'
 import cursesSeed from '@/data/curses.json'
-import { useT } from '@/lib/i18n/context'
+import { getDeviceId } from '@/lib/device'
+import { useI18n, useT } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import type { CurseEnforcementEntry } from '@/lib/hooks/useCurseEnforcement'
 import type {
   ActiveCurse,
   CurseEnforcement,
+  CurseProofReceipt,
   CurseTier,
+  SubmitCurseProofResponse,
 } from '@/lib/types'
 
 interface CurseSeed {
@@ -36,14 +40,24 @@ interface ActiveCursesBannerProps {
   activeCurses: ActiveCurse[]
   nowMs: number
   actionsLocked?: boolean
+  actionsLockedLabel?: string | null
   byCurseId?: Record<string, CurseEnforcementEntry>
+  gameId?: string | null
+  myPlayerId?: string | null
+  proofReceipts?: CurseProofReceipt[]
+  onProofSubmitted?: (proof: CurseProofReceipt) => void
 }
 
 export function ActiveCursesBanner({
   activeCurses,
   nowMs,
   actionsLocked = false,
+  actionsLockedLabel = null,
   byCurseId = {},
+  gameId = null,
+  myPlayerId = null,
+  proofReceipts = [],
+  onProofSubmitted,
 }: ActiveCursesBannerProps) {
   const t = useT()
   if (activeCurses.length === 0) return null
@@ -54,8 +68,8 @@ export function ActiveCursesBanner({
         {t('curse.banner_title')}
       </p>
       {actionsLocked && (
-        <p className="rounded bg-red-900/60 px-2 py-1 text-[11px] font-semibold text-red-100">
-          {t('curse.actions_locked')}
+        <p role="alert" className="rounded bg-red-900/60 px-2 py-1 text-[11px] font-semibold text-red-100">
+          {actionsLockedLabel ?? t('curse.actions_locked')}
         </p>
       )}
       <ul className="flex flex-col gap-1.5">
@@ -65,6 +79,11 @@ export function ActiveCursesBanner({
             curse={curse}
             nowMs={nowMs}
             enforcement={byCurseId[curse.id]}
+            actionsLocked={actionsLocked}
+            gameId={gameId}
+            myPlayerId={myPlayerId}
+            proofReceipts={proofReceipts}
+            onProofSubmitted={onProofSubmitted}
           />
         ))}
       </ul>
@@ -76,16 +95,36 @@ function ActiveCurseRow({
   curse,
   nowMs,
   enforcement,
+  actionsLocked,
+  gameId,
+  myPlayerId,
+  proofReceipts,
+  onProofSubmitted,
 }: {
   curse: ActiveCurse
   nowMs: number
   enforcement?: CurseEnforcementEntry
+  actionsLocked: boolean
+  gameId: string | null
+  myPlayerId: string | null
+  proofReceipts: CurseProofReceipt[]
+  onProofSubmitted?: (proof: CurseProofReceipt) => void
 }) {
-  const t = useT()
+  const { t, locale } = useI18n()
   const seed = CURSE_CATALOG.find((c) => c.id === curse.curse_ref)
-  const name = seed?.name ?? curse.curse_ref
+  const name = localizeCatalogField(
+    curse.curse_ref,
+    'name',
+    seed?.name ?? curse.curse_ref,
+    locale,
+  )
   const enforcementTag = seed?.enforcement ?? 'C'
-  const description = seed?.description ?? ''
+  const description = localizeCatalogField(
+    curse.curse_ref,
+    'description',
+    seed?.description ?? '',
+    locale,
+  )
 
   const expiresMs = curse.expires_at
     ? new Date(curse.expires_at).getTime()
@@ -149,7 +188,25 @@ function ActiveCurseRow({
       )}
       {enforcement?.prompt &&
         !timerExpired &&
-        (isCheckin ? (
+        (enforcement.prompt.proofRequired &&
+        enforcement.prompt.promptIndex != null ? (
+          <CurseProofControl
+            key={`${curse.id}:${enforcement.prompt.promptIndex}`}
+            curse={curse}
+            promptLabel={enforcement.prompt.label}
+            promptIndex={enforcement.prompt.promptIndex}
+            secondsLeft={enforcement.prompt.secondsLeft}
+            gameId={gameId}
+            myPlayerId={myPlayerId}
+            actionsLocked={actionsLocked}
+            submitted={proofReceipts.some(
+              (proof) =>
+                proof.curse_id === curse.id &&
+                proof.prompt_index === enforcement.prompt?.promptIndex,
+            )}
+            onProofSubmitted={onProofSubmitted}
+          />
+        ) : isCheckin ? (
           acked ? (
             <p className="mt-1 rounded bg-emerald-500/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
               {t('curse.checkin_ack')}
@@ -189,6 +246,118 @@ function ActiveCurseRow({
         </p>
       )}
     </li>
+  )
+}
+
+function CurseProofControl({
+  curse,
+  promptLabel,
+  promptIndex,
+  secondsLeft,
+  gameId,
+  myPlayerId,
+  actionsLocked,
+  submitted,
+  onProofSubmitted,
+}: {
+  curse: ActiveCurse
+  promptLabel: string
+  promptIndex: number
+  secondsLeft: number
+  gameId: string | null
+  myPlayerId: string | null
+  actionsLocked: boolean
+  submitted: boolean
+  onProofSubmitted?: (proof: CurseProofReceipt) => void
+}) {
+  const t = useT()
+  const [photo, setPhoto] = useState<File | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const inputId = `curse-proof-${curse.id}-${promptIndex}`
+
+  async function submitProof() {
+    if (!photo || !gameId || !myPlayerId || actionsLocked || submitted) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const form = new FormData()
+      form.set('device_id', getDeviceId())
+      form.set('player_id', myPlayerId)
+      form.set('curse_id', curse.id)
+      form.set('prompt_index', String(promptIndex))
+      form.set('photo', photo)
+      const response = await fetch(`/api/games/${gameId}/submit-curse-proof`, {
+        method: 'POST',
+        body: form,
+      })
+      const body = (await response.json()) as SubmitCurseProofResponse | { error?: string }
+      if (!response.ok || !('proof' in body)) {
+        throw new Error('error' in body && body.error ? body.error : 'request_failed')
+      }
+      onProofSubmitted?.(body.proof)
+      setPhoto(null)
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'request_failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (submitted) {
+    return (
+      <p className="mt-1 rounded bg-emerald-500/20 px-2 py-1 text-[11px] font-semibold text-emerald-200">
+        {t('curse.proof_submitted')}
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-1 rounded bg-amber-400/20 p-2 text-[11px] text-amber-50">
+      <p className="font-semibold">
+        {t('curse.prompt_window', { label: promptLabel, s: secondsLeft })}
+      </p>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <input
+          id={inputId}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+          capture="environment"
+          className="sr-only"
+          disabled={actionsLocked || submitting}
+          onChange={(event) => {
+            setPhoto(event.target.files?.[0] ?? null)
+            setError(null)
+          }}
+        />
+        <label
+          htmlFor={inputId}
+          aria-disabled={actionsLocked || submitting}
+          className={
+            'rounded px-2 py-1 font-semibold ' +
+            (actionsLocked || submitting
+              ? 'cursor-not-allowed bg-neutral-700 text-neutral-400'
+              : 'cursor-pointer bg-amber-300/30 text-amber-50 hover:bg-amber-300/45')
+          }
+        >
+          {photo ? t('curse.proof_ready') : t('curse.proof_add')}
+        </label>
+        <button
+          type="button"
+          disabled={!photo || actionsLocked || submitting || !gameId || !myPlayerId}
+          onClick={submitProof}
+          className="rounded bg-amber-300 px-2 py-1 font-bold text-amber-950 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {submitting ? t('curse.proof_submitting') : t('curse.proof_submit')}
+        </button>
+      </div>
+      {!photo && <p className="mt-1 text-amber-200">{t('curse.proof_required')}</p>}
+      {error && (
+        <p role="alert" className="mt-1 text-red-200">
+          {t('curse.proof_error', { error })}
+        </p>
+      )}
+    </div>
   )
 }
 

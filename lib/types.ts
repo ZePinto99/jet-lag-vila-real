@@ -45,6 +45,19 @@ export type PhotoKind = 'flag_attempt' | 'challenge' | 'curse_proof' | 'other'
 export interface GameConfig {
   duration_minutes?: number
   starting_coins?: number
+  weather_pause?: WeatherPauseState
+}
+
+export interface WeatherPauseState {
+  proposal_action?: 'pause' | 'resume'
+  requested_by_team_id?: string
+  requested_at?: string
+  confirmed_by_team_id?: string
+  proposal_expires_at?: string
+  prior_status?: 'live' | 'flag_found'
+  paused_at?: string
+  last_resumed_at?: string
+  last_pause_seconds?: number
 }
 
 export interface Game {
@@ -77,6 +90,10 @@ export interface Player {
   ready: boolean
   is_host: boolean
   respawning: boolean
+  /** Server-selected neutral nearest the tag/decoy location. */
+  respawn_target_ref: string | null
+  /** Target reached; immunity remains until GPS proves departure. */
+  respawn_arrived: boolean
   created_at: string
 }
 
@@ -156,6 +173,22 @@ export interface StartGameResponse {
   game: Game
 }
 
+// POST /api/games/[id]/pause — two-team weather pause/resume vote.
+export interface WeatherPauseRequest {
+  device_id: string
+  player_id: string
+  action: 'pause' | 'resume'
+}
+export interface WeatherPauseResponse {
+  game: Game
+  action: 'pause' | 'resume'
+  pending: boolean
+  applied: boolean
+  already_applied: boolean
+  requested_by_team_id?: string
+  proposal_expires_at?: string
+}
+
 // ---------------------------------------------------------------------------
 // Landmark types (DB row + seed catalog + step 2 flag-setup contract)
 // ---------------------------------------------------------------------------
@@ -179,7 +212,7 @@ export interface SeedLandmark {
   name: string
   lat: number
   lng: number
-  team_pool: TeamSide | 'neutral'
+  team_pool: TeamSide | 'neutral' | 'retired'
   kind: string
   approximate: boolean
   source: string
@@ -202,6 +235,10 @@ export interface FlagAssignment {
 export interface FlagSetupRequest {
   device_id: string
   assignments: FlagAssignment[]
+  // Private Storage object path for the real landmark's surroundings photo.
+  // The API persists it outside the public landmark/event snapshots and I7
+  // later reveals it using a short-lived signed URL.
+  surroundings_photo_path: string
 }
 export interface FlagSetupResponse {
   game: Game
@@ -264,6 +301,22 @@ export interface ActiveCurse {
   created_at: string
 }
 
+/** Path-free receipt for a private [B] curse proof photo. */
+export interface CurseProofReceipt {
+  id: string
+  game_id: string
+  curse_id: string
+  curse_ref: string
+  target_team_id: string
+  prompt_index: number
+  submitted_by: string
+  submitted_at: string
+}
+
+export interface SubmitCurseProofResponse {
+  proof: CurseProofReceipt
+}
+
 export interface Card {
   id: string
   game_id: string
@@ -285,6 +338,8 @@ export interface PlacedCurseDefinition {
   cost_coins: number
   casts_curse_ref: string // an id in data/curses.json (timed curse cast on trigger)
   description: string
+  // Placements with teammate-dependent effects are unavailable against 1-player teams.
+  min_team_size?: number
 }
 
 export interface PlacedCurse {
@@ -343,8 +398,11 @@ export interface LiveStateResponse {
   my_team_landmarks: Landmark[]
   enemy_landmarks: EnemyLandmark[]
   active_curses: ActiveCurse[]    // curses targeting MY team
+  my_curse_proofs: CurseProofReceipt[] // path-free receipts for MY team only
   my_cards: Card[]                 // my team's cards (intel + curses cast + challenges)
   my_placed_curses: PlacedCurse[] // MY team's armed placements (hidden from enemy)
+  /** Durable unresolved reviews for both teams; never derived from the event window. */
+  pending_challenge_reviews: Card[]
   recent_events: GameEvent[]       // last 50 events for timeline
 }
 
@@ -398,7 +456,8 @@ export interface RespawnClearRequest {
 
 export interface RespawnClearResponse {
   player: Player
-  cleared_at_neutral_ref: string
+  stage: 'arrived' | 'cleared'
+  respawn_target_ref: string
 }
 
 // ---------------------------------------------------------------------------
@@ -486,8 +545,18 @@ export interface HardenFlagResponse {
 // All intel answer shapes share a common envelope; the discriminator is the
 // `intel_ref` string (matches data/intel.json ids).
 export type IntelAnswer =
-  | { intel_ref: 'intel.north-south'; direction: 'north' | 'south' }
-  | { intel_ref: 'intel.east-west'; direction: 'east' | 'west' }
+  | {
+      intel_ref: 'intel.north-south'
+      direction: 'north' | 'south'
+      /** Fixed latitude pivot for the defending side's full candidate pool. */
+      pivot_lat?: number
+    }
+  | {
+      intel_ref: 'intel.east-west'
+      direction: 'east' | 'west'
+      /** Defending/enemy home longitude; legacy cards fall back client-side. */
+      pivot_lng?: number
+    }
   | {
       intel_ref: 'intel.eliminate-one'
       not_real: { ref: string; name: string }
@@ -507,14 +576,10 @@ export type IntelAnswer =
       // The bucket is a distance bracket from this point to the real flag.
       // Stored in payload so the client can compute "ruled out" enemies later.
       buy_position: { lat: number; lng: number }
-      // The enemy real-flag coordinates. Present so the client can show a LIVE
-      // distance/thermometer reading that updates as the player moves (E17).
-      // (Older cards bought before this shipped may omit it → static bucket.)
-      target?: { lat: number; lng: number }
     }
   | {
       intel_ref: 'intel.surroundings'
-      text: string
+      photo_url: string
     }
   | {
       intel_ref: 'intel.direction'
@@ -614,6 +679,8 @@ export interface ChallengeDefinition {
   task: string
   reward_coins: number
   photo_required: boolean
+  // Challenges that explicitly require a teammate are not dealt in 1v1.
+  min_team_size?: number
   notes?: string
 }
 
@@ -684,8 +751,8 @@ export interface ReviewChallengeRequest {
 //   Flag photographed (kind=real attempt): +10 each
 //   Each completed challenge:               +1
 //   Each successful tag:                    +1
-//   Each curse cast:                        +0.5
-//   Each 50 coins remaining (floor):        +1
+//   Curse casts and remaining coins are shown for context but award 0 primary
+//   points. Coins are only the second timeout tiebreaker.
 export interface TeamScore {
   team_id: string
   team_side: TeamSide
@@ -702,15 +769,20 @@ export interface TeamScore {
   total: number
 }
 
-export type WinReason = 'flag_returned' | 'timeout_points' | 'timeout_tiebreaker' | 'timeout_tied'
+export type WinReason =
+  | 'flag_returned'
+  | 'timeout_points'
+  | 'timeout_tiebreaker'
+  | 'timeout_coin_flip'
+  | 'timeout_tied' // legacy games created before the mandatory coin flip
 
 // POST /api/games/[id]/end-by-timeout
 // Idempotent: only transitions when status in ('live', 'flag_found') AND
 // now >= started_at + duration_minutes. Computes the winner via §13.2:
 //   1. Higher total points wins
 //   2. Tied → most challenges wins
-//   3. Still tied → most coins wins
-//   4. Still tied → null winner_team_id (the app reports a tie)
+//   3. Still tied → most remaining coins wins
+//   4. Still tied → one server-side coin flip, persisted for idempotent retries
 export interface EndByTimeoutRequest {
   device_id: string
 }
@@ -720,6 +792,20 @@ export interface EndByTimeoutResponse {
   winner_team_id: string | null
   reason: WinReason
   scores: TeamScore[]
+}
+
+// GET /api/games/[id]/results?device_id=...&offset=0&limit=100
+// Scores and winner use the complete ledger. Timeline pages are newest-first
+// and remain available independently of the live-state 50-event window.
+export interface GameResultsResponse {
+  game: Game
+  winner_team_id: string | null
+  reason: WinReason
+  scores: TeamScore[]
+  timeline_events: GameEvent[]
+  timeline_total: number
+  timeline_offset: number
+  timeline_next_offset: number | null
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
 │                                                                  │
 │  useGPS (watchPosition)          useTagButton (distance calc)    │
 │  usePresence (publish GPS)       useCurseEnforcement (self-mon.) │
-│  useGameState (event sub)        Leaflet map                     │
+│  useLiveGameRealtime (reconcile) Leaflet map                     │
 │                                                                  │
 │         Zustand store ←── Supabase Realtime subscriptions        │
 └────────────────────┬─────────────────────────────────────────────┘
@@ -32,10 +32,10 @@
 ┌────────────────────────────────────────────────────────┐
 │                  Supabase  (BaaS)                      │
 │                                                        │
-│  PostgreSQL (9 tables, append-only events)             │
+│  PostgreSQL (append-only events + materialized state)  │
 │  Storage    (photo uploads for flag/challenge/curse)   │
-│  pg_cron    (curse expiry every 30 s)                  │
-│  Auth       (anonymous sessions — no login required)   │
+│  Client poll (curse expiry fallback while game active) │
+│  RLS        (server-only writes; trusted-friends reads)│
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -49,7 +49,7 @@ Full DDL lives in `supabase/migrations/`. Below is the semantic contract each ta
 
 ### `games`
 One row per game session.
-- `status`: `lobby | setup | live | flag_found | finished`  
+- `status`: `lobby | setup | live | flag_found | paused | finished`
   `setup` is added vs the migration (teams at home base assigning flags).  
   `flag_found` is added for the chase phase after flag is photographed.
 - `config`: jsonb bag for per-game settings (map bounds, time limit, etc.)
@@ -57,7 +57,7 @@ One row per game session.
 
 ### `teams`
 Two rows per game (West / East).
-- `home_landmark_id`: references the seed landmark ref (e.g. `"landmark.utad-main-library"`).
+- `home_landmark_id`: references the seed landmark ref (e.g. `"landmark.miradouro-vila-velha"`).
 - `coins`: **mutable counter**. The events table is append-only; coins are the one exception — updated by API handlers as a derived materialization to avoid re-scanning the entire event log on every request. Kept consistent by always writing an event first, then updating this column in the same transaction.
 
 ### `players`
@@ -65,6 +65,7 @@ One row per phone in the game.
 - `role`: `player` only (captain role removed).
 - `device_id`: localStorage UUID, used to reconnect to the same player record after page reload.
 - `flag_carrier`: boolean (added in migration 0002) — true for the player who photographed the real flag.
+- `respawning`, `respawn_target_ref`, `respawn_arrived`: durable two-stage respawn state. A tagged/decoyed player must reach the server-assigned nearest neutral, then move 45 m away before the state clears.
 
 ### `landmarks`
 Per-game state. Not the seed catalog (`/data/landmarks.json`).
@@ -100,15 +101,15 @@ Key event types:
 | `challenge_completed` | team_id, challenge_ref, coins_earned |
 | `coins_credited` | team_id, amount, reason |
 | `coins_deducted` | team_id, amount, reason |
-| `flag_hardened` | team_id, landmark_ref |
+| `flag_hardened` | team_id (the real landmark ref is deliberately omitted) |
 | `game_paused` | requested_by_team_id |
 | `game_resumed` | — |
 
-### `photos`
-Photo submissions linked to cards or flag attempts. Stored in Supabase Storage; this table holds the URL, GPS, and timestamp extracted from EXIF (or supplied by the client as fallback).
+### Photo proof Storage
+Flag attempts, challenge submissions, private flag-surroundings intel, and curse-compliance proofs use dedicated Supabase Storage buckets. Mutation routes validate that the object exists, is an image no larger than 10 MB, and is stored under the expected game/player path. Public event payloads contain only the minimum reference needed for the appropriate team-scoped UI; private surroundings object paths are never persisted in readable card payloads.
 
 ### `active_curses`
-Running curses with `expires_at`. pg_cron deletes expired rows and inserts `curse_expired` events every 30 s.
+Running curses with `started_at`, `expires_at`, enforcement parameters, and durable per-curse state where required. A 20-second client poll calls the atomic expiry route and inserts `curse_expired` events; production can replace this fallback with pg_cron.
 
 ### `tags`
 Immutable log of tag events. Source for the tiebreaker point calculation.
@@ -133,7 +134,7 @@ channel.track({
 })
 ```
 
-Every phone receives the full presence state (all connected players + their last position). This is the sole input to the **Tag button** and to the curse enforcement hooks.
+Every phone receives the presence state (connected players + their latest position). Clients prune entries older than 30 seconds. Tag requests include the relevant snapshot, but the server independently validates player identity, team, GPS freshness, defense-zone/raider eligibility, and the 10 m tolerance.
 
 Cadence / battery trade-off: 5 s interval, low-accuracy GPS mode between updates, high-accuracy burst only when Tag button computation is needed. Screen wake lock (`navigator.wakeLock.request('screen')`) required — show a banner if not granted.
 
@@ -141,9 +142,9 @@ Cadence / battery trade-off: 5 s interval, low-accuracy GPS mode between updates
 
 Uses **Supabase Realtime postgres_changes** subscription on the `events` table filtered by `game_id`. Every INSERT to `events` is broadcast to all subscribers.
 
-Client-side: `useGameState.ts` receives the new event, appends it to the Zustand store's `events` array, then re-derives game state. This keeps the store as a local projection of the event log.
+Client-side, `useLiveGameRealtime.ts` reconciles events plus mutable games/teams/players/cards/curses rows into the Zustand store. Hidden/filter-sensitive state also has explicit event reconciliation.
 
-On reconnect / page reload: client fetches full state snapshot via `GET /api/games/[id]/state` (returns teams, players, cards, active curses, all events), hydrates Zustand, then re-subscribes.
+On reconnect, browser foregrounding, network restoration, or page reload, the client fetches a curated `GET /api/games/[id]/live-state` snapshot, hydrates Zustand, and re-subscribes. This recovers events missed while a mobile browser slept without a force refresh.
 
 ---
 
@@ -162,18 +163,32 @@ All routes are Next.js Route Handlers (`app/api/...`). All mutations follow the 
 ```
 POST /api/games                          create a new game, return game code
 POST /api/games/[id]/join                join with display_name + device_id, return player record
+POST /api/games/[id]/switch-team         switch lobby team (maximum 4 players)
+POST /api/games/[id]/start               host starts only with equal 1–4-player teams
 POST /api/games/[id]/ready               team signals setup complete; game starts when both ready
 POST /api/games/[id]/flag-setup          assign candidate landmark roles (real/decoy/empty)
+POST /api/games/[id]/attempt-start       open a landmark mini-challenge / reaction window
 POST /api/games/[id]/attempt-flag        submit flag photo at a landmark
 POST /api/games/[id]/tag                 tag raider(s) from presence snapshot
+POST /api/games/[id]/respawn-clear       confirm assigned-neutral arrival, then 45 m departure
 POST /api/games/[id]/buy-intel           purchase intel card; server computes + stores answer
 POST /api/games/[id]/buy-curse           roll dice; server selects and activates curse
-POST /api/games/[id]/submit-challenge    submit challenge proof; server validates + credits coins
+POST /api/games/[id]/place-curse         place a hidden proximity curse
+POST /api/games/[id]/trigger-placed-curse atomically reveal/activate a placed curse
+POST /api/games/[id]/submit-challenge    submit challenge proof for opposing-team review
+POST /api/games/[id]/submit-curse-proof server-upload private [B] compliance photo + receipt
+POST /api/games/[id]/accept-challenge    opposing team accepts submitted proof
+POST /api/games/[id]/reject-challenge    opposing team rejects submitted proof
+POST /api/games/[id]/resolve-challenge-reviews auto-accept proofs pending for 120 s
 POST /api/games/[id]/complete-run        flag carrier crosses home base geofence → triggers win
 POST /api/games/[id]/harden-flag         spend 150 coins to upgrade own flag challenge
-POST /api/games/[id]/pause               request weather pause (requires both teams to confirm)
-POST /api/games/[id]/curse-breach        client self-reports a GPS curse breach
-GET  /api/games/[id]/state               full state snapshot for reconnect
+POST /api/games/[id]/pause               two-team weather pause/resume proposal and confirmation
+POST /api/games/[id]/extend-curse        durable Frozen anchor/violation accounting
+POST /api/games/[id]/complete-pilgrimage geofence-complete the Pilgrimage action lock
+POST /api/games/[id]/expire-curses       atomically expire elapsed curses
+POST /api/games/[id]/time-tick           award authoritative elapsed 30-minute +20 bonuses, capped by configured duration
+POST /api/games/[id]/end-by-timeout      settle due bonuses, then atomically persist points/tiebreak/coin-flip result
+GET  /api/games/[id]/live-state          curated reconnect snapshot
 GET  /api/games/[id]/challenges          3 active challenges for the calling team
 ```
 
@@ -183,11 +198,11 @@ GET  /api/games/[id]/challenges          3 active challenges for the calling tea
 
 ```
 Validates:
-  - player within 20 m of landmark (haversine, server-side)
-  - game status is 'live'
-  - player is in enemy half
-  - photo uploaded to Storage, URL in request body
-  - (optional) EXIF GPS within 50 m of landmark
+  - current player GPS within 28 m of landmark (12 m when hardened)
+  - game status is 'live' and the first-30-minute protection window elapsed
+  - player is not respawning and team actions are not curse/weather locked
+  - the named image exists in the expected Storage bucket/game/player path
+  - that team/landmark is not in its 15-minute retry lockout
 
 Looks up landmark kind from DB (only visible to owner team via RLS,
   read server-side bypassing RLS with service role key).
@@ -202,10 +217,12 @@ If flag_decoy:
   - expire all intel cards for this team (UPDATE cards SET state='expired'
     WHERE team_id = X AND kind = 'intel' AND state = 'in_hand')
   - insert event: flag_attempt { result: 'decoy' }
+  - assign nearest-neutral two-stage respawn and 15-minute landmark lockout
   - return { result: 'decoy' }
 
 If flag_empty:
   - insert event: flag_attempt { result: 'empty' }
+  - apply 15-minute landmark lockout
   - return { result: 'empty' }
 ```
 
@@ -220,18 +237,22 @@ Body: {
 }
 
 Validates:
-  - defender in own half (midline check on defender_pos)
+  - defender is inside the union of 200 m circles around their own candidates
   - defender NOT within 50m of any own candidate landmark for > 120 s
     (check events log for last camping_warning for this player)
   - For each raider: haversine(defender_pos, raider_pos) <= 10 m
     (10 m server-side vs 5 m client-side — GPS tolerance buffer)
   - raider is on the opposing team
+  - raider is outside their own 200 m defense-zone union OR within 50 m of one of the defender's selected candidates
+  - both GPS positions are fresh and belong to the claimed players
   - game status is 'live'
 
 For each valid tagged raider:
   - insert tag record
   - insert event: tag { defender_id, raider_id }
-  - remove 1 random intel card from raider's team (state = 'expired')
+  - persist the nearest neutral target and two-stage respawn state
+
+After the batch succeeds, expire at most 1 random in-hand intel card from the raiding team for the whole Tag action.
 
 Return: { tagged: raider_ids[] }
 ```
@@ -247,16 +268,14 @@ Validates:
   - this intel_ref not already purchased by this team
 
 Computes answer server-side (reads own landmarks table with service role):
-  I1 (North/South): compare real flag landmark lat to midline lat
-  I2 (East/West): compare real flag landmark lng to home base lng
+  I1 (North/South): compare real flag latitude to the fixed defending-side pool pivot (West 41.2954885 / East 41.29820795); persist it for overlays
+  I2 (East/West): compare real flag landmark lng to the enemy team's home longitude; include that pivot for the map overlay
   I3 (Eliminate One): pick random non-real, non-already-revealed candidate
   I4 (Eliminate Two): same, pick two
   I5 (Decoy Reveal): reveal a decoy landmark ref
-  I6 (Hot/Cold): compute distance bracket from requesting team's centroid
-  I7 (Surroundings): return the stored photo URL for the real flag landmark
-         (requires team to have submitted a surroundings photo during setup)
-  I8 (Direction): compute bearing from city center to real flag landmark
-  I9 (Landmark Type): return the kind field from landmarks seed JSON
+  I6 (Hot/Cold): compute and persist an immutable purchase-time bracket + buy position; never persist or return the target coordinates
+  I7 (Surroundings): sign the private setup photo for a short-lived display URL
+  I8 (Direction): compute bearing from the canonical play-area centre
 
 Writes:
   - deduct coins (events + teams.coins)
@@ -274,7 +293,7 @@ Body: { player_id, num_dice }   (1–3)
 Validates:
   - team coins >= 50 * num_dice
   - target team exists
-  - no same-effect curse already active on target team
+  - exclude disabled entries, same-effect active curses, Coin Drain at zero target coins, and Intel Loss with no target intel; if none are eligible, spend nothing
 
 Server-side dice roll:
   total = sum of num_dice rolls of d6 (Math.random server-side)
@@ -328,25 +347,25 @@ Broadcast triggers end-game screen on all phones.
 
 **`useTagButton.ts`**
 - Reads presence state + my GPS.
-- Computes `isInOwnHalf(myPos, midline)`.
-- Filters adversaries: opposing team, `haversine(me, them) <= 5`.
+- Requires a fresh local fix inside the union of the team's 200 m candidate zones.
+- Filters fresh adversaries within 5 m who are outside their own defense-zone union or within 50 m of one of the local team's candidates.
 - Exports: `{ tagEnabled: bool, targetIds: string[] }`.
 - The Tag button is just `disabled={!tagEnabled}`.
 
-**`useGameState.ts`**
-- Subscribes to `postgres_changes` on `events` table.
-- On new event: appends to Zustand store, re-derives computed state.
-- On mount: fetches full state snapshot if store is empty.
+**`useLiveGameRealtime.ts`**
+- Subscribes to the relevant mutable tables and append-only events.
+- Merges changes into Zustand, with event-based reconciliation for hidden or filtered deletes.
+- Refetches `live-state` after subscription rejoin, network restoration, or foregrounding.
 
 **`useCurseEnforcement.ts`**
 - Reads active curses from store.
-- For each `enforcement = 'A'` curse: computes constraint from GPS.
+- For each `enforcement = 'A'` curse: computes the documented live constraint from GPS.
   - Slow Walk: compute speed from consecutive GPS readings (Δdist / Δtime).
   - Frozen: compute drift from starting position.
   - Buddy Up: read team-mates' positions from presence.
-- On breach: calls `POST /api/games/[id]/curse-breach`.
-- For `enforcement = 'B'` curses: manages photo prompt timers.
-- Exports: `{ activeCurses, breachWarnings }`.
+- Frozen reports durable per-player anchors and overlap-safe violation intervals; Pilgrimage is a server-enforced action lock until its geofence completes. Other movement constraints produce visible compliance readouts rather than automatic GPS-noise penalties.
+- For `enforcement = 'B'` curses: manages timed private proof-photo prompts and acknowledgements.
+- Exports action locks and per-curse prompts/readouts.
 
 ### 5.2 Zustand store (`store/gameStore.ts`)
 
@@ -369,7 +388,7 @@ type GameStore = {
 
   // computed
   isFlagCarrier: boolean
-  gamePhase: 'lobby' | 'setup' | 'live' | 'flag_found' | 'finished'
+  gamePhase: 'lobby' | 'setup' | 'live' | 'flag_found' | 'paused' | 'finished'
 }
 ```
 
@@ -380,30 +399,30 @@ app/
   page.tsx                    Home: create or join game (enter code)
   game/[code]/
     page.tsx                  Phase router: renders correct view based on gamePhase
-    setup/page.tsx            Flag assignment (select 5 landmarks, assign roles)
-    map/page.tsx              Live map (Leaflet, dynamic import to avoid SSR)
-    actions/page.tsx          Intel, curses, challenges tabs
-    results/page.tsx          End screen + event timeline
+    Lobby.tsx                 Equal-team lobby, ready/start controls
+    Setup.tsx                 Map-first flag assignment and surroundings photo
+    Live.tsx                  Map / Actions / Status tabs and results overlay
 
 components/
   map/
     GameMap.tsx               Dynamic-imported Leaflet map (client only)
-    LandmarkPin.tsx           Pin component: icon differs by kind + reveal state
-    PlayerMarker.tsx          GPS dot for each player in presence
+    SetupMap.tsx              Setup role cycling, labels, list fallback
   game/
     TagButton.tsx             Big button, enabled/disabled from useTagButton
-    CurseTimer.tsx            Countdown + enforcement prompt for active curses
-    IntelCard.tsx             Displays purchased intel answer
-    ChallengeCard.tsx         Challenge task + photo upload
-    CoinLedger.tsx            Current balance + recent transactions
+    ActiveCursesBanner.tsx    Timers, prompts, movement readouts, proof state
+    IntelCardDisplay.tsx      Displays purchased intel answer
+    ChallengesPanel.tsx       Challenge task, upload, peer review
+    WeatherPausePanel.tsx     Two-team pause/resume voting
   ui/                         Button, Card, Badge primitives
 ```
 
 ### 5.4 Geo utilities (`lib/geo/`)
 
 - **`haversine.ts`** — distance in metres between two {lat, lng} pairs.
-- **`midline.ts`** — the east/west dividing line is a vertical (constant longitude) through a point between UTAD and Mateus. Returns `'west' | 'east'` for a given position. Midline longitude stored in `games.config`.
-- **`geofence.ts`** — `isWithinRadius(pos, center, radiusM): bool`. Used for landmark attempts (20 m), home base win trigger (30 m), camping check (50 m).
+- **`zones.ts`** — defense-zone membership for the union of 200 m candidate circles.
+- **`playArea.ts`** — canonical 1.5 km play disk, the legacy I1 fallback latitude, and I8 bearing origin. New I1 cards persist the fixed defending-side pool pivot in their payload.
+- **`nearestNeutral.ts`** — server-assigned nearest respawn target.
+- **`polyline.ts`** — point-to-route distance for Detour streets.
 
 ---
 
@@ -414,21 +433,22 @@ components/
 ```
 Defender phone (every 5 s):
   1. Receive presence update for all players
-  2. useTagButton: filter adversaries in own half within 5 m
+  2. useTagButton: require own defense-zone eligibility, then filter fresh enemy raiders within 5 m
   3. Tag button becomes active (highlighted)
 
 Defender taps Tag:
   4. POST /api/games/[id]/tag { defender_id, raider_ids, positions... }
   5. Server validates (10 m GPS tolerance), writes tag + events
   6. events INSERT → Realtime broadcast → all phones
-  7. Tagged raiders: Zustand update shows "You were tagged — walk to [neutral]"
-  8. Tagged raiders' intel: 1 random card set to 'expired'
+  7. Tagged raiders: Zustand update shows the exact assigned nearest neutral
+  8. Raiding team's intel: at most 1 random card set to 'expired' for the whole tap
+  9. Raider confirms arrival, remains immune, walks 45 m away, then confirms departure to clear respawn
 ```
 
 ### 6.2 Flag attempt → win
 
 ```
-Raider at candidate landmark (within 20 m):
+Raider at candidate landmark after the 30-minute protection window (within 28 m, or 12 m if hardened):
   1. Tap "Attempt Flag" → app reveals challenge task
   2. Raider completes task, takes photo
   3. Photo upload → Supabase Storage → URL returned
@@ -437,8 +457,8 @@ Raider at candidate landmark (within 20 m):
      a. real → game status = 'flag_found', raider.flag_carrier = true
               → INSERT events: flag_found
               → ALL phones receive event: "Team X found the flag!"
-     b. decoy → intel cards expired, INSERT event
-     c. empty → INSERT event, no penalty
+     b. decoy → intel cards expired, 15-minute lock, two-stage respawn
+     c. empty → 15-minute landmark lock, no inventory penalty
 
 Flag found → return home:
   6. Flag carrier's phone shows "RUN HOME" with distance to home base
@@ -460,12 +480,10 @@ Defender buys curse:
 Target team phones receive postgres_changes event:
   4. Zustand: active curses updated → useCurseEnforcement activates
   5. Hook begins computing speed from consecutive GPS readings
-  6. Speed > 3 km/h: visual warning shown
-  7. Speed > 4 km/h:
-     → POST curse-breach → server inserts breach event + deducts 10 coins
+  6. Speed over the threshold: visual warning shown (honor enforcement; GPS noise is not auto-fined)
 
 At expires_at:
-  8. pg_cron fires → DELETE active_curses row → INSERT curse_expired event
+  8. client fallback poll (or future pg_cron) calls atomic expiry → DELETE active_curses row → INSERT curse_expired event
   9. All phones: curse timer clears
 ```
 
@@ -475,26 +493,20 @@ At expires_at:
 Any player taps "Buy Intel" → selects card type:
   1. POST buy-intel { intel_ref: 'intel.north-south' }
   2. Server reads real flag landmark (service role, bypassing RLS)
-  3. Computes: is real flag lat > midline lat? → 'north'
-  4. INSERT card { kind: 'intel', payload: { direction: 'north' }, state: 'in_hand' }
-  5. Deduct coins
-  6. Return: { answer: 'north' } → displayed on client for whole team
+  3. Selects the fixed full-pool pivot for the defending side
+  4. Compares real-flag latitude to that pivot → 'north' or 'south'
+  5. INSERT card { kind: 'intel', payload: { direction: 'north', pivot_lat }, state: 'in_hand' }
+  6. Deduct coins
+  7. Return the answer + pivot → displayed consistently for the whole team and map overlay
 ```
 
 ---
 
-## 7. Auth & game joining
+## 7. Identity, joining, and v1 security posture
 
-No email/password. Flow:
+No email/password is required. A phone creates or joins with a **4-letter code**, and a localStorage UUID (`device_id`) reconnects it to the same player. All mutations authenticate that device/player pair in server routes and use the service-role client for writes; anon-key clients cannot mutate tables directly.
 
-1. Phone visits `/`. Creates or joins a game with a **4-letter code** (e.g. `XKBR`).
-2. Supabase anonymous auth: `supabase.auth.signInAnonymously()`. Each phone gets a session.
-3. `device_id` (UUID stored in localStorage) is sent with join request, allowing reconnect.
-4. RLS policies use `auth.uid()` or `device_id` to restrict reads:
-   - Own team's landmark kinds: visible.
-   - Enemy team's landmark kinds: hidden (`kind` returned as `null`).
-   - Own intel card answers: visible.
-   - Enemy intel cards: not visible.
+The curated setup/live/observer APIs redact enemy flag state and private I7 paths. However, v1 keeps broad anonymous SELECT policies so `postgres_changes` Realtime works without per-user sessions. A malicious participant can bypass the curated API and inspect some non-I7 rows directly. The v1.1 hardening path is anonymous Supabase Auth, `auth_user_id` on players, team-scoped SELECT policies, and server-curated per-team Broadcast events. Until that work lands, this is a trusted friend-game security model rather than protection against a hostile client.
 
 ---
 
@@ -506,31 +518,23 @@ No email/password. Flow:
 | Screen-off kills GPS | Wake Lock API; banner if not supported |
 | Battery drain | 5 s presence cadence; high-accuracy only during active curse |
 | Indoor GPS loss | Presence `updated_at` staleness check; stale > 30 s → shown as offline |
-| Narrow streets (Pelourinho area) | Geofence radii tuned: 20 m for attempts, 30 m for home win, 50 m for camping |
+| Narrow streets / urban drift | Attempt radii tuned to 28 m normally and 12 m when hardened; home win 30 m; camping 50 m |
 
 ---
 
-## 9. What is NOT yet built (implementation backlog)
+## 9. Implementation and verification status
 
-In priority order for a playable v1:
+The playable v1 flow is implemented end to end: equal 1–4-player teams; map-first secret setup with a private I7 surroundings image; live GPS/presence; tagging and two-stage respawn; structured flag attempts; intel; curses and placed curses; peer-reviewed challenges; chat; weather pause/resume; timeout scoring; flag-carrier return; observer/results; push opt-in; and reconnect recovery.
 
-1. **Migration 0002** — add `game_code`, `flag_carrier`, remove `captain` role, add `setup` + `flag_found` statuses.
-2. **Game create/join flow** — `POST /api/games`, `POST /api/games/[id]/join`, landing page UI.
-3. **Flag setup UI** — team selects 5 candidate landmarks, assigns roles, confirms ready.
-4. **Live game view** — tab shell (Map / Actions / Status), real-time data wired up.
-5. **Tag button** — `useGPS` + `usePresence` + `useTagButton` + `TagButton.tsx`.
-6. **`POST /api/games/[id]/tag`** route with full validation.
-7. **Flag attempt** — geofence check, challenge reveal, photo upload, `attempt-flag` route.
-8. **Win condition** — `complete-run` route + "RUN HOME" screen.
-9. **Buy intel** — all 9 intel answer computations + UI.
-10. **Buy curse** — dice roll, curse selection, `active_curses` row, push to target.
-11. **Curse enforcement** — `useCurseEnforcement`, photo prompt timers, GPS speed check.
-12. **Challenges** — 3-at-a-time rotation, submission, coin credit.
-13. **Results / timeline** — end screen reading events log.
-14. **Camping enforcement** — server-side check in tag route + client-side warning.
-15. **RLS policies** — landmark kind hidden, intel answers scoped to team.
-16. **pg_cron setup** — curse expiry job in Supabase dashboard.
-17. **I7 intel (Surroundings photo)** — teams submit surroundings photo during setup.
+Database-side state transitions and economy mutations are serialized through Postgres functions so retries and simultaneous team-mate actions cannot double-spend, double-award, overfill a roster, or produce duplicate phase/win events. `tools/sim/` contains strict browser, API-concurrency, terminal-outcome, realtime-recovery, and 1v1–4v4 full-game scenarios used for release verification.
+
+Remaining deployment/field work is operational rather than a missing game flow:
+
+1. Apply every checked-in migration to the hosted Supabase project.
+2. Configure the matching public/private VAPID keys and subject for background Web Push.
+3. Move curse expiry from the client fallback poll to a production scheduler if games must progress while every client is offline.
+4. Complete the documented v1.1 anonymous-auth/team-scoped SELECT-policy hardening before treating participants as adversarial clients.
+5. Field-check broad landmark centroids and real-device GPS/push behavior in Vila Real.
 
 ---
 
@@ -539,7 +543,7 @@ In priority order for a playable v1:
 - **Hosting:** Vercel (free tier, hobby plan covers this scale)
 - **DB / Realtime / Storage / Auth:** Supabase free tier (500 MB DB, 1 GB Storage, 200 concurrent Realtime connections — more than enough for 8 players)
 - **DNS / HTTPS:** Vercel default domain; custom domain optional
-- **pg_cron:** available on Supabase Pro+ or via a scheduled Supabase Edge Function on free tier
+- **Curse expiry:** the client poll is sufficient while a game has an active browser; use a production scheduler if expiry must continue with all clients offline.
 
 One `.env.local`:
 ```

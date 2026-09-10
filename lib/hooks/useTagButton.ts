@@ -10,8 +10,9 @@
 
 import { useMemo } from 'react'
 import { haversineMeters } from '@/lib/geo/haversine'
-import { isInDefenseZone } from '@/lib/geo/zones'
-import type { GpsPosition, Landmark, PresencePayload } from '@/lib/types'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { isInDefenseZone, isRaiderForDefendingTeam } from '@/lib/geo/zones'
+import type { EnemyLandmark, GpsPosition, Landmark, PresencePayload } from '@/lib/types'
 
 // Display-side tag radius. The server re-validates at 10 m to account for GPS
 // drift, but the button only lights up at the rulebook's 5 m.
@@ -42,9 +43,11 @@ export interface UseTagButtonParams {
   myPlayerId: string | null
   myTeamId: string | null
   myTeamLandmarks: Landmark[]
+  enemyTeamLandmarks: EnemyLandmark[]
   presence: Record<string, PresencePayload>
   respawning: boolean
   campingLocked: boolean
+  nowMs: number
 }
 
 export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
@@ -53,13 +56,15 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     myPlayerId,
     myTeamId,
     myTeamLandmarks,
+    enemyTeamLandmarks,
     presence,
     respawning,
     campingLocked,
+    nowMs,
   } = params
 
   return useMemo<UseTagButtonResult>(() => {
-    if (!myGps) {
+    if (!myGps || !isPositionFresh(myGps.updated_at, nowMs)) {
       return {
         enabled: false,
         targets: [],
@@ -85,8 +90,18 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     const targets: TagTarget[] = []
     for (const entry of Object.values(presence)) {
       if (!entry) continue
+      if (!isPositionFresh(entry.updated_at, nowMs)) continue
       if (entry.player_id === myPlayerId) continue
       if (myTeamId && entry.team_id === myTeamId) continue
+      // Proximity alone is not enough: an opponent inside their own defense
+      // zone is a defender, not a raider, and cannot legally be tagged.
+      if (
+        !isRaiderForDefendingTeam(
+          entry,
+          enemyTeamLandmarks,
+          myTeamLandmarks,
+        )
+      ) continue
       const distance = haversineMeters(
         { lat: myGps.lat, lng: myGps.lng },
         { lat: entry.lat, lng: entry.lng },
@@ -131,8 +146,10 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     myPlayerId,
     myTeamId,
     myTeamLandmarks,
+    enemyTeamLandmarks,
     presence,
     respawning,
     campingLocked,
+    nowMs,
   ])
 }

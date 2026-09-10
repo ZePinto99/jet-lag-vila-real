@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getGameplayActionBlock } from '@/lib/server/actionLock'
 import type {
   Game,
   HardenFlagResponse,
@@ -108,6 +109,8 @@ export async function POST(
   if (!callerTeam) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  const actionBlock = await getGameplayActionBlock(supabase, game.id, caller)
+  if (actionBlock) return NextResponse.json({ error: actionBlock }, { status: 409 })
 
   // 3. Resolve the landmark row; assert team ownership and that it is the
   // real-flag landmark.
@@ -139,125 +142,41 @@ export async function POST(
     return NextResponse.json({ error: 'not_real_flag' }, { status: 409 })
   }
 
-  // 4. Already-hardened check: any of this team's landmarks already hardened?
-  const { data: hardenedRows, error: hardenedLookupError } = await supabase
-    .from('landmarks')
-    .select('id')
-    .eq('game_id', game.id)
-    .eq('team_id', callerTeam.id)
-    .eq('hardened', true)
-    .limit(1)
-
-  if (hardenedLookupError) {
-    return NextResponse.json(
-      {
-        error: 'landmark_lookup_failed',
-        details: hardenedLookupError.message,
-      },
-      { status: 500 },
-    )
-  }
-  if ((hardenedRows ?? []).length > 0) {
-    return NextResponse.json({ error: 'already_hardened' }, { status: 409 })
-  }
-
-  // 5. Coin check (uses materialized teams.coins counter per CLAUDE.md).
-  if (callerTeam.coins < HARDEN_COST) {
-    return NextResponse.json(
-      {
-        error: 'insufficient_coins',
-        details: { coins: callerTeam.coins },
-      },
-      { status: 409 },
-    )
-  }
-
-  // 6. Side effects, in order: event first, then coin debit, then mark
-  // hardened, then flag_hardened event (per CLAUDE.md: write event before
-  // coin mutation in same logical txn — Supabase admin client lacks tx
-  // primitives, so we sequence carefully).
-  const { error: coinsEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'coins_deducted',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: callerTeam.id,
-      amount: HARDEN_COST,
-      reason: 'harden_flag',
+  // The once-only guard, debit, landmark update and both ledger events are one
+  // transaction so simultaneous team-mate taps cannot double-spend.
+  const { data: hardenData, error: hardenError } = await supabase.rpc(
+    'harden_flag_atomic',
+    {
+      p_game_id: game.id,
+      p_team_id: callerTeam.id,
+      p_landmark_id: landmark.id,
+      p_landmark_ref: landmark_ref,
+      p_actor_player_id: caller.id,
+      p_cost: HARDEN_COST,
     },
-  })
-  if (coinsEventError) {
+  )
+  if (hardenError) {
     return NextResponse.json(
-      { error: 'event_insert_failed', details: coinsEventError.message },
+      { error: 'harden_failed', details: hardenError.message },
       { status: 500 },
     )
   }
-
-  // Debit coins. Use coins = coins - 150 via update with where guard.
-  const newCoins = callerTeam.coins - HARDEN_COST
-  const { data: updatedTeamRow, error: teamUpdateError } = await supabase
-    .from('teams')
-    .update({ coins: newCoins })
-    .eq('id', callerTeam.id)
-    .eq('coins', callerTeam.coins) // optimistic: avoid double-debit on retry
-    .select()
-    .maybeSingle()
-
-  if (teamUpdateError) {
+  const harden = hardenData as {
+    error?: string
+    coins?: number
+    team_coins?: number
+  } | null
+  if (!harden || harden.error) {
+    const error = harden?.error ?? 'harden_failed'
     return NextResponse.json(
-      { error: 'team_update_failed', details: teamUpdateError.message },
-      { status: 500 },
+      { error, ...(harden?.coins !== undefined ? { details: { coins: harden.coins } } : {}) },
+      { status: error === 'harden_failed' ? 500 : 409 },
     )
   }
-  if (!updatedTeamRow) {
-    // Coins changed under us — re-fetch and surface insufficient_coins so the
-    // client can refresh and decide.
-    const { data: refreshedTeam } = await supabase
-      .from('teams')
-      .select('coins')
-      .eq('id', callerTeam.id)
-      .maybeSingle()
-    const currentCoins = (refreshedTeam as { coins: number } | null)?.coins ?? 0
-    return NextResponse.json(
-      {
-        error: 'insufficient_coins',
-        details: { coins: currentCoins },
-      },
-      { status: 409 },
-    )
+  if (harden.team_coins === undefined) {
+    return NextResponse.json({ error: 'harden_failed' }, { status: 500 })
   }
-  const finalCoins = (updatedTeamRow as Team).coins
-
-  // Mark the landmark hardened.
-  const { error: landmarkUpdateError } = await supabase
-    .from('landmarks')
-    .update({ hardened: true })
-    .eq('id', landmark.id)
-    .eq('hardened', false) // belt-and-braces guard
-
-  if (landmarkUpdateError) {
-    return NextResponse.json(
-      { error: 'landmark_update_failed', details: landmarkUpdateError.message },
-      { status: 500 },
-    )
-  }
-
-  // Append flag_hardened event.
-  const { error: hardenEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'flag_hardened',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: callerTeam.id,
-      landmark_ref,
-    },
-  })
-  if (hardenEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: hardenEventError.message },
-      { status: 500 },
-    )
-  }
+  const finalCoins = harden.team_coins
 
   const response: HardenFlagResponse = {
     landmark_ref,

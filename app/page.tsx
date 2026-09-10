@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useT } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
 import { VilaRealBanner } from '@/components/art/VilaRealBanner'
@@ -34,7 +35,7 @@ export default function HomePage() {
       </div>
       <div className="flex flex-col gap-4">
         {lastCode && (
-          <a
+          <Link
             href={`/game/${lastCode}`}
             className="rounded-lg border border-emerald-700 bg-emerald-950/40 px-5 py-5 text-center transition hover:border-emerald-500 hover:bg-emerald-900/40"
           >
@@ -44,22 +45,22 @@ export default function HomePage() {
             <div className="mt-1 text-sm text-emerald-300/80">
               {t('landing.rejoin_game_desc', { code: lastCode })}
             </div>
-          </a>
+          </Link>
         )}
-        <a
+        <Link
           href="/game/new"
           className="rounded-lg border border-neutral-700 bg-neutral-900 px-5 py-5 text-center transition hover:border-neutral-500 hover:bg-neutral-800"
         >
           <div className="text-lg font-medium">{t('landing.create_game')}</div>
           <div className="mt-1 text-sm text-neutral-400">{t('landing.create_game_desc')}</div>
-        </a>
-        <a
+        </Link>
+        <Link
           href="/game/join"
           className="rounded-lg border border-neutral-700 bg-neutral-900 px-5 py-5 text-center transition hover:border-neutral-500 hover:bg-neutral-800"
         >
           <div className="text-lg font-medium">{t('landing.join_game')}</div>
           <div className="mt-1 text-sm text-neutral-400">{t('landing.join_game_desc')}</div>
-        </a>
+        </Link>
       </div>
     </main>
   )

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { awardChallenge } from '@/lib/server/challengeAward'
+import { getGameplayActionBlock } from '@/lib/server/actionLock'
 import challengesCatalog from '@/data/challenges.json'
 import type {
   Card,
@@ -102,6 +103,8 @@ export async function POST(
   if (!caller || caller.id !== player_id) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  const actionBlock = await getGameplayActionBlock(supabase, game.id, caller)
+  if (actionBlock) return NextResponse.json({ error: actionBlock }, { status: 409 })
 
   // Load the pending card.
   const { data: cardRow, error: cardError } = await supabase
@@ -146,6 +149,7 @@ export async function POST(
       card,
       def,
       actorPlayerId: submittedBy,
+      requestingPlayerId: caller.id,
       reviewedByTeamId: caller.team_id,
     })
     const response: SubmitChallengeResponse = {
@@ -156,7 +160,13 @@ export async function POST(
     return NextResponse.json(response)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'award_failed'
-    const status = message === 'challenge_not_available' ? 409 : 500
+    const status = [
+      'challenge_not_available',
+      'game_not_in_play',
+      'game_expired',
+      'player_respawning',
+      'actions_locked',
+    ].includes(message) ? 409 : message === 'forbidden' ? 403 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

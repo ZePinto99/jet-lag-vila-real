@@ -3,7 +3,10 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToTeam } from '@/lib/push/server'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
-import type { Game, Landmark, Player, Team } from '@/lib/types'
+import { haversineMeters } from '@/lib/geo/haversine'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { isTeamActionLocked } from '@/lib/server/actionLock'
+import type { Game, Landmark, LandmarkKind, Player, Team } from '@/lib/types'
 
 // POST /api/games/[id]/attempt-start
 //
@@ -20,11 +23,21 @@ import type { Game, Landmark, Player, Team } from '@/lib/types'
 // pollute the log with garbage.
 
 const PROTECTION_WINDOW_MS = 30 * 60_000
+const ATTEMPT_START_RADIUS_M = 28
+const FLAG_KINDS: LandmarkKind[] = ['flag_real', 'flag_decoy', 'flag_empty']
+
+const GpsPositionSchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  accuracy: z.number(),
+  updated_at: z.number(),
+})
 
 const AttemptStartSchema = z.object({
   device_id: z.string().min(1).max(128),
   player_id: z.string().uuid(),
   landmark_ref: z.string().min(1).max(128),
+  pos: GpsPositionSchema,
 })
 
 export async function POST(
@@ -50,7 +63,11 @@ export async function POST(
       { status: 400 },
     )
   }
-  const { device_id, player_id, landmark_ref } = parsed.data
+  const { device_id, player_id, landmark_ref, pos } = parsed.data
+
+  if (!isPositionFresh(pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+  }
 
   const supabase = createAdminClient()
 
@@ -110,6 +127,12 @@ export async function POST(
   if (!caller || caller.id !== player_id) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  if (caller.respawning) {
+    return NextResponse.json({ error: 'player_respawning' }, { status: 409 })
+  }
+  if (await isTeamActionLocked(supabase, game.id, caller.team_id)) {
+    return NextResponse.json({ error: 'actions_locked' }, { status: 409 })
+  }
 
   // Landmark must be an enemy candidate in this game.
   const { data: landmarkRow, error: landmarkError } = await supabase
@@ -125,32 +148,50 @@ export async function POST(
     )
   }
   const landmark = landmarkRow as Landmark | null
-  if (!landmark || landmark.team_id === caller.team_id) {
+  if (
+    !landmark ||
+    landmark.team_id === caller.team_id ||
+    !FLAG_KINDS.includes(landmark.kind)
+  ) {
     return NextResponse.json({ error: 'invalid_landmark' }, { status: 409 })
   }
+  const distanceM = haversineMeters(pos, landmark)
+  if (distanceM > ATTEMPT_START_RADIUS_M) {
+    return NextResponse.json(
+      { error: 'out_of_geofence', details: { distance_m: distanceM } },
+      { status: 409 },
+    )
+  }
 
-  const { error: eventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'flag_attempt_started',
-    actor_player_id: caller.id,
-    payload: {
-      landmark_ref,
-      team_id: caller.team_id,
-      defending_team_id: landmark.team_id,
-      player_id: caller.id,
+  const { data: recordedData, error: eventError } = await supabase.rpc(
+    'record_flag_attempt_start_atomic',
+    {
+      p_game_id: game.id,
+      p_player_id: caller.id,
+      p_attacking_team_id: caller.team_id,
+      p_defending_team_id: landmark.team_id,
+      p_landmark_ref: landmark_ref,
     },
-  })
+  )
   if (eventError) {
     return NextResponse.json(
-      { error: 'event_insert_failed', details: eventError.message },
+      { error: 'attempt_start_failed', details: eventError.message },
       { status: 500 },
+    )
+  }
+  const recorded = recordedData as { recorded?: boolean; error?: string } | null
+  if (!recorded?.recorded) {
+    const error = recorded?.error ?? 'attempt_start_failed'
+    return NextResponse.json(
+      { error },
+      { status: error.endsWith('_cooldown') ? 429 : 409 },
     )
   }
 
   // Lock-screen alert to the defending team (best-effort; no-op without VAPID).
   if (landmark.team_id) {
     const lmName = getSeedLandmarkByRef(landmark_ref)?.name ?? landmark_ref
-    void sendPushToTeam(game.id, landmark.team_id, {
+    await sendPushToTeam(game.id, landmark.team_id, {
       title: 'Flag under attack!',
       body: `Your flag is under attack at ${lmName}!`,
       tag: 'flag-attack',

@@ -6,7 +6,7 @@
 //   - [L] Full Stop  → actionsLocked: the live view disables every action button
 //   - [L] Check-in   → a 60 s prompt the player taps to acknowledge (honor)
 //   - [B] photo curses (single-file / photo-tax / outfit-swap / pose-patrol)
-//                     → timed prompts with a submission-window countdown (honor)
+//                     → timed, server-verified private proof-photo prompts
 //   - [A] movement curses (slow-walk / frozen / buddy-up / solo-quarantine)
 //                     → live informational readouts (speed / drift / team spread).
 //                       NO automated penalty — GPS noise would punish unfairly.
@@ -15,23 +15,22 @@
 // existing /expire-curses poll + active_curses realtime.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import cursesSeed from '@/data/curses.json'
 import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
+import { getCurseProofWindow, PHOTO_VERIFIED_CURSE_REFS } from '@/lib/curses/proofWindows'
 import { haversineMeters } from '@/lib/geo/haversine'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { distanceToPolylineMeters, type GeoPoint } from '@/lib/geo/polyline'
+import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import type { ActiveCurse, GpsPosition, PresencePayload } from '@/lib/types'
 
-// Nominal durations from the catalog, for the Frozen gated countdown (E15).
-const CURSE_DURATION_MS: Record<string, number> = {}
-for (const c of cursesSeed as { id: string; duration_minutes: number | null }[]) {
-  if (c.duration_minutes) CURSE_DURATION_MS[c.id] = c.duration_minutes * 60_000
-}
-
 const FROZEN = 'curse.frozen'
-// Accumulated out-of-place time before we ask the server to extend, and the
-// minimum gap between extend calls (keeps the network chatter low).
-const EXTEND_DEBT_THRESHOLD_MS = 6_000
-const EXTEND_MIN_INTERVAL_MS = 8_000
+const VIOLATION_REPORT_INTERVAL_MS = 2_000
+
+function isTerminalCurseRequestError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return error.message === 'curse_not_found' || error.message === 'game_not_in_play'
+}
 
 export interface CurseReadout {
   /** i18n key for the label, with already-substituted value inside. */
@@ -45,6 +44,9 @@ export interface CursePrompt {
   label: string
   /** Seconds left in the current submission window. */
   secondsLeft: number
+  /** Present only for [B] prompts that require a durable proof photo. */
+  proofRequired?: boolean
+  promptIndex?: number
 }
 
 export interface CurseEnforcementEntry {
@@ -61,6 +63,8 @@ export interface CurseEnforcementEntry {
 export interface UseCurseEnforcementResult {
   /** True while a non-expired Full Stop curse is on the team. */
   actionsLocked: boolean
+  /** User-facing reason for the action lock (Full Stop or Pilgrimage). */
+  actionsLockedLabel: string | null
   /** Per-curse-id enforcement extras for the banner. */
   byCurseId: Record<string, CurseEnforcementEntry>
 }
@@ -68,11 +72,16 @@ export interface UseCurseEnforcementResult {
 export interface UseCurseEnforcementParams {
   activeCurses: ActiveCurse[]
   myGps: GpsPosition | null
+  myPlayerId?: string | null
   myTeamId: string | null
   presence: Record<string, PresencePayload>
   nowMs: number
+  /** Real wall clock for GPS freshness and server report timestamps. */
+  wallNowMs?: number
   /** Needed to extend a Frozen curse's expiry while the player wanders (E15). */
   gameId: string | null
+  /** False during a weather pause: keep readouts visible but emit no actions. */
+  gameplayActive?: boolean
   t: (key: string, tokens?: Record<string, string | number>) => string
 }
 
@@ -92,16 +101,43 @@ function numParam(
   return typeof v === 'number' ? v : fallback
 }
 
-export function useCurseEnforcement(
-  params: UseCurseEnforcementParams,
-): UseCurseEnforcementResult {
-  const { activeCurses, myGps, myTeamId, presence, nowMs, gameId, t } = params
+function polylineParam(
+  params: Record<string, unknown> | null | undefined,
+  key: string,
+): GeoPoint[] {
+  const raw = params?.[key]
+  if (!Array.isArray(raw)) return []
+  const points: GeoPoint[] = []
+  for (const value of raw) {
+    if (
+      Array.isArray(value) &&
+      value.length === 2 &&
+      typeof value[0] === 'number' &&
+      typeof value[1] === 'number'
+    ) {
+      points.push({ lat: value[0], lng: value[1] })
+    }
+  }
+  return points
+}
+
+export function useCurseEnforcement(params: UseCurseEnforcementParams): UseCurseEnforcementResult {
+  const {
+    activeCurses,
+    myGps,
+    myPlayerId = null,
+    myTeamId,
+    presence,
+    nowMs,
+    wallNowMs = nowMs,
+    gameId,
+    gameplayActive = true,
+    t,
+  } = params
 
   // --- live speed estimate (for Slow Walk) ----------------------------------
   const [speedKmh, setSpeedKmh] = useState<number | null>(null)
-  const lastSampleRef = useRef<{ lat: number; lng: number; ts: number } | null>(
-    null,
-  )
+  const lastSampleRef = useRef<{ lat: number; lng: number; ts: number } | null>(null)
   useEffect(() => {
     if (!myGps) {
       lastSampleRef.current = null
@@ -121,112 +157,234 @@ export function useCurseEnforcement(
     lastSampleRef.current = { lat: myGps.lat, lng: myGps.lng, ts }
   }, [myGps])
 
-  // --- Frozen "stay in place" bookkeeping, keyed by curse id (E15) ----------
-  // The countdown only advances while the player is within max_drift_m of the
-  // anchor captured at curse start. Out-of-place time is accumulated as "debt"
-  // and pushed to the server (extend-curse) so wandering prolongs the freeze
-  // rather than letting the wall clock run out.
+  // --- Frozen durable anchor + violation reporting (E15) --------------------
+  // Anchors are first-write-wins server state, so reloading after moving cannot
+  // reset the start position. The server unions one-second violation buckets
+  // across teammates, making simultaneous reports overlap-safe.
   interface FrozenState {
     anchor: { lat: number; lng: number } | null
+    anchorRequesting: boolean
     lastTickMs: number
-    inPlaceMs: number
-    debtMs: number
-    lastExtendMs: number
-    durationMs: number
-    extending: boolean
+    unreportedStartMs: number | null
+    pausedPendingViolationMs: number
+    reporting: boolean
+    terminal: boolean
+  }
+  interface FrozenStateResponse {
+    anchor: { lat: number; lng: number }
   }
   const frozenRef = useRef<Record<string, FrozenState>>({})
-  const [frozenRemaining, setFrozenRemaining] = useState<
-    Record<string, number>
-  >({})
+  const [frozenAnchors, setFrozenAnchors] = useState<Record<string, { lat: number; lng: number }>>(
+    {},
+  )
 
   useEffect(() => {
-    const liveFrozen = activeCurses.filter(
-      (c) => c.curse_ref === FROZEN && isActive(c, nowMs),
-    )
+    if (!gameplayActive) {
+      for (const state of Object.values(frozenRef.current)) {
+        if (state.unreportedStartMs != null) {
+          // Preserve the small genuine violation interval accumulated before
+          // the pause, but never include paused wall time. It is replayed as a
+          // fresh interval after resume so the server freshness guard accepts
+          // it even after a long weather pause.
+          state.pausedPendingViolationMs += Math.max(0, state.lastTickMs - state.unreportedStartMs)
+          state.unreportedStartMs = null
+        }
+        state.lastTickMs = wallNowMs
+      }
+      return
+    }
+    const liveFrozen = activeCurses.filter((c) => c.curse_ref === FROZEN && isActive(c, nowMs))
     const liveIds = new Set(liveFrozen.map((c) => c.id))
     for (const id of Object.keys(frozenRef.current)) {
       if (!liveIds.has(id)) delete frozenRef.current[id]
     }
 
-    const next: Record<string, number> = {}
     for (const c of liveFrozen) {
       let st = frozenRef.current[c.id]
       if (!st) {
         st = frozenRef.current[c.id] = {
-          anchor: myGps ? { lat: myGps.lat, lng: myGps.lng } : null,
-          lastTickMs: nowMs,
-          inPlaceMs: 0,
-          debtMs: 0,
-          lastExtendMs: 0,
-          durationMs: CURSE_DURATION_MS[c.curse_ref] ?? 8 * 60_000,
-          extending: false,
+          anchor: null,
+          anchorRequesting: false,
+          lastTickMs: wallNowMs,
+          unreportedStartMs: null,
+          pausedPendingViolationMs: 0,
+          reporting: false,
+          terminal: false,
         }
       }
-      if (st.anchor == null && myGps) {
-        st.anchor = { lat: myGps.lat, lng: myGps.lng }
-      }
-      const dt = Math.max(0, nowMs - st.lastTickMs)
-      st.lastTickMs = nowMs
+      if (st.terminal) continue
+      const previousTickMs = st.lastTickMs
+      st.lastTickMs = wallNowMs
       const maxDrift = numParam(c.params, 'max_drift_m', 10)
-      // Without a GPS fix we can't verify, so give the benefit of the doubt and
-      // let the timer run (honor system — no penalty for GPS gaps).
-      let inPlace = true
-      if (myGps && st.anchor) {
-        inPlace =
-          haversineMeters(st.anchor, { lat: myGps.lat, lng: myGps.lng }) <=
-          maxDrift
-      }
-      if (inPlace) st.inPlaceMs += dt
-      else st.debtMs += dt
-      next[c.id] = Math.max(0, st.durationMs - st.inPlaceMs)
 
-      if (
-        gameId &&
-        st.debtMs >= EXTEND_DEBT_THRESHOLD_MS &&
-        !st.extending &&
-        nowMs - st.lastExtendMs >= EXTEND_MIN_INTERVAL_MS
-      ) {
-        const extendSeconds = Math.min(120, Math.round(st.debtMs / 1000))
-        st.debtMs = 0
-        st.lastExtendMs = nowMs
-        st.extending = true
-        apiPost(`/api/games/${gameId}/extend-curse`, {
+      const freshGps = myGps && isPositionFresh(myGps.updated_at, wallNowMs) ? myGps : null
+      if (!st.anchor && !st.anchorRequesting && freshGps && gameId && myPlayerId) {
+        st.anchorRequesting = true
+        apiPost<FrozenStateResponse>(`/api/games/${gameId}/extend-curse`, {
           device_id: getDeviceId(),
+          player_id: myPlayerId,
           curse_id: c.id,
-          extend_seconds: extendSeconds,
+          anchor_pos: freshGps,
         })
-          .catch(() => {})
+          .then((response) => {
+            const cur = frozenRef.current[c.id]
+            if (!cur) return
+            cur.anchor = response.anchor
+            setFrozenAnchors((prev) => ({ ...prev, [c.id]: response.anchor }))
+          })
+          .catch((error: unknown) => {
+            const cur = frozenRef.current[c.id]
+            if (cur && isTerminalCurseRequestError(error)) cur.terminal = true
+          })
           .finally(() => {
             const cur = frozenRef.current[c.id]
-            if (cur) cur.extending = false
+            if (cur) cur.anchorRequesting = false
           })
       }
-    }
 
-    setFrozenRemaining((prev) => {
-      const prevKeys = Object.keys(prev)
-      const nextKeys = Object.keys(next)
-      if (
-        prevKeys.length === nextKeys.length &&
-        nextKeys.every((k) => prev[k] === next[k])
-      ) {
-        return prev
+      if (!st.anchor || !gameId || !myPlayerId) continue
+      const inPlace = Boolean(freshGps && haversineMeters(st.anchor, freshGps) <= maxDrift)
+
+      if (st.pausedPendingViolationMs > 0 && !st.reporting) {
+        const pendingMs = st.pausedPendingViolationMs
+        st.pausedPendingViolationMs = 0
+        st.unreportedStartMs = inPlace ? null : wallNowMs
+        st.reporting = true
+        apiPost<FrozenStateResponse>(`/api/games/${gameId}/extend-curse`, {
+          device_id: getDeviceId(),
+          player_id: myPlayerId,
+          curse_id: c.id,
+          violation: { started_at: wallNowMs - pendingMs, ended_at: wallNowMs },
+        })
+          .then((response) => {
+            const cur = frozenRef.current[c.id]
+            if (!cur) return
+            cur.anchor = response.anchor
+            setFrozenAnchors((prev) => ({ ...prev, [c.id]: response.anchor }))
+          })
+          .catch((error: unknown) => {
+            const cur = frozenRef.current[c.id]
+            if (!cur) return
+            if (isTerminalCurseRequestError(error)) cur.terminal = true
+            else cur.pausedPendingViolationMs += pendingMs
+          })
+          .finally(() => {
+            const cur = frozenRef.current[c.id]
+            if (cur) cur.reporting = false
+          })
+        continue
       }
-      return next
-    })
-  }, [nowMs, activeCurses, myGps, gameId])
+      if (!inPlace && st.unreportedStartMs == null) {
+        st.unreportedStartMs = previousTickMs
+      }
+
+      const pendingMs = st.unreportedStartMs == null ? 0 : wallNowMs - st.unreportedStartMs
+      const shouldReport =
+        !st.reporting &&
+        st.unreportedStartMs != null &&
+        (pendingMs >= VIOLATION_REPORT_INTERVAL_MS || (inPlace && pendingMs >= 500))
+      if (shouldReport) {
+        const reportStartMs = st.unreportedStartMs!
+        const reportEndMs = wallNowMs
+        st.unreportedStartMs = inPlace ? null : reportEndMs
+        st.reporting = true
+        apiPost<FrozenStateResponse>(`/api/games/${gameId}/extend-curse`, {
+          device_id: getDeviceId(),
+          player_id: myPlayerId,
+          curse_id: c.id,
+          violation: { started_at: reportStartMs, ended_at: reportEndMs },
+        })
+          .then((response) => {
+            const cur = frozenRef.current[c.id]
+            if (!cur) return
+            cur.anchor = response.anchor
+            setFrozenAnchors((prev) => ({ ...prev, [c.id]: response.anchor }))
+          })
+          .catch((error: unknown) => {
+            const cur = frozenRef.current[c.id]
+            if (cur) {
+              if (isTerminalCurseRequestError(error)) {
+                cur.terminal = true
+                return
+              }
+              cur.unreportedStartMs = Math.min(
+                cur.unreportedStartMs ?? reportStartMs,
+                reportStartMs,
+              )
+            }
+          })
+          .finally(() => {
+            const cur = frozenRef.current[c.id]
+            if (cur) cur.reporting = false
+          })
+      } else if (inPlace) {
+        st.unreportedStartMs = null
+      }
+    }
+  }, [nowMs, wallNowMs, activeCurses, myGps, myPlayerId, gameId, gameplayActive])
+
+  // Pilgrimage is geofence-gated. While active, all regular actions stay
+  // locked; arriving within 30 m calls the server-authoritative completion
+  // route, which removes the curse for the whole team via realtime.
+  const completingPilgrimagesRef = useRef<Set<string>>(new Set())
+  const terminalPilgrimagesRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!gameplayActive) return
+    if (!gameId || !myPlayerId || !myGps || !isPositionFresh(myGps.updated_at, wallNowMs)) return
+    const liveIds = new Set<string>()
+    for (const curse of activeCurses) {
+      if (curse.curse_ref !== 'curse.pilgrimage' || !isActive(curse, nowMs)) continue
+      liveIds.add(curse.id)
+      const targetRef =
+        typeof curse.params?.target_landmark_ref === 'string'
+          ? curse.params.target_landmark_ref
+          : null
+      const target = targetRef ? getSeedLandmarkByRef(targetRef) : null
+      if (!target) continue
+      const distance = haversineMeters(myGps, target)
+      if (
+        distance > 30 ||
+        completingPilgrimagesRef.current.has(curse.id) ||
+        terminalPilgrimagesRef.current.has(curse.id)
+      ) {
+        continue
+      }
+      completingPilgrimagesRef.current.add(curse.id)
+      apiPost(`/api/games/${gameId}/complete-pilgrimage`, {
+        device_id: getDeviceId(),
+        player_id: myPlayerId,
+        curse_id: curse.id,
+        pos: myGps,
+      }).catch((error: unknown) => {
+        if (isTerminalCurseRequestError(error)) terminalPilgrimagesRef.current.add(curse.id)
+        completingPilgrimagesRef.current.delete(curse.id)
+      })
+    }
+    for (const id of completingPilgrimagesRef.current) {
+      if (!liveIds.has(id)) completingPilgrimagesRef.current.delete(id)
+    }
+    for (const id of terminalPilgrimagesRef.current) {
+      if (!liveIds.has(id)) terminalPilgrimagesRef.current.delete(id)
+    }
+  }, [activeCurses, gameId, myGps, myPlayerId, nowMs, wallNowMs, gameplayActive])
 
   return useMemo<UseCurseEnforcementResult>(() => {
     const live = activeCurses.filter((c) => isActive(c, nowMs))
-    const actionsLocked = live.some((c) => c.curse_ref === FULL_STOP)
+    const fullStopActive = live.some((c) => c.curse_ref === FULL_STOP)
+    const pilgrimageActive = live.some((c) => c.curse_ref === 'curse.pilgrimage')
+    const actionsLocked = fullStopActive || pilgrimageActive
+    const actionsLockedLabel = fullStopActive
+      ? t('curse.actions_locked')
+      : pilgrimageActive
+        ? t('curse.pilgrimage_locked')
+        : null
 
     // Team spread (for Buddy Up / Solo Quarantine): max pairwise distance
     // among my team's presence entries.
     let teamSpreadM: number | null = null
     if (myTeamId) {
       const mates = Object.values(presence).filter(
-        (p) => p.team_id === myTeamId,
+        (p) => p.team_id === myTeamId && isPositionFresh(p.updated_at, wallNowMs),
       )
       if (mates.length >= 2) {
         let max = 0
@@ -261,7 +419,7 @@ export function useCurseEnforcement(
           }
         }
       } else if (ref === 'curse.frozen') {
-        const anchor = frozenRef.current[c.id]?.anchor ?? null
+        const anchor = frozenAnchors[c.id] ?? frozenRef.current[c.id]?.anchor ?? null
         if (myGps && anchor) {
           const drift = haversineMeters(anchor, {
             lat: myGps.lat,
@@ -273,8 +431,6 @@ export function useCurseEnforcement(
             ok: drift <= maxDrift,
           }
         }
-        const rem = frozenRemaining[c.id]
-        if (rem != null) entry.remainingMsOverride = rem
       } else if (ref === 'curse.buddy-up') {
         if (teamSpreadM != null) {
           const maxPair = numParam(c.params, 'max_pairwise_distance_m', 10)
@@ -285,13 +441,41 @@ export function useCurseEnforcement(
         }
       } else if (ref === 'curse.solo-quarantine') {
         if (teamSpreadM != null) {
-          const minPair = numParam(c.params, 'min_pairwise_distance_m', 50)
-          // For solo-quarantine "ok" means everyone is far apart. We only have
-          // the max spread cheaply; treat ok when the spread already clears the
-          // minimum (a coarse honor hint, not enforcement).
+          const maxPair = numParam(c.params, 'max_pairwise_distance_m', 50)
           entry.readout = {
-            text: t('curse.readout_spread', { m: Math.round(teamSpreadM) }),
-            ok: teamSpreadM >= minPair,
+            text: t('curse.readout_quarantine', { m: Math.round(teamSpreadM) }),
+            ok: teamSpreadM <= maxPair,
+          }
+        }
+      } else if (ref === 'curse.detour') {
+        const streetName =
+          typeof c.params?.banned_street_name === 'string'
+            ? c.params.banned_street_name
+            : t('curse.detour_unknown_street')
+        const geometry = polylineParam(c.params, 'banned_street_polyline')
+        if (myGps && isPositionFresh(myGps.updated_at, wallNowMs) && geometry.length > 0) {
+          const distance = distanceToPolylineMeters(myGps, geometry)
+          const corridor = numParam(c.params, 'corridor_m', 18)
+          entry.readout = {
+            text: t('curse.readout_detour', {
+              name: streetName,
+              m: Math.round(distance),
+            }),
+            ok: distance > corridor,
+          }
+        }
+      } else if (ref === 'curse.pilgrimage') {
+        const targetRef =
+          typeof c.params?.target_landmark_ref === 'string' ? c.params.target_landmark_ref : null
+        const target = targetRef ? getSeedLandmarkByRef(targetRef) : null
+        if (myGps && target) {
+          const distance = haversineMeters(myGps, target)
+          entry.readout = {
+            text: t('curse.readout_pilgrimage', {
+              name: target.name,
+              m: Math.round(distance),
+            }),
+            ok: distance <= 30,
           }
         }
       }
@@ -308,24 +492,64 @@ export function useCurseEnforcement(
                 ? 'curse.prompt.pose-patrol'
                 : ref === 'curse.check-in'
                   ? 'curse.checkin_prompt'
-                  : null
+                  : ref === 'curse.mute'
+                    ? 'curse.prompt.mute'
+                    : ref === 'curse.backwards'
+                      ? 'curse.prompt.backwards'
+                      : ref === 'curse.detour'
+                        ? 'curse.prompt.detour'
+                        : null
 
       if (promptLabelKey) {
-        const intervalS = numParam(c.params, 'interval_seconds', 0)
-        const windowS = numParam(c.params, 'submission_window_seconds', 30)
-        if (intervalS > 0) {
-          const intoInterval = elapsedS % intervalS
-          if (intoInterval < windowS) {
-            const baseLabel = t(promptLabelKey)
+        if (PHOTO_VERIFIED_CURSE_REFS.has(ref)) {
+          const proofWindow = getCurseProofWindow(c, nowMs)
+          if (proofWindow) {
             entry.prompt = {
-              label: baseLabel,
-              secondsLeft: Math.max(0, windowS - intoInterval),
+              label: t(promptLabelKey),
+              secondsLeft: proofWindow.secondsLeft,
+              proofRequired: true,
+              promptIndex: proofWindow.promptIndex,
             }
           }
         } else {
-          // No interval (e.g. single-file's prompts_per_curse / outfit-swap's
-          // before/after): show a persistent reminder, no countdown.
-          entry.prompt = { label: t(promptLabelKey), secondsLeft: 0 }
+          const intervalS =
+            ref === 'curse.mute'
+              ? numParam(c.params, 'ping_interval_seconds', 60)
+              : numParam(c.params, 'interval_seconds', 0)
+          const windowS = numParam(c.params, 'submission_window_seconds', 30)
+          if (intervalS > 0) {
+            const intoInterval = elapsedS % intervalS
+            if (intoInterval < windowS) {
+              const baseLabel =
+                ref === 'curse.detour'
+                  ? t(promptLabelKey, {
+                      name:
+                        typeof c.params?.banned_street_name === 'string'
+                          ? c.params.banned_street_name
+                          : t('curse.detour_unknown_street'),
+                    })
+                  : t(promptLabelKey)
+              entry.prompt = {
+                label: baseLabel,
+                secondsLeft: Math.max(0, windowS - intoInterval),
+              }
+            }
+          } else {
+            // No interval (e.g. single-file's prompts_per_curse / outfit-swap's
+            // before/after): show a persistent reminder, no countdown.
+            entry.prompt = {
+              label:
+                ref === 'curse.detour'
+                  ? t(promptLabelKey, {
+                      name:
+                        typeof c.params?.banned_street_name === 'string'
+                          ? c.params.banned_street_name
+                          : t('curse.detour_unknown_street'),
+                    })
+                  : t(promptLabelKey),
+              secondsLeft: 0,
+            }
+          }
         }
       }
 
@@ -334,15 +558,6 @@ export function useCurseEnforcement(
       }
     }
 
-    return { actionsLocked, byCurseId }
-  }, [
-    activeCurses,
-    myGps,
-    myTeamId,
-    presence,
-    nowMs,
-    speedKmh,
-    frozenRemaining,
-    t,
-  ])
+    return { actionsLocked, actionsLockedLabel, byCurseId }
+  }, [activeCurses, myGps, myTeamId, presence, nowMs, wallNowMs, speedKmh, frozenAnchors, t])
 }

@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToTeam } from '@/lib/push/server'
+import { getGameplayActionBlock } from '@/lib/server/actionLock'
+import { buildCurseCastParams } from '@/lib/curses/castParams'
+import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import cursesCatalog from '@/data/curses.json'
 import type {
   ActiveCurse,
   BuyCurseResponse,
-  Card,
   CurseEnforcement,
   CurseTier,
   Game,
@@ -25,6 +27,8 @@ interface CurseDefinition {
   enforcement: CurseEnforcement
   duration_minutes: number | null
   description: string
+  min_team_size?: number
+  enabled?: boolean
   params: Record<string, unknown>
 }
 
@@ -166,6 +170,20 @@ export async function POST(
   if (!buyerTeam || !enemyTeam) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  const actionBlock = await getGameplayActionBlock(supabase, game.id, caller)
+  if (actionBlock) return NextResponse.json({ error: actionBlock }, { status: 409 })
+
+  const { count: enemyTeamSizeCount, error: enemyTeamSizeError } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', enemyTeam.id)
+  if (enemyTeamSizeError) {
+    return NextResponse.json(
+      { error: 'player_lookup_failed', details: enemyTeamSizeError.message },
+      { status: 500 },
+    )
+  }
+  const enemyTeamSize = enemyTeamSizeCount ?? 0
 
   // 4. Coin check against the materialized counter.
   const cost = COIN_COST_PER_DIE * num_dice
@@ -184,10 +202,10 @@ export async function POST(
   const dice_total = dice_rolls.reduce((a, b) => a + b, 0)
   const tier: CurseTier = tierFromTotal(dice_total)
 
-  // 6. Select a curse from the rolled tier, preferring ones not already active
-  // on the enemy team. We don't filter active_curses by expires_at — the client
-  // is expected to have polled /expire-curses first; stale rows are still treated
-  // as "active" for the no-stack rule, which is the safer default.
+  // 6. Select a curse from the rolled tier, excluding effects that are still
+  // active on the enemy team. Expired rows may remain until housekeeping runs;
+  // the atomic cast RPC serializes their expiry/event cleanup before inserting
+  // a same-ref replacement.
   const { data: activeCurseRows, error: activeCursesError } = await supabase
     .from('active_curses')
     .select('*')
@@ -204,83 +222,60 @@ export async function POST(
     )
   }
   const activeOnEnemy = (activeCurseRows ?? []) as ActiveCurse[]
-  const activeRefs = new Set(activeOnEnemy.map((c) => c.curse_ref))
+  const selectionNow = Date.now()
+  const activeRefs = new Set(
+    activeOnEnemy
+      .filter((active) => {
+        if (active.expires_at === null) return true
+        const expiresAt = Date.parse(active.expires_at)
+        return !Number.isFinite(expiresAt) || expiresAt > selectionNow
+      })
+      .map((active) => active.curse_ref),
+  )
 
-  const tierCurses = CURSES.filter((c) => c.tier === tier)
+  const { count: enemyIntelCount, error: enemyIntelError } = await supabase
+    .from('cards')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', game.id)
+    .eq('team_id', enemyTeam.id)
+    .eq('kind', 'intel')
+    .eq('state', 'in_hand')
+  if (enemyIntelError) {
+    return NextResponse.json(
+      { error: 'cards_lookup_failed', details: enemyIntelError.message },
+      { status: 500 },
+    )
+  }
+
+  const tierCurses = CURSES.filter(
+    (candidate) =>
+      candidate.tier === tier &&
+      candidate.enabled !== false &&
+      supportsTeamSize(candidate, enemyTeamSize) &&
+      !activeRefs.has(candidate.id) &&
+      (candidate.id !== 'curse.coin-drain' || enemyTeam.coins > 0) &&
+      (candidate.id !== 'curse.intel-loss' || (enemyIntelCount ?? 0) > 0),
+  )
   if (tierCurses.length === 0) {
-    // Catalog is broken; bail loudly.
     return NextResponse.json(
-      { error: 'no_curse_for_tier', details: { tier } },
-      { status: 500 },
-    )
-  }
-  const fresh = tierCurses.filter((c) => !activeRefs.has(c.id))
-  // Per RULEBOOK §10: "If enemy is already Frozen, a new Frozen does nothing —
-  // the app prevents purchase". We interpret "prevents [the same] purchase",
-  // i.e. we always cast SOMETHING for the buyer's coins, just not a duplicate
-  // if a fresh option exists. If every curse in the tier is already active,
-  // we still pick one (caller paid; better to land a no-op than to refund and
-  // surprise them — could revisit with product later).
-  const candidatePool = fresh.length > 0 ? fresh : tierCurses
-  const curse = pickRandom(candidatePool)
-
-  // 7. Side effects in the same canonical order as buy-intel:
-  //   a. Insert coins_deducted event for the buyer team.
-  //   b. UPDATE teams.coins with optimistic guard.
-  //   c. Apply curse effects (ledger drain / intel loss / active_curses row).
-  //   d. Insert curse_cast event.
-
-  const { error: coinsEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'coins_deducted',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: buyerTeam.id,
-      amount: cost,
-      reason: 'buy_curse',
-      num_dice,
-      dice_total,
-    },
-  })
-  if (coinsEventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: coinsEventError.message },
-      { status: 500 },
-    )
-  }
-
-  const newBuyerCoins = buyerTeam.coins - cost
-  const { data: updatedBuyerRow, error: buyerUpdateError } = await supabase
-    .from('teams')
-    .update({ coins: newBuyerCoins })
-    .eq('id', buyerTeam.id)
-    .eq('coins', buyerTeam.coins) // optimistic: avoid double-debit on retry
-    .select()
-    .maybeSingle()
-
-  if (buyerUpdateError) {
-    return NextResponse.json(
-      { error: 'team_update_failed', details: buyerUpdateError.message },
-      { status: 500 },
-    )
-  }
-  if (!updatedBuyerRow) {
-    const { data: refreshedTeam } = await supabase
-      .from('teams')
-      .select('coins')
-      .eq('id', buyerTeam.id)
-      .maybeSingle()
-    const currentCoins =
-      (refreshedTeam as { coins: number } | null)?.coins ?? 0
-    return NextResponse.json(
-      {
-        error: 'insufficient_coins',
-        details: { coins: currentCoins, cost },
-      },
+      { error: 'no_available_curse', details: { tier } },
       { status: 409 },
     )
   }
-  const buyerTeamCoins = (updatedBuyerRow as Team).coins
+  const curse = pickRandom(tierCurses)
+
+  // GPS curses need the server to choose and persist a concrete target. Never
+  // let each browser roll independently: every cursed teammate must receive
+  // the same street/landmark after reconnecting.
+  let castParams: Record<string, unknown>
+  try {
+    castParams = buildCurseCastParams(curse.id, curse.params)
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'curse_params_failed' },
+      { status: 500 },
+    )
+  }
 
   // -------------------------------------------------------------------------
   // Compute the expires_at timestamp for timed curses.
@@ -292,182 +287,53 @@ export async function POST(
       ? null
       : new Date(now.getTime() + curse.duration_minutes * 60_000).toISOString()
 
-  // -------------------------------------------------------------------------
-  // Apply LEDGER effects immediately on the enemy team.
-  // We branch on the curse id because the rulebook defines exactly four
-  // [L] curses and each has a different shape:
-  //   curse.coin-drain   -> debit params.amount from enemy coins (clamp at 0)
-  //   curse.intel-loss   -> expire 1 random in_hand intel card from enemy
-  //   curse.full-stop    -> create active_curses row; no immediate effect
-  //   curse.check-in     -> create active_curses row; no immediate effect
-  // -------------------------------------------------------------------------
-
-  let ledgerEffect: BuyCurseResponse['ledger_effect']
-
-  if (curse.id === 'curse.coin-drain') {
-    const amountParam =
-      typeof curse.params['amount'] === 'number'
-        ? (curse.params['amount'] as number)
-        : 50
-    const actualAmount = Math.min(amountParam, enemyTeam.coins)
-    const newEnemyCoins = enemyTeam.coins - actualAmount
-
-    const { error: drainEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'coins_deducted',
-      actor_player_id: caller.id,
-      payload: {
-        team_id: enemyTeam.id,
-        amount: actualAmount,
-        reason: 'curse_coin_drain',
-      },
-    })
-    if (drainEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: drainEventError.message },
-        { status: 500 },
-      )
-    }
-
-    if (actualAmount > 0) {
-      const { error: enemyUpdateError } = await supabase
-        .from('teams')
-        .update({ coins: newEnemyCoins })
-        .eq('id', enemyTeam.id)
-        .eq('coins', enemyTeam.coins)
-      if (enemyUpdateError) {
-        return NextResponse.json(
-          {
-            error: 'team_update_failed',
-            details: enemyUpdateError.message,
-          },
-          { status: 500 },
-        )
-      }
-    }
-
-    ledgerEffect = {
-      kind: 'coin_drain',
-      amount: actualAmount,
-      target_team_coins: newEnemyCoins,
-    }
-  } else if (curse.id === 'curse.intel-loss') {
-    // Pick one random in_hand intel card from the enemy team and expire it.
-    const { data: intelCardsData, error: intelLookupError } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('game_id', game.id)
-      .eq('team_id', enemyTeam.id)
-      .eq('kind', 'intel')
-      .eq('state', 'in_hand')
-
-    if (intelLookupError) {
-      return NextResponse.json(
-        { error: 'cards_lookup_failed', details: intelLookupError.message },
-        { status: 500 },
-      )
-    }
-    const inHand = (intelCardsData ?? []) as Card[]
-    if (inHand.length === 0) {
-      ledgerEffect = { kind: 'intel_loss', expired_card_ref: null }
-    } else {
-      const victim = pickRandom(inHand)
-      const { error: expireError } = await supabase
-        .from('cards')
-        .update({ state: 'expired', updated_at: new Date().toISOString() })
-        .eq('id', victim.id)
-        .eq('state', 'in_hand')
-      if (expireError) {
-        return NextResponse.json(
-          { error: 'card_update_failed', details: expireError.message },
-          { status: 500 },
-        )
-      }
-      const { error: intelLostEventError } = await supabase
-        .from('events')
-        .insert({
-          game_id: game.id,
-          type: 'intel_lost',
-          actor_player_id: caller.id,
-          payload: {
-            team_id: enemyTeam.id,
-            card_id: victim.id,
-            ref: victim.ref,
-          },
-        })
-      if (intelLostEventError) {
-        return NextResponse.json(
-          {
-            error: 'event_insert_failed',
-            details: intelLostEventError.message,
-          },
-          { status: 500 },
-        )
-      }
-      ledgerEffect = { kind: 'intel_loss', expired_card_ref: victim.ref }
-    }
-  } else if (curse.id === 'curse.full-stop') {
-    ledgerEffect = { kind: 'full_stop' }
-  } else if (curse.id === 'curse.check-in') {
-    ledgerEffect = { kind: 'check_in' }
-  }
-
-  // -------------------------------------------------------------------------
-  // Insert active_curses row for any timed curse (durations > 0) AND for the
-  // ledger-but-timed curses (full-stop, check-in). One-shot ledger effects with
-  // duration_minutes === null and no timer purpose (coin-drain, intel-loss) do
-  // NOT get an active_curses row — they're already resolved.
-  // -------------------------------------------------------------------------
-
-  const isOneShotLedger =
-    curse.id === 'curse.coin-drain' || curse.id === 'curse.intel-loss'
-
-  if (!isOneShotLedger) {
-    const { error: activeInsertError } = await supabase
-      .from('active_curses')
-      .insert({
-        game_id: game.id,
-        target_team_id: enemyTeam.id,
-        curse_ref: curse.id,
-        started_at: now.toISOString(),
-        expires_at,
-        params: curse.params,
-      })
-    if (activeInsertError) {
-      return NextResponse.json(
-        {
-          error: 'active_curse_insert_failed',
-          details: activeInsertError.message,
-        },
-        { status: 500 },
-      )
-    }
-  }
-
-  // 8. Public curse_cast event.
-  const { error: castEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'curse_cast',
-    actor_player_id: caller.id,
-    payload: {
-      buyer_team_id: buyerTeam.id,
-      target_team_id: enemyTeam.id,
-      curse_ref: curse.id,
-      tier,
-      dice_total,
-      dice_rolls,
-      expires_at,
+  const { data: castData, error: castError } = await supabase.rpc(
+    'buy_curse_atomic',
+    {
+      p_game_id: game.id,
+      p_buyer_team_id: buyerTeam.id,
+      p_target_team_id: enemyTeam.id,
+      p_actor_player_id: caller.id,
+      p_cost: cost,
+      p_num_dice: num_dice,
+      p_dice_total: dice_total,
+      p_dice_rolls: dice_rolls,
+      p_curse_ref: curse.id,
+      p_tier: tier,
+      p_expires_at: expires_at,
+      p_params: castParams,
     },
-  })
-  if (castEventError) {
+  )
+  if (castError) {
     return NextResponse.json(
-      { error: 'event_insert_failed', details: castEventError.message },
+      { error: 'curse_purchase_failed', details: castError.message },
       { status: 500 },
     )
   }
+  const cast = castData as {
+    error?: string
+    coins?: number
+    buyer_team_coins?: number
+    ledger_effect?: BuyCurseResponse['ledger_effect']
+  } | null
+  if (!cast || cast.error) {
+    const error = cast?.error ?? 'curse_purchase_failed'
+    return NextResponse.json(
+      {
+        error,
+        ...(cast?.coins !== undefined ? { details: { coins: cast.coins, cost } } : {}),
+      },
+      { status: error === 'curse_purchase_failed' ? 500 : 409 },
+    )
+  }
+  if (cast.buyer_team_coins === undefined) {
+    return NextResponse.json({ error: 'curse_purchase_failed' }, { status: 500 })
+  }
+  const buyerTeamCoins = cast.buyer_team_coins
+  const ledgerEffect = cast.ledger_effect
 
   // Lock-screen alert to the cursed team (best-effort; no-op without VAPID).
-  void sendPushToTeam(game.id, enemyTeam.id, {
+  await sendPushToTeam(game.id, enemyTeam.id, {
     title: 'Your team has been cursed',
     body: `Your team has been cursed: ${curse.name}`,
     tag: 'cursed',

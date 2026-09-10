@@ -9,13 +9,12 @@
 // replacement challenge. Throws on any DB error; callers map that to a 500.
 
 import type { createAdminClient } from '@/lib/supabase/admin'
+import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import challengesCatalog from '@/data/challenges.json'
 import type { Card, ChallengeDefinition, Game, Team } from '@/lib/types'
 
 type Admin = ReturnType<typeof createAdminClient>
 
-const FIRST_BLOOD_BONUS = 30
-const ACTIVE_CHALLENGES_TARGET = 3
 const CATALOG = challengesCatalog as ChallengeDefinition[]
 
 export interface AwardChallengeArgs {
@@ -28,6 +27,8 @@ export interface AwardChallengeArgs {
   def: ChallengeDefinition
   /** Player credited as the actor on the events (the submitter). */
   actorPlayerId: string
+  /** Player whose request is being authorized (reviewer for peer accept). */
+  requestingPlayerId: string
   /** When set (peer-accept), recorded on the completion event. */
   reviewedByTeamId?: string
 }
@@ -42,92 +43,22 @@ export interface AwardChallengeResult {
 
 class AwardError extends Error {}
 
-export async function awardChallenge(
-  args: AwardChallengeArgs,
-): Promise<AwardChallengeResult> {
-  const { supabase, game, team, card, def, actorPlayerId, reviewedByTeamId } =
-    args
+export async function awardChallenge(args: AwardChallengeArgs): Promise<AwardChallengeResult> {
+  const {
+    supabase,
+    game,
+    team,
+    card,
+    def,
+    actorPlayerId,
+    requestingPlayerId,
+    reviewedByTeamId,
+  } = args
   const reward_coins = def.reward_coins
-  const now = new Date().toISOString()
-
-  // 1. Consume the card (guard on its current state to avoid double-award).
-  const { data: consumed, error: consumeError } = await supabase
-    .from('cards')
-    .update({
-      state: 'consumed',
-      payload: { ...(card.payload ?? {}), completed_at: now },
-      updated_at: now,
-    })
-    .eq('id', card.id)
-    .eq('state', card.state)
-    .select()
-    .maybeSingle()
-  if (consumeError) throw new AwardError(consumeError.message)
-  if (!consumed) throw new AwardError('challenge_not_available')
-
-  // 2. First-blood: any prior challenge_completed in this game?
-  const { data: prior, error: priorError } = await supabase
-    .from('events')
-    .select('id')
-    .eq('game_id', game.id)
-    .eq('type', 'challenge_completed')
-    .limit(1)
-    .maybeSingle()
-  if (priorError) throw new AwardError(priorError.message)
-  const first_blood = !prior
-  const bonus_coins = first_blood ? FIRST_BLOOD_BONUS : 0
-  const total_credit = reward_coins + bonus_coins
-
-  // 3. coins_credited event (before the coin bump).
-  const { error: coinsEventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'coins_credited',
-    actor_player_id: actorPlayerId,
-    payload: {
-      team_id: team.id,
-      amount: total_credit,
-      reason: 'challenge_completed',
-      challenge_ref: def.id,
-      breakdown: { reward: reward_coins, first_blood: bonus_coins },
-    },
-  })
-  if (coinsEventError) throw new AwardError(coinsEventError.message)
-
-  // 4. Credit team coins, then re-read to avoid drift from concurrent credits.
-  const { error: teamUpdateError } = await supabase
-    .from('teams')
-    .update({ coins: team.coins + total_credit })
-    .eq('id', team.id)
-  if (teamUpdateError) throw new AwardError(teamUpdateError.message)
-  let team_coins = team.coins + total_credit
-  const { data: refreshed, error: refreshError } = await supabase
-    .from('teams')
-    .select('coins')
-    .eq('id', team.id)
-    .maybeSingle()
-  if (refreshError) throw new AwardError(refreshError.message)
-  if (refreshed) team_coins = (refreshed as { coins: number }).coins
-
-  // 5. challenge_completed event.
-  const { error: completedError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'challenge_completed',
-    actor_player_id: actorPlayerId,
-    payload: {
-      team_id: team.id,
-      challenge_ref: def.id,
-      card_id: card.id,
-      reward_coins,
-      first_blood,
-      bonus_coins,
-      actor_player_id: actorPlayerId,
-      ...(reviewedByTeamId ? { reviewed_by_team_id: reviewedByTeamId } : {}),
-    },
-  })
-  if (completedError) throw new AwardError(completedError.message)
-
-  // 6. Draw a replacement if the team is below the active target.
-  let replacement: ChallengeDefinition | null = null
+  // Build the replacement pool in application code (the catalog is static
+  // JSON), then let Postgres choose and insert one inside the same transaction
+  // as the award. This keeps first blood, coins, card state, events, and refill
+  // consistent across concurrent phones.
   const { data: allCards, error: allError } = await supabase
     .from('cards')
     .select('ref, state')
@@ -136,30 +67,48 @@ export async function awardChallenge(
     .eq('kind', 'challenge')
   if (allError) throw new AwardError(allError.message)
   const rows = (allCards ?? []) as Array<{ ref: string; state: string }>
-  // Count both available and pending toward the active cap so we don't refill
-  // past 3 while some await review.
-  const activeCount = rows.filter(
-    (c) => c.state === 'available' || c.state === 'pending',
-  ).length
   const drawnRefs = new Set(rows.map((c) => c.ref))
-  const unusedPool = CATALOG.filter((c) => !drawnRefs.has(c.id))
-  if (activeCount < ACTIVE_CHALLENGES_TARGET && unusedPool.length > 0) {
-    const pick = unusedPool[Math.floor(Math.random() * unusedPool.length)]
-    const { data: inserted, error: insertError } = await supabase
-      .from('cards')
-      .insert({
-        game_id: game.id,
-        team_id: team.id,
-        kind: 'challenge',
-        ref: pick.id,
-        state: 'available',
-        payload: {},
-      })
-      .select()
-      .maybeSingle()
-    if (insertError) throw new AwardError(insertError.message)
-    if (inserted) replacement = pick
+  const { count: teamSize, error: teamSizeError } = await supabase
+    .from('players')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', team.id)
+  if (teamSizeError) throw new AwardError(teamSizeError.message)
+  const unusedPool = CATALOG.filter(
+    (candidate) =>
+      !drawnRefs.has(candidate.id) &&
+      supportsTeamSize(candidate, teamSize ?? 0),
+  )
+  const { data, error } = await supabase.rpc('award_challenge_atomic_guarded', {
+    p_game_id: game.id,
+    p_team_id: team.id,
+    p_card_id: card.id,
+    p_expected_state: card.state,
+    p_reward_coins: reward_coins,
+    p_actor_player_id: actorPlayerId,
+    p_requesting_player_id: requestingPlayerId,
+    p_reviewed_by_team_id: reviewedByTeamId ?? null,
+    p_replacement_refs: unusedPool.map((candidate) => candidate.id),
+  })
+  if (error) throw new AwardError(error.message)
+  const result = data as {
+    error?: string
+    reward_coins?: number
+    first_blood?: boolean
+    bonus_coins?: number
+    team_coins?: number
+    replacement_ref?: string | null
+  } | null
+  if (!result || result.error) {
+    throw new AwardError(result?.error ?? 'challenge_award_failed')
   }
-
-  return { reward_coins, first_blood, bonus_coins, team_coins, replacement }
+  const replacement = result.replacement_ref
+    ? CATALOG.find((candidate) => candidate.id === result.replacement_ref) ?? null
+    : null
+  return {
+    reward_coins: result.reward_coins ?? reward_coins,
+    first_blood: result.first_blood ?? false,
+    bonus_coins: result.bonus_coins ?? 0,
+    team_coins: result.team_coins ?? team.coins,
+    replacement,
+  }
 }

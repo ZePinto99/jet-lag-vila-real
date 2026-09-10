@@ -5,11 +5,9 @@
     "tier": "minor",
     "enforcement": "A",
     "duration_minutes": 5,
-    "description": "5 min, average speed must stay below 2.5 km/h (warn at 3, penalty at 4)",
+    "description": "5 min, average speed must stay below 2.5 km/h; the app shows a GPS-assisted speed warning, with honor-system compliance",
     "params": {
-      "max_speed_kmh": 2.5,
-      "warn_speed_kmh": 3,
-      "penalty_speed_kmh": 4
+      "max_speed_kmh": 2.5
     }
   },
   {
@@ -19,6 +17,7 @@
     "enforcement": "B",
     "duration_minutes": 5,
     "description": "5 min, team must walk in a single file; app prompts twice for group photo from the front",
+    "min_team_size": 2,
     "params": {
       "prompts_per_curse": 2
     }
@@ -28,10 +27,10 @@
     "name": "Photo Tax",
     "tier": "minor",
     "enforcement": "B",
-    "duration_minutes": 8,
-    "description": "8 min, selfie at any sign every 90 s",
+    "duration_minutes": 6,
+    "description": "6 min, selfie at any sign every 2 min (about 3 proofs)",
     "params": {
-      "interval_seconds": 90,
+      "interval_seconds": 120,
       "submission_window_seconds": 30
     }
   },
@@ -41,9 +40,9 @@
     "tier": "minor",
     "enforcement": "L",
     "duration_minutes": 10,
-    "description": "10 min, captain must answer in-app prompts every minute (auto-locks captain actions on miss)",
+    "description": "10 min, each affected player acknowledges an in-app prompt every 2 min (about 5 taps); missed prompts are logged, with no automatic action lock",
     "params": {
-      "interval_seconds": 60,
+      "interval_seconds": 120,
       "submission_window_seconds": 60
     }
   },
@@ -53,7 +52,7 @@
     "tier": "medium",
     "enforcement": "A",
     "duration_minutes": 15,
-    "description": "15 min, banned from one named street (random); auto-flagged on entry",
+    "description": "15 min, avoid one named street selected by the app; GPS shows a proximity warning, with honor-system compliance",
     "params": {
       "banned_street_random": true
     }
@@ -64,9 +63,10 @@
     "tier": "medium",
     "enforcement": "A",
     "duration_minutes": 15,
-    "description": "15 min, all team members within 10 m of each other",
+    "description": "15 min, all team members within 25 m of each other; GPS provides a live spread readout",
+    "min_team_size": 2,
     "params": {
-      "max_pairwise_distance_m": 10
+      "max_pairwise_distance_m": 25
     }
   },
   {
@@ -76,6 +76,7 @@
     "enforcement": "B",
     "duration_minutes": 20,
     "description": "must swap one item of clothing with a teammate, keep it for 20 min; before/after photos",
+    "min_team_size": 2,
     "params": {
       "before_after_required": true,
       "dispute_window_seconds": 60
@@ -99,7 +100,8 @@
     "enforcement": "C",
     "duration_minutes": 10,
     "description": "10 min, must walk facing backwards (a teammate may guide); honor only",
-    "params": {}
+    "params": {},
+    "enabled": false
   },
   {
     "id": "curse.pose-patrol",
@@ -119,7 +121,7 @@
     "tier": "major",
     "enforcement": "A",
     "duration_minutes": 8,
-    "description": "8 min, all team members stay within 10 m of position at curse start",
+    "description": "8 min, all team members stay within 10 m of their position at curse start; GPS provides a live drift readout",
     "params": {
       "max_drift_m": 10
     }
@@ -160,13 +162,14 @@
   },
   {
     "id": "curse.solo-quarantine",
-    "name": "Solo Quarantine",
+    "name": "Team Quarantine",
     "tier": "major",
     "enforcement": "A",
     "duration_minutes": 15,
-    "description": "15 min, team members must each be at least 50 m apart",
+    "description": "15 min, all team members must stay within 10 m of each other; GPS provides a live spread readout",
+    "min_team_size": 2,
     "params": {
-      "min_pairwise_distance_m": 50
+      "max_pairwise_distance_m": 10
     }
   },
   {

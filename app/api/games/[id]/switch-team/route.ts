@@ -112,22 +112,45 @@ export async function POST(
     return NextResponse.json({ error: 'team_lookup_failed' }, { status: 500 })
   }
 
-  const { data: updatedPlayer, error: updateError } = await supabase
+  const { count: otherTeamCount, error: countError } = await supabase
     .from('players')
-    .update({ team_id: otherTeam.id })
-    .eq('id', player.id)
-    .select()
-    .single()
-
-  if (updateError || !updatedPlayer) {
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', otherTeam.id)
+  if (countError) {
     return NextResponse.json(
-      { error: 'player_update_failed', details: updateError?.message },
+      { error: 'player_lookup_failed', details: countError.message },
       { status: 500 },
     )
   }
+  if ((otherTeamCount ?? 0) >= 4) {
+    return NextResponse.json({ error: 'team_full' }, { status: 409 })
+  }
+
+  const { data: switchData, error: updateError } = await supabase.rpc(
+    'switch_player_team_atomic',
+    {
+      p_game_id: game.id,
+      p_player_id: player.id,
+      p_device_id: device_id,
+      p_target_team_id: otherTeam.id,
+    },
+  )
+  if (updateError) {
+    return NextResponse.json(
+      { error: 'player_update_failed', details: updateError.message },
+      { status: 500 },
+    )
+  }
+  const switched = switchData as { error?: string; player?: Player } | null
+  if (!switched?.player || switched.error) {
+    const error = switched?.error ?? 'player_update_failed'
+    const status = error === 'team_full' || error === 'player_ready' || error === 'game_not_in_lobby'
+      ? 409 : error === 'forbidden' ? 403 : error === 'not_found' ? 404 : 500
+    return NextResponse.json({ error }, { status })
+  }
 
   const response: SwitchTeamResponse = {
-    player: updatedPlayer as Player,
+    player: switched.player,
     team: otherTeam,
   }
   return NextResponse.json(response)

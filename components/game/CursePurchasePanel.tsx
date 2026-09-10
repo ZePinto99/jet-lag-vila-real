@@ -21,7 +21,8 @@ import cursesSeed from '@/data/curses.json'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
-import { useT } from '@/lib/i18n/context'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import { ConfirmSpendModal } from '@/components/game/ConfirmSpendModal'
 import type {
   BuyCurseRequest,
@@ -65,7 +66,7 @@ export function CursePurchasePanel({
   myPlayerId,
   actionsLocked = false,
 }: CursePurchasePanelProps) {
-  const t = useT()
+  const { t } = useI18n()
   const [numDice, setNumDice] = useState<1 | 2 | 3>(1)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,9 +82,9 @@ export function CursePurchasePanel({
   const disabledReason: string | null = actionsLocked
     ? t('curse.actions_locked')
     : gameNotLive
-      ? 'Available during live game'
+      ? t('curse.reason_not_live')
       : insufficient
-        ? `Need ${coinShortfall} more coins`
+        ? t('curse.reason_insufficient', { n: coinShortfall })
         : null
 
   const disabled = busy || disabledReason !== null
@@ -113,10 +114,8 @@ export function CursePurchasePanel({
 
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-      <h2 className="text-sm font-medium text-neutral-100">Cast a Curse</h2>
-      <p className="mt-1 text-xs text-neutral-400">
-        Cost: 50 coins per die. Higher rolls = stronger curse.
-      </p>
+      <h2 className="text-sm font-medium text-neutral-100">{t('curse.panel_title')}</h2>
+      <p className="mt-1 text-xs text-neutral-400">{t('curse.panel_hint')}</p>
 
       <div className="mt-3 grid grid-cols-3 gap-2">
         {DICE_OPTIONS.map((opt) => {
@@ -137,9 +136,14 @@ export function CursePurchasePanel({
                 busy && 'cursor-not-allowed opacity-60',
               )}
             >
-              <span>{opt.label}</span>
+              <span>
+                {t('curse.dice', {
+                  n: opt.num,
+                  dice_word: t(opt.num === 1 ? 'curse.die_singular' : 'curse.die_plural'),
+                })}
+              </span>
               <span className="text-[10px] font-normal tabular-nums text-neutral-400">
-                {optCost} coins
+                {optCost} {t('common.coins')}
               </span>
             </button>
           )
@@ -163,7 +167,7 @@ export function CursePurchasePanel({
               : 'bg-amber-500 text-neutral-950 hover:bg-amber-400',
           )}
         >
-          {busy ? 'Rolling…' : `Cast Curse · ${cost} coins`}
+          {busy ? t('curse.rolling') : t('curse.cast_button', { cost })}
         </button>
         <ConfirmSpendModal
           open={confirming}
@@ -202,21 +206,38 @@ function CurseResultCard({
   result: BuyCurseResponse
   onDismiss: () => void
 }) {
+  const { t, locale } = useI18n()
   const rollsStr = result.dice_rolls.join(' + ')
   const seedEntry = CURSE_CATALOG.find((c) => c.id === result.curse_ref)
-  const description = result.description || seedEntry?.description || ''
+  const fallbackDescription = result.description || seedEntry?.description || ''
+  const description = localizeCatalogField(
+    result.curse_ref,
+    'description',
+    fallbackDescription,
+    locale,
+  )
+  const curseName = localizeCatalogField(
+    result.curse_ref,
+    'name',
+    result.curse_name,
+    locale,
+  )
   return (
     <div className="mt-3 rounded-md border border-amber-700/60 bg-amber-950/40 px-3 py-3 text-amber-100">
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-xs font-mono text-amber-200">
-          Rolled: {rollsStr} = {result.dice_total} ({result.tier})
+          {t('curse.rolled', {
+            rolls: rollsStr,
+            total: result.dice_total,
+            tier: t(`curse.tier_${result.tier}`),
+          })}
         </p>
         <button
           type="button"
           onClick={onDismiss}
           className="text-[11px] uppercase tracking-wider text-amber-300/80 hover:text-amber-200"
         >
-          Dismiss
+          {t('curse.dismiss')}
         </button>
       </div>
       <div className="mt-1.5 flex items-baseline gap-2">
@@ -224,7 +245,7 @@ function CurseResultCard({
           [{result.enforcement}]
         </span>
         <p className="text-sm font-semibold text-amber-50">
-          {result.curse_name}
+          {curseName}
         </p>
       </div>
       {description && (
@@ -234,12 +255,12 @@ function CurseResultCard({
       )}
       {result.ledger_effect && (
         <p className="mt-2 rounded bg-amber-900/40 px-2 py-1 text-[11px] text-amber-100">
-          {summariseLedgerEffect(result.ledger_effect)}
+          {summariseLedgerEffect(result.ledger_effect, t, locale)}
         </p>
       )}
       {result.duration_minutes != null && (
         <p className="mt-1 text-[11px] text-amber-300/80">
-          Duration: {result.duration_minutes} min
+          {t('curse.duration', { n: result.duration_minutes })}
         </p>
       )}
     </div>
@@ -248,17 +269,29 @@ function CurseResultCard({
 
 function summariseLedgerEffect(
   effect: NonNullable<BuyCurseResponse['ledger_effect']>,
+  t: (key: string, tokens?: Record<string, string | number>) => string,
+  locale: import('@/lib/i18n/messages').Locale,
 ): string {
   switch (effect.kind) {
     case 'coin_drain':
-      return `Enemy team lost ${effect.amount} coins (now ${effect.target_team_coins}).`
+      return t('curse.ledger_coin_drain', {
+        amount: effect.amount,
+        balance: effect.target_team_coins,
+      })
     case 'intel_loss':
       return effect.expired_card_ref
-        ? `Enemy team lost an intel card (${effect.expired_card_ref}).`
-        : 'Enemy team had no intel cards to lose.'
+        ? t('curse.ledger_intel_loss', {
+            name: localizeCatalogField(
+              effect.expired_card_ref,
+              'name',
+              effect.expired_card_ref,
+              locale,
+            ),
+          })
+        : t('curse.ledger_no_intel')
     case 'full_stop':
-      return 'Enemy team is locked out of app actions for the duration.'
+      return t('curse.ledger_full_stop')
     case 'check_in':
-      return 'Enemy team must respond to in-app prompts every minute.'
+      return t('curse.ledger_check_in')
   }
 }

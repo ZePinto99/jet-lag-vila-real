@@ -2,13 +2,13 @@
   {
     "id": "intel.north-south",
     "name": "North/South",
-    "reveals": "Whether the real flag is N or S of the city midline",
+    "reveals": "Whether the real flag is N or S of the fixed midline for the enemy team's full candidate pool",
     "cost_coins": 30
   },
   {
     "id": "intel.east-west",
     "name": "East/West",
-    "reveals": "Whether the real flag is E or W of the team's home base",
+    "reveals": "Whether the real flag is E or W of the enemy team's home base",
     "cost_coins": 30
   },
   {
@@ -32,7 +32,7 @@
   {
     "id": "intel.hot-cold",
     "name": "Hot/Cold",
-    "reveals": "Distance bracket from your current GPS to real flag (<200 m / <500 m / <1 km / further)",
+    "reveals": "Purchase-time distance bracket from your current GPS to real flag (<200 m / <500 m / <1 km / further)",
     "cost_coins": 60
   },
   {
@@ -44,7 +44,7 @@
   {
     "id": "intel.direction",
     "name": "Direction",
-    "reveals": "Compass bearing from city center to real flag (8 cardinal directions)",
-    "cost_coins": 50
+    "reveals": "Broad compass direction from city center to real flag (N / E / S / W)",
+    "cost_coins": 80
   }
 ]

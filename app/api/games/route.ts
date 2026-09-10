@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         name: 'Team West',
         side: 'west',
         coins: 100,
-        home_landmark_id: 'landmark.utad-main-library',
+        home_landmark_id: 'landmark.miradouro-vila-velha',
       },
       {
         game_id: game.id,

@@ -111,7 +111,11 @@ export async function GET(
   }
 
   // 4. Caller's team seed pool.
-  const myPool = getSeedLandmarksByPool(myTeam.side)
+  const myPool = getSeedLandmarksByPool(myTeam.side).sort(
+    (a, b) =>
+      Number(b.id === myTeam.home_landmark_id) -
+      Number(a.id === myTeam.home_landmark_id),
+  )
 
   // 5. Caller's team's own landmarks (do NOT fetch the other team's rows).
   const { data: myLandmarksData, error: myLandmarksError } = await supabase

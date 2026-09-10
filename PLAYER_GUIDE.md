@@ -10,13 +10,13 @@
 
 | Item | Value |
 |---|---|
-| Teams | 2 teams of 2–4 players |
-| Anchors (home bases) | West = UTAD, East = Casa de Mateus |
+| Teams | 2 teams of 1–4 players |
+| Anchors (home bases) | West = Miradouro da Vila Velha, East = Biblioteca Municipal |
 | Candidate landmarks per team | 5 (chosen at setup, visible only to your team) |
 | Of those 5 | 1 real flag, 2 decoys, 2 empty |
 | Game timer | 3 hours |
 | Movement | Walking only — no buses, taxis, scooters, lifts |
-| Out of bounds | Anything outside Vila Real city + UTAD + Casa de Mateus |
+| Out of bounds | Anything outside the 1.5 km play-area circle shown in the app |
 
 Each team places identical-looking markers at the 1 real and 2 decoy spots. The empty spots get nothing.
 
@@ -24,8 +24,8 @@ Each team places identical-looking markers at the 1 real and 2 decoy spots. The 
 
 ## Roles
 
-- **Raider:** any player currently in the **enemy half**.
-- **Defender:** any player currently in their **own half**.
+- **Defender:** a player inside their team's defense zone — the union of 200 m circles around their 5 candidates.
+- **Raider:** a player outside their own team's defense zone. An enemy within **50 m of one of your candidates** is also a raider for your team, even where defense zones overlap.
 
 Every player can buy intel and cast curses in the app at any time — there is no dedicated captain role.
 
@@ -35,11 +35,11 @@ Every player can buy intel and cast curses in the app at any time — there is n
 
 - When a defender gets within **5 m** of any enemy raider, a **Tag button activates** in the app — no manual typing needed.
 - Tapping it tags **every adversary currently within that 5 m radius** simultaneously. If two raiders are bunched together, both get caught in one tap.
-- Defender must be in their **own half**; the app verifies proximity via GPS before enabling the button.
+- Defender must be in their **own defense zone**. The target must be outside theirs, unless they are within 50 m of one of the defender's candidates; the app verifies both fresh GPS fixes.
+- One Tag tap discards at most **1 random intel card from the raiding team in total**, even when several raiders are caught.
 - A tagged raider:
-  - **Loses 1 random intel card**
-  - Must walk to the **nearest neutral landmark** before raiding again
-  - Cannot be re-tagged until they leave that neutral landmark
+  - Must walk to the specifically assigned **nearest neutral landmark**
+  - Remains immune/respawning until they confirm arrival and then walk at least **45 m away**
 
 ### The 50 m camping rule
 
@@ -64,13 +64,13 @@ Defenders **cannot stand within 50 m of any of their own candidate landmarks** f
 | Source | Amount |
 |---|---|
 | Starting balance | **100** |
-| Every 30 min of game time | **+20** |
+| Every 30 min of game time (max 6 in 3 h) | **+20** |
 | First team to complete any challenge ("first blood") | **+30** |
 | Per challenge completed | 20–60 |
 
 | Spend | Cost |
 |---|---|
-| Intel card | 30–80 |
+| Intel card | 30–100 |
 | Curse die (roll 1–3 dice) | 50 each |
 | Harden own flag challenge (once) | 150 |
 
@@ -84,26 +84,28 @@ Every curse is tagged with one letter so you know how it's checked:
 
 | Tag | Meaning |
 |---|---|
-| **[A]** | GPS-verified — app measures your location/speed |
+| **[A]** | GPS-assisted — app shows live location/speed readouts; noisy movement rules remain honor-based |
 | **[B]** | Photo-verified — app prompts for a proof photo within a window |
 | **[C]** | Honor system — app reminds, no real check, trust + social pressure |
 | **[L]** | Ledger-only — pure app-state effect (coins, intel, action lock) |
 
 Curse roll totals: 1–3 minor, 4–8 medium, 9+ major. Curses do not stack on the same effect. *(Full curse list is in the app.)*
 
+Photo challenges auto-accept after **120 seconds** unless the other team rejects them first. Slow Trap costs **80** coins; the other placed curses cost **120**.
+
 ---
 
 ## Attempting a flag
 
-1. Walk to a candidate landmark; tap **"Attempt flag"** in the app (must be within 20 m).
+1. After the first 30 minutes, walk to a candidate landmark and tap **"Attempt flag"** (opening the panel needs a fresh fix within about 28 m; final submission is 28 m, or 12 m if hardened). Start alerts have a 15 s team and 60 s team/landmark cooldown.
 2. App reveals the **flag challenge** (a small photo task).
-3. Submit the photo with the marker visible. App validates by GPS + EXIF + marker code.
+3. Submit a real image from the camera/file picker. The server validates your current GPS and the uploaded Storage object; the other team can inspect the proof.
 
 | Result | Consequence |
 |---|---|
 | **Real flag** | Photo validated on the spot. App immediately notifies **both teams**. You must now **reach your home base geofence** — that crossing triggers the win. |
-| **Decoy** | Photo rejected. **Lose ALL intel cards.** Walk to a **neutral landmark** before raiding again. |
-| **Empty** | Attempt fails. No penalty beyond wasted time. |
+| **Decoy** | **Lose ALL intel cards**, get a 15-minute lockout on that landmark, and complete the assigned two-stage neutral respawn. |
+| **Empty** | No inventory penalty, but that landmark is locked for 15 minutes. |
 
 ---
 
@@ -120,8 +122,8 @@ Score by points (see app for full breakdown):
 - Photographing the enemy real flag: **+10**
 - Each completed challenge: **+1**
 - Each successful tag: **+1**
-- Each curse cast: **+0.5**
-- **+1 per 50 coins** remaining
+- Curse casts: **0** *(stat only)*
+- Coins remaining: **0** *(second tiebreaker only)*
 
 Still tied → most challenges → most coins → coin flip.
 
@@ -129,10 +131,11 @@ Still tied → most challenges → most coins → coin flip.
 
 ## Quick reminders
 
-- **Walking only.** Stay inside the city + UTAD + Casa de Mateus polygon shown in the app.
+- **Walking only.** Stay inside the 1.5 km play-area circle shown in the app.
 - **Don't camp** your own flag landmarks (50 m / 2 min).
 - **Don't hoard intel** past 4 cards — you can't.
-- A round trip UTAD ↔ Mateus is ~70 min on foot. Budget your time.
+- A one-way walk between the two home bases is roughly 15 minutes. Budget your time.
+- In unsafe weather, one team may propose a pause; the other team must confirm within 5 minutes. Pause and resume both require the two-team confirmation.
 
 ---
 

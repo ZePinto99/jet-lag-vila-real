@@ -17,14 +17,60 @@ import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import { chromium } from 'playwright'
+import { createClient } from '@supabase/supabase-js'
 
 const __dir = dirname(fileURLToPath(import.meta.url))
 export const BASE = process.env.SIM_BASE || 'http://localhost:3001'
 export const SHOTS = resolve(__dir, 'shots')
 
-const LANDMARKS = JSON.parse(
-  readFileSync(resolve(__dir, '../../data/landmarks.json'), 'utf8'),
+const LANDMARKS = JSON.parse(readFileSync(resolve(__dir, '../../data/landmarks.json'), 'utf8'))
+
+const envFile = readFileSync(resolve(__dir, '../../.env.local'), 'utf8')
+function localEnv(name) {
+  const line = envFile.split(/\r?\n/).find((row) => row.startsWith(`${name}=`))
+  if (!line) throw new Error(`missing ${name} in .env.local`)
+  return line.slice(name.length + 1).replace(/^['"]|['"]$/g, '')
+}
+
+const simSupabase = createClient(
+  localEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  localEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
 )
+const simAdmin = createClient(
+  localEnv('NEXT_PUBLIC_SUPABASE_URL'),
+  localEnv('SUPABASE_SERVICE_ROLE_KEY'),
+  { auth: { persistSession: false, autoRefreshToken: false } },
+)
+export const adminRpc = (name, args) => simAdmin.rpc(name, args)
+
+// A real, valid 1×1 PNG object used for setup-time I7 surroundings uploads.
+// Browser scenarios that exercise the file picker replace this with a full
+// screenshot, while API-assisted setup uses this tiny deterministic fixture.
+const PROOF_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+)
+
+export async function uploadSurroundingsPhoto(gameId, teamId, tag = String(Date.now())) {
+  const path = `${gameId}/${teamId}/sim-${tag}-${Math.random().toString(36).slice(2)}.png`
+  const { error } = await simSupabase.storage
+    .from('surroundings-photos')
+    .upload(path, PROOF_PNG, { contentType: 'image/png', upsert: false })
+  if (error) throw error
+  return path
+}
+async function uploadPublicProof(bucket, gameId, playerId, tag = String(Date.now())) {
+  const path = `${gameId}/${playerId}-${tag}-${Math.random().toString(36).slice(2)}.png`
+  const { error } = await simSupabase.storage
+    .from(bucket)
+    .upload(path, PROOF_PNG, { contentType: 'image/png', upsert: false })
+  if (error) throw error
+  return simSupabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
+}
+export const uploadChallengeProof = (gameId, playerId, tag) =>
+  uploadPublicProof('challenge-photos', gameId, playerId, tag)
+export const uploadFlagAttemptProof = (gameId, playerId, tag) =>
+  uploadPublicProof('flag-attempts', gameId, playerId, tag)
 export function coord(ref) {
   const l = LANDMARKS.find((x) => x.id === ref)
   if (!l) throw new Error(`no landmark ${ref}`)
@@ -33,17 +79,17 @@ export function coord(ref) {
 
 // Fixed flag assignments used by setupLiveGame (1 real / 2 decoy / 2 empty).
 export const WEST_ASSIGN = [
-  { landmark_ref: 'landmark.utad-main-library', role: 'real' },
-  { landmark_ref: 'landmark.utad-jardim-botanico', role: 'decoy' },
-  { landmark_ref: 'landmark.utad-geosciences-museum', role: 'decoy' },
+  { landmark_ref: 'landmark.miradouro-vila-velha', role: 'real' },
+  { landmark_ref: 'landmark.miradouro-meia-laranja', role: 'decoy' },
+  { landmark_ref: 'landmark.estacao-ferroviaria', role: 'decoy' },
+  { landmark_ref: 'landmark.mercado-municipal', role: 'empty' },
   { landmark_ref: 'landmark.parque-florestal', role: 'empty' },
-  { landmark_ref: 'landmark.igreja-da-conceicao', role: 'empty' },
 ]
 export const EAST_ASSIGN = [
   { landmark_ref: 'landmark.biblioteca-municipal', role: 'real' },
   { landmark_ref: 'landmark.igreja-sao-pedro', role: 'decoy' },
   { landmark_ref: 'landmark.jardim-da-carreira', role: 'decoy' },
-  { landmark_ref: 'landmark.largo-do-pioledo', role: 'empty' },
+  { landmark_ref: 'landmark.capela-sao-lazaro', role: 'empty' },
   { landmark_ref: 'landmark.escola-sao-pedro', role: 'empty' },
 ]
 
@@ -84,33 +130,66 @@ export async function setupLiveGame(tag = String(Date.now())) {
   const wTeam = create.teams.find((t) => t.side === 'west').id
   const eTeam = create.teams.find((t) => t.side === 'east').id
 
+  const w2Device = `sim-w2-${tag}`
+  const w2Join = await apiPost(`/api/games/${gid}/join`, {
+    display_name: 'West 2',
+    device_id: w2Device,
+    preferred_side: 'west',
+  })
+  const w2Player = w2Join.player?.id ?? w2Join.me?.id ?? w2Join.id
   const join = await apiPost(`/api/games/${gid}/join`, {
     display_name: 'East',
     device_id: eDevice,
     preferred_side: 'east',
   })
   const ePlayer = join.player?.id ?? join.me?.id ?? join.id
+  const e2Device = `sim-e2-${tag}`
+  const e2Join = await apiPost(`/api/games/${gid}/join`, {
+    display_name: 'East 2',
+    device_id: e2Device,
+    preferred_side: 'east',
+  })
+  const e2Player = e2Join.player?.id ?? e2Join.me?.id ?? e2Join.id
 
-  await apiPost(`/api/games/${gid}/ready`, {
-    player_id: wPlayer,
-    device_id: wDevice,
-    ready: true,
-  })
-  await apiPost(`/api/games/${gid}/ready`, {
-    player_id: ePlayer,
-    device_id: eDevice,
-    ready: true,
-  })
+  for (const p of [
+    { player: wPlayer, device: wDevice },
+    { player: w2Player, device: w2Device },
+    { player: ePlayer, device: eDevice },
+    { player: e2Player, device: e2Device },
+  ]) {
+    await apiPost(`/api/games/${gid}/ready`, {
+      player_id: p.player,
+      device_id: p.device,
+      ready: true,
+    })
+  }
   await apiPost(`/api/games/${gid}/start`, { device_id: wDevice })
+  const westPhoto = await uploadSurroundingsPhoto(gid, wTeam, `${tag}-west`)
   await apiPost(`/api/games/${gid}/flag-setup`, {
     device_id: wDevice,
     assignments: WEST_ASSIGN,
+    surroundings_photo_path: westPhoto,
   })
+  const eastPhoto = await uploadSurroundingsPhoto(gid, eTeam, `${tag}-east`)
   await apiPost(`/api/games/${gid}/flag-setup`, {
     device_id: eDevice,
     assignments: EAST_ASSIGN,
+    surroundings_photo_path: eastPhoto,
   })
-  return { gid, code, wPlayer, ePlayer, wTeam, eTeam, wDevice, eDevice }
+  return {
+    gid,
+    code,
+    wPlayer,
+    ePlayer,
+    wTeam,
+    eTeam,
+    wDevice,
+    eDevice,
+    w2Player,
+    e2Player,
+    w2Device,
+    e2Device,
+  }
 }
 
 // Direct DB access (local container) for clock control + curse injection +
@@ -120,9 +199,7 @@ export function db(sql) {
     `docker exec supabase_db_jet-lag-the-game-vr psql -U postgres -d postgres -tAc ${JSON.stringify(sql)}`,
     { encoding: 'utf8' },
   )
-  return out
-    .split('\n')
-    .filter((l) => l && !/^(INSERT|UPDATE|DELETE|SELECT) \d/.test(l))
+  return out.split('\n').filter((l) => l && !/^(INSERT|UPDATE|DELETE|SELECT) \d/.test(l))
 }
 // Backdate started_at so the 30-min flag-attempt protection window is over and
 // time-bonus intervals have elapsed.
@@ -175,13 +252,17 @@ export async function makeGameN(westN, eastN, tag = String(Date.now())) {
     })
   }
   await apiPost(`/api/games/${gid}/start`, { device_id: west[0].device })
+  const westPhoto = await uploadSurroundingsPhoto(gid, wTeam, `${tag}-west`)
   await apiPost(`/api/games/${gid}/flag-setup`, {
     device_id: west[0].device,
     assignments: WEST_ASSIGN,
+    surroundings_photo_path: westPhoto,
   })
+  const eastPhoto = await uploadSurroundingsPhoto(gid, eTeam, `${tag}-east`)
   await apiPost(`/api/games/${gid}/flag-setup`, {
     device_id: east[0].device,
     assignments: EAST_ASSIGN,
+    surroundings_photo_path: eastPhoto,
   })
   return { gid, code, wTeam, eTeam, west, east }
 }
@@ -192,9 +273,12 @@ export async function launchBrowser() {
 
 // A browser client that "is" a given player (via localStorage device_id) with
 // a controllable GPS position.
-export async function makeClient(browser, { deviceId, lat, lng, locale = 'en' }) {
+export async function makeClient(
+  browser,
+  { deviceId, lat, lng, locale = 'en', notifications = false },
+) {
   const context = await browser.newContext({
-    permissions: ['geolocation'],
+    permissions: notifications ? ['geolocation', 'notifications'] : ['geolocation'],
     geolocation: { latitude: lat, longitude: lng, accuracy: 8 },
     viewport: { width: 430, height: 880 },
     deviceScaleFactor: 2,
@@ -203,18 +287,31 @@ export async function makeClient(browser, { deviceId, lat, lng, locale = 'en' })
     ([id, loc]) => {
       try {
         localStorage.setItem('device_id', id)
-        localStorage.setItem('jl_locale', loc)
+        if (!localStorage.getItem('jl_locale')) localStorage.setItem('jl_locale', loc)
       } catch {}
     },
     [deviceId, locale],
   )
   const page = await context.newPage()
-  page.on('pageerror', (e) => console.log(`  [pageerror ${deviceId}] ${e.message}`))
+  const diagnostics = []
+  page.on('pageerror', (e) => {
+    diagnostics.push(`pageerror: ${e.message}`)
+    console.log(`  [pageerror ${deviceId}] ${e.message}`)
+  })
+  page.on('console', (message) => {
+    if (message.type() === 'warning' || message.type() === 'error') {
+      const location = message.location().url
+      const suffix = location ? ` @ ${location}` : ''
+      diagnostics.push(`console ${message.type()}: ${message.text()}${suffix}`)
+      console.log(`  [console ${deviceId}] ${message.type()}: ${message.text()}${suffix}`)
+    }
+  })
 
   const client = {
     context,
     page,
     deviceId,
+    diagnostics,
     async goto(path) {
       await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })
     },
@@ -222,10 +319,25 @@ export async function makeClient(browser, { deviceId, lat, lng, locale = 'en' })
       await context.setGeolocation({ latitude: la, longitude: ln, accuracy: 8 })
     },
     async enableGps() {
-      const btn = page.getByRole('button', { name: /Enable GPS|GPS: ON|Ativar GPS/i })
+      let btn = page.getByRole('button', { name: /Enable GPS|GPS: ON|Ativar GPS/i })
+      let settings = null
+      if (!(await btn.first().isVisible().catch(() => false))) {
+        await page.getByRole('button', { name: /Open settings|Abrir definições/i }).click()
+        settings = page.getByRole('dialog', { name: /Settings|Definições/i })
+        await settings.waitFor({ state: 'visible', timeout: 15000 })
+        btn = settings.getByRole('switch', { name: /Enable GPS|Disable GPS|Ativar GPS|Desativar GPS/i })
+      }
       await btn.first().waitFor({ state: 'visible', timeout: 15000 })
-      const label = (await btn.first().innerText()).trim()
-      if (/Enable GPS|Ativar GPS/i.test(label)) await btn.first().click()
+      const label = (await btn.first().getAttribute('aria-label')) ?? (await btn.first().innerText()).trim()
+      if (/Enable GPS|Ativar GPS/i.test(label)) {
+        // Dispatch directly: enabling GPS can immediately trigger a geofence
+        // transition and mount a result overlay over the button before
+        // Playwright's hit-tested click finishes waiting for actionability.
+        await btn.first().evaluate((element) => element.click())
+      }
+      if (settings) {
+        await settings.getByRole('button', { name: /Close|Fechar/i }).click()
+      }
     },
     async tab(name) {
       // Dispatch the click on the element directly — the bottom-nav "Map" cell
@@ -237,8 +349,22 @@ export async function makeClient(browser, { deviceId, lat, lng, locale = 'en' })
         .evaluate((el) => el.click())
     },
     async shot(file) {
-      await page.screenshot({ path: resolve(SHOTS, file) })
+      // Playwright's default caret hiding mutates input styles. With React 19's
+      // faster hydration diagnostics, an early screenshot can otherwise race
+      // hydration and produce a false `caret-color: transparent` mismatch.
+      await page.screenshot({
+        path: resolve(SHOTS, file),
+        caret: 'initial',
+      })
       return resolve(SHOTS, file)
+    },
+    assertNoUnexpectedErrors(allowed = []) {
+      const unexpected = diagnostics.filter(
+        (entry) => !allowed.some((pattern) => pattern.test(entry)),
+      )
+      if (unexpected.length > 0) {
+        throw new Error(`${deviceId} browser diagnostics:\n${unexpected.join('\n')}`)
+      }
     },
   }
   return client

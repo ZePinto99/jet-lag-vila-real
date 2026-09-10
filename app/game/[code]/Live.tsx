@@ -6,9 +6,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import { Button } from '@/components/ui/Button'
+import cursesSeed from '@/data/curses.json'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
-import { useT } from '@/lib/i18n/context'
+import { useI18n, useT } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
+import type { Locale } from '@/lib/i18n/messages'
 import { apiGet, apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
@@ -20,6 +22,7 @@ import { useCamping } from '@/lib/hooks/useCamping'
 import { useTagButton } from '@/lib/hooks/useTagButton'
 import { useFlagAttemptButton } from '@/lib/hooks/useFlagAttemptButton'
 import { useCurseExpiryPoll } from '@/lib/hooks/useCurseExpiryPoll'
+import { useChallengeReviewResolution } from '@/lib/hooks/useChallengeReviewResolution'
 import { useCurseEnforcement } from '@/lib/hooks/useCurseEnforcement'
 import { useGameToasts } from '@/lib/hooks/useGameToasts'
 import { useGameMoments } from '@/lib/hooks/useGameMoments'
@@ -27,16 +30,21 @@ import { usePlacedCurseTrigger } from '@/lib/hooks/usePlacedCurseTrigger'
 import { useWalkingSpeed } from '@/lib/hooks/useWalkingSpeed'
 import { useChaseStatus } from '@/lib/hooks/useChaseStatus'
 import { useTimeTick } from '@/lib/hooks/useTimeTick'
-import { usePushNotifications } from '@/lib/hooks/usePushNotifications'
+import {
+  usePushNotifications,
+  type PushNotificationStatus,
+} from '@/lib/hooks/usePushNotifications'
 import { isMuted as soundIsMuted, setMuted as soundSetMuted } from '@/lib/sound'
 import { ToastLayer } from '@/components/game/ToastLayer'
 import { MomentOverlay } from '@/components/game/MomentOverlay'
 import { WalkingNudge } from '@/components/game/WalkingNudge'
 import { ChaseHud } from '@/components/game/ChaseHud'
-import { PowerHourBanner } from '@/components/game/PowerHourBanner'
+import { TimeBonusBanner } from '@/components/game/TimeBonusBanner'
+import { WeatherPausePanel } from '@/components/game/WeatherPausePanel'
 import { PlacedCursePanel } from '@/components/game/PlacedCursePanel'
 import { computeNarrowedRefs } from '@/lib/intel/narrowing'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
+import { weatherProposalNeedsConfirmation } from '@/lib/weatherPause'
 import { useDiscoveredEnemyKinds } from '@/lib/hooks/useDiscoveredEnemyKinds'
 import { useEnemyLandmarkLocks } from '@/lib/hooks/useEnemyLandmarkLocks'
 import { useActiveChallenges } from '@/lib/hooks/useActiveChallenges'
@@ -57,10 +65,16 @@ import { ChallengeReviewPanel } from '@/components/game/ChallengeReviewPanel'
 import { ChallengeHistoryList } from '@/components/game/ChallengeHistoryList'
 import { ChatPanel } from '@/components/game/ChatPanel'
 import { useChat } from '@/lib/hooks/useChat'
+import { buildChallengeProofIndex, challengeProofUrl } from '@/lib/challenges/proofs'
+import { gameClockNow } from '@/lib/gameClock'
+import { resolveLiveActionLock } from '@/lib/liveActionLock'
 import type {
   ActiveCurse,
   Card,
+  EndByTimeoutResponse,
+  Game,
   GameEvent,
+  GpsPosition,
   LiveStateResponse,
   Player,
   Team,
@@ -77,6 +91,10 @@ const GameMap = dynamic(() => import('@/components/map/GameMap'), {
 
 type Tab = 'map' | 'actions' | 'status' | 'chat'
 
+const CURSE_NAMES = new Map(
+  (cursesSeed as Array<{ id: string; name: string }>).map((curse) => [curse.id, curse.name]),
+)
+
 const DEFAULT_DURATION_MIN = 180 // 3 hours per RULEBOOK §4.2
 const ATTEMPT_PROTECTION_MIN = 30 // RULEBOOK §5.2 — no flag attempts in first 30 min
 
@@ -90,13 +108,20 @@ export function Live() {
   const myTeamLandmarks = useGameStore((s) => s.myTeamLandmarks)
   const enemyLandmarks = useGameStore((s) => s.enemyLandmarks)
   const activeCurses = useGameStore((s) => s.activeCurses)
+  const myCurseProofs = useGameStore((s) => s.myCurseProofs)
   const myCards = useGameStore((s) => s.myCards)
   const myPlacedCurses = useGameStore((s) => s.myPlacedCurses)
+  const pendingChallengeReviews = useGameStore((s) => s.pendingChallengeReviews)
   const events = useGameStore((s) => s.events)
   const myGps = useGameStore((s) => s.myGps)
   const presence = useGameStore((s) => s.presence)
 
   const setLiveSnapshot = useGameStore((s) => s.setLiveSnapshot)
+  const setGame = useGameStore((s) => s.setGame)
+  const upsertTeam = useGameStore((s) => s.upsertTeam)
+  const upsertPlayer = useGameStore((s) => s.upsertPlayer)
+  const upsertCard = useGameStore((s) => s.upsertCard)
+  const addCurseProof = useGameStore((s) => s.addCurseProof)
   const setMyGps = useGameStore((s) => s.setMyGps)
   const setPresenceInStore = useGameStore((s) => s.setPresence)
 
@@ -106,6 +131,11 @@ export function Live() {
   const [gpsEnabled, setGpsEnabled] = useState(false)
   const [now, setNow] = useState<number>(() => Date.now())
   const [muted, setMutedState] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mapCommand, setMapCommand] = useState<{
+    type: 'fit' | 'recenter'
+    requestId: number
+  } | null>(null)
 
   // Sync the sound-mute toggle from localStorage after mount (avoids SSR drift).
   useEffect(() => {
@@ -167,21 +197,16 @@ export function Live() {
   useLiveGameRealtime(game?.id ?? null, myTeamId)
 
   // In-game chat (G22) — ephemeral broadcast, global + per-team channels.
-  const chat = useChat(
-    game?.id ?? null,
-    me?.id ?? null,
-    myTeamId,
-    me?.display_name ?? 'Player',
-  )
+  const chat = useChat(game?.id ?? null, me?.id ?? null, myTeamId, me?.display_name ?? 'Player')
   const [chatSeen, setChatSeen] = useState(0)
   useEffect(() => {
     if (tab === 'chat') setChatSeen(chat.messages.length)
   }, [tab, chat.messages.length])
   const chatUnread = tab === 'chat' ? 0 : Math.max(0, chat.messages.length - chatSeen)
 
-  // Web Push (lock-screen alerts) — subscribes once when live; no-ops unless
-  // VAPID is configured + the browser grants notification permission.
-  usePushNotifications({
+  // Web Push (lock-screen alerts). First-time permission is initiated by the
+  // visible opt-in button below so mobile browsers accept the request.
+  const pushNotifications = usePushNotifications({
     gameId: game?.id ?? null,
     playerId: me?.id ?? null,
     enabled: game?.status === 'live' || game?.status === 'flag_found',
@@ -189,7 +214,19 @@ export function Live() {
 
   // Camping detection (50 m / 2 min rule). Drives the Tag button's
   // camping_locked state and the on-screen warning.
-  const camping = useCamping({ myGps, myTeamLandmarks })
+  const gameplayActive = game?.status === 'live' || game?.status === 'flag_found'
+  const weatherPaused = game?.status === 'paused'
+  const clockNowMs = game ? gameClockNow(game, now) : now
+  const camping = useCamping({
+    gameId: game?.id ?? null,
+    myPlayerId: me?.id ?? null,
+    myGps,
+    myTeamLandmarks,
+    enabled: gameplayActive || weatherPaused,
+    gameplayActive,
+    clockNowMs,
+    wallNowMs: now,
+  })
 
   // Walking-only gentle nudge — flags vehicle-speed movement from my GPS.
   const { speedKmh, speeding } = useWalkingSpeed(myGps)
@@ -209,9 +246,11 @@ export function Live() {
     myPlayerId: me?.id ?? null,
     myTeamId,
     myTeamLandmarks,
+    enemyTeamLandmarks: enemyLandmarks,
     presence,
     respawning: me?.respawning ?? false,
     campingLocked: camping.campingLocked,
+    nowMs: now,
   })
 
   // Which enemy landmarks have my team confirmed (by attempting them)?
@@ -224,19 +263,12 @@ export function Live() {
   const enemyLocks = useEnemyLandmarkLocks(events, myTeamId)
 
   // Active challenges for the caller's team → gold star markers on the map.
-  const challengeMarkers = useActiveChallenges(
-    game?.id ?? null,
-    game?.status ?? 'lobby',
-    events,
-  )
+  const challengeMarkers = useActiveChallenges(game?.id ?? null, game?.status ?? 'lobby', events)
 
   // Intel filter — derive ruled-out enemy refs from my intel cards. The
   // toggle controls whether the map dims them.
-  const [intelFilterEnabled, setIntelFilterEnabled] = useState(false)
-  const myIntelCards = useMemo<Card[]>(
-    () => myCards.filter((c) => c.kind === 'intel'),
-    [myCards],
-  )
+  const [intelFilterEnabled, setIntelFilterEnabled] = useState(true)
+  const myIntelCards = useMemo<Card[]>(() => myCards.filter((c) => c.kind === 'intel'), [myCards])
   const myTeamFromStore = useMemo<Team | null>(() => {
     if (!me) return null
     return teams.find((t) => t.id === me.team_id) ?? null
@@ -274,34 +306,54 @@ export function Live() {
     myGps,
   )
   useEffect(() => {
-    setPresenceInStore(presenceFromHook)
-  }, [presenceFromHook, setPresenceInStore])
+    // Presence payloads are public Realtime data, so never trust their claimed
+    // player/team identity. Reconcile them with the server snapshot before any
+    // radar, tag, curse, or notification logic consumes them.
+    const teamByPlayer = new Map(players.map((player) => [player.id, player.team_id]))
+    const verified: typeof presenceFromHook = {}
+    for (const [key, entry] of Object.entries(presenceFromHook)) {
+      if (
+        key === entry.player_id &&
+        teamByPlayer.get(entry.player_id) === entry.team_id
+      ) {
+        verified[key] = entry
+      }
+    }
+    setPresenceInStore(verified)
+  }, [presenceFromHook, players, setPresenceInStore])
 
   // Curse expiry housekeeping — polls /expire-curses every 20 s while any
   // curses are active on our team. Idempotent on the server.
-  useCurseExpiryPoll(game?.id ?? null, activeCurses.length)
+  useCurseExpiryPoll(game?.id ?? null, gameplayActive ? activeCurses.length : 0)
+  useChallengeReviewResolution(game?.id ?? null, gameplayActive)
 
-  // Time bonus / power hour: poll the idempotent /time-tick route every 30 s
-  // while the game is in play; it credits +20 (or +40 on a Power Hour) per
+  // Time bonus: poll the idempotent /time-tick route every 30 s while the game
+  // is in play; it credits +20 per elapsed 30-minute interval to both teams.
   // elapsed 30-min interval to both teams.
-  useTimeTick(
-    game?.id ?? null,
-    game?.status === 'live' || game?.status === 'flag_found',
-  )
+  useTimeTick(game?.id ?? null, gameplayActive)
 
   // Curse enforcement (P2-6) — Full Stop locks all actions; [A]/[B]/[L] curses
   // get live readouts / timed prompts in the banner.
   const curseEnforcement = useCurseEnforcement({
     activeCurses,
     myGps,
+    myPlayerId: me?.id ?? null,
     myTeamId,
     presence,
-    nowMs: now,
+    nowMs: clockNowMs,
+    wallNowMs: now,
     gameId: game?.id ?? null,
+    gameplayActive,
     t,
   })
-  const actionsLocked = curseEnforcement.actionsLocked
-  const lockedLabel = actionsLocked ? t('curse.actions_locked') : null
+  const { actionsLocked, lockedLabel, respawnLockedLabel } = resolveLiveActionLock({
+    weatherPaused,
+    weatherLabel: t('weather.actions_locked'),
+    curseLocked: curseEnforcement.actionsLocked,
+    curseLabel: curseEnforcement.actionsLockedLabel,
+    respawning: me?.respawning ?? false,
+    respawnLabel: t('respawn.gameplay_locked'),
+  })
 
   // In-app discovery toasts (P2-5): attempt start/resolve + enemy-proximity.
   const { toasts, dismiss: dismissToast } = useGameToasts({
@@ -332,7 +384,7 @@ export function Live() {
     me?.id ?? null,
     myGps,
     enemyLandmarks,
-    game?.status === 'live' || game?.status === 'flag_found',
+    gameplayActive,
   )
 
   const myTeam = useMemo<Team | null>(() => {
@@ -363,7 +415,7 @@ export function Live() {
   }, [flagCarrierTeam])
   const chaseStatus = useChaseStatus({
     active: game?.status === 'flag_found',
-    carrierPos: flagCarrier ? presence[flagCarrier.id] ?? null : null,
+    carrierPos: flagCarrier ? (presence[flagCarrier.id] ?? null) : null,
     carrierHome,
     carrierTeamId: flagCarrierTeam?.id ?? null,
     presence,
@@ -394,16 +446,33 @@ export function Live() {
     if (now < endsAtMs) return
     if (timeoutSubmittedRef.current) return
     timeoutSubmittedRef.current = true
-    apiPost(`/api/games/${game.id}/end-by-timeout`, {
+    apiPost<EndByTimeoutResponse>(`/api/games/${game.id}/end-by-timeout`, {
       device_id: getDeviceId(),
-    }).catch(() => {
-      // Reset so a later tick can retry (network blips, etc.).
-      timeoutSubmittedRef.current = false
     })
-  }, [game?.id, game?.status, endsAtMs, now])
+      .then((result) => {
+        // Realtime can miss the terminal games-row update when a player opens
+        // the page at the exact timeout boundary. The idempotent API response
+        // is authoritative, so apply it immediately instead of leaving that
+        // client in a stale live phase until a reload.
+        setGame(result.game)
+      })
+      .catch(() => {
+        // Reset so a later tick can retry (network blips, etc.).
+        timeoutSubmittedRef.current = false
+      })
+  }, [game?.id, game?.status, endsAtMs, now, setGame])
 
   const toggleGps = useCallback(() => {
     setGpsEnabled((v) => !v)
+  }, [])
+
+  const issueMapCommand = useCallback((type: 'fit' | 'recenter') => {
+    setMapCommand((previous) => ({
+      type,
+      requestId: (previous?.requestId ?? 0) + 1,
+    }))
+    setTab('map')
+    setSettingsOpen(false)
   }, [])
 
   if (!game || !me) {
@@ -435,21 +504,20 @@ export function Live() {
   }
 
   const sideLabel = myTeam.side === 'east' ? t('common.east') : t('common.west')
-  const sideColorClass =
-    myTeam.side === 'east' ? 'text-pink-300' : 'text-blue-300'
+  const sideColorClass = myTeam.side === 'east' ? 'text-pink-300' : 'text-blue-300'
 
   const iAmFlagCarrier = Boolean(flagCarrier && flagCarrier.id === me.id)
   const isFlagFound = game.status === 'flag_found'
+  const weatherConfirmationNeeded = weatherProposalNeedsConfirmation(game, myTeam.id, now)
   const isGameOver = game.status === 'finished'
 
   // 30-min flag-attempt protection window: lock the Attempt button and show a
   // header countdown while the window is open.
-  const withinProtection =
-    attemptsUnlockAtMs != null && now < attemptsUnlockAtMs
+  const withinProtection = attemptsUnlockAtMs != null && clockNowMs < attemptsUnlockAtMs
   const flagAttemptLockedLabel = actionsLocked
     ? lockedLabel
     : withinProtection
-      ? t('attempt.locked_window', { time: mmss(attemptsUnlockAtMs! - now) })
+      ? t('attempt.locked_window', { time: mmss(attemptsUnlockAtMs! - clockNowMs) })
       : null
 
   return (
@@ -465,20 +533,63 @@ export function Live() {
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs text-neutral-400">
-          <span>{myTeam.coins} {t('common.coins')}</span>
-          <Countdown endsAtMs={endsAtMs} nowMs={now} />
+          <span>
+            {myTeam.coins} {t('common.coins')}
+          </span>
+          <Countdown endsAtMs={endsAtMs} nowMs={clockNowMs} />
           <button
             type="button"
-            onClick={toggleMute}
-            aria-label={muted ? t('sound.unmute') : t('sound.mute')}
-            title={muted ? t('sound.unmute') : t('sound.mute')}
-            className="rounded px-1 py-0.5 text-sm leading-none hover:bg-neutral-800"
+            onClick={() => setSettingsOpen(true)}
+            aria-label={t('settings.open')}
+            title={t('settings.open')}
+            className="rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1 text-base leading-none text-neutral-200 hover:bg-neutral-800"
           >
-            {muted ? '🔇' : '🔊'}
+            ⚙
           </button>
-          <LanguageSwitcher />
         </div>
       </header>
+
+      {settingsOpen && (
+        <LiveSettingsMenu
+          game={game}
+          myPlayerId={me.id}
+          myTeam={myTeam}
+          nowMs={now}
+          onGameUpdate={setGame}
+          notificationStatus={pushNotifications.status}
+          enableNotifications={pushNotifications.enable}
+          muted={muted}
+          onToggleMute={toggleMute}
+          gpsEnabled={gpsEnabled}
+          onToggleGps={toggleGps}
+          gpsPosition={gps.position}
+          gpsError={gps.error}
+          intelFilterEnabled={intelFilterEnabled}
+          narrowedCount={narrowedOutRefs?.size ?? 0}
+          onToggleIntelFilter={() => setIntelFilterEnabled((value) => !value)}
+          onMapCommand={issueMapCommand}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+
+      {/* A pending vote is gameplay state, not a hidden preference. Keep the
+          request action in Settings, but surface the other team's live vote
+          prominently so it can actually be confirmed before it expires. */}
+      {weatherConfirmationNeeded && !settingsOpen && (
+        <WeatherPausePanel
+          game={game}
+          myPlayerId={me.id}
+          myTeam={myTeam}
+          nowMs={now}
+          onGameUpdate={setGame}
+        />
+      )}
+
+      {weatherPaused && (
+        <div className="border-b border-sky-700 bg-sky-950/80 px-4 py-2 text-center text-xs font-semibold text-sky-100">
+          {t('weather.paused_title')}
+        </div>
+      )}
 
       {/* Banners — flag carrier banner takes priority over the generic
           "flag found" banner so the carrier always sees their own
@@ -489,39 +600,30 @@ export function Live() {
           myPlayerId={me.id}
           myTeam={myTeam}
           myGps={myGps}
+          lockedLabel={lockedLabel}
         />
       )}
       {isFlagFound && !iAmFlagCarrier && flagCarrier && (
-        <FlagFoundBanner
-          carrier={flagCarrier}
-          carrierTeam={flagCarrierTeam}
-          myTeam={myTeam}
-        />
+        <FlagFoundBanner carrier={flagCarrier} carrierTeam={flagCarrierTeam} myTeam={myTeam} />
       )}
 
       {/* Cinematic chase HUD — live distance-to-home + nearest hunter for both
           teams during the run-home phase. */}
-      {isFlagFound && (
-        <ChaseHud
-          status={chaseStatus}
-          iAmOnCarrierTeam={iAmOnCarrierTeam}
-          t={t}
-        />
-      )}
+      {isFlagFound && <ChaseHud status={chaseStatus} iAmOnCarrierTeam={iAmOnCarrierTeam} t={t} />}
 
       {/* Flag-attempt protection window countdown (first 30 min). */}
       {withinProtection && !isGameOver && (
         <div className="border-b border-sky-800/60 bg-sky-950/40 px-4 py-1.5 text-center text-[11px] font-medium text-sky-200">
-          🔒 {t('attempt.window_header', { time: mmss(attemptsUnlockAtMs! - now) })}
+          🔒 {t('attempt.window_header', { time: mmss(attemptsUnlockAtMs! - clockNowMs) })}
         </div>
       )}
 
-      {/* Time-bonus / Power Hour countdown strip. */}
+      {/* Next +20 time-bonus countdown strip. */}
       {!isGameOver && (
-        <PowerHourBanner
+        <TimeBonusBanner
           startedAt={game.started_at}
-          nowMs={now}
-          events={events}
+          nowMs={clockNowMs}
+          durationMinutes={game.config?.duration_minutes ?? 180}
           t={t}
         />
       )}
@@ -530,9 +632,14 @@ export function Live() {
           most game-critical state stays on top, and above the respawn banner. */}
       <ActiveCursesBanner
         activeCurses={activeCurses}
-        nowMs={now}
+        nowMs={clockNowMs}
         actionsLocked={actionsLocked}
+        actionsLockedLabel={lockedLabel}
         byCurseId={curseEnforcement.byCurseId}
+        gameId={game.id}
+        myPlayerId={me.id}
+        proofReceipts={myCurseProofs}
+        onProofSubmitted={addCurseProof}
       />
 
       {/* Respawn banner — shows above tabs whenever the local player is
@@ -542,6 +649,10 @@ export function Live() {
         myPlayerId={me.id}
         myGps={myGps}
         respawning={me.respawning}
+        respawnTargetRef={me.respawn_target_ref}
+        respawnArrived={me.respawn_arrived}
+        lockedLabel={respawnLockedLabel}
+        onPlayerUpdate={upsertPlayer}
       />
 
       {/* Tab content */}
@@ -559,19 +670,13 @@ export function Live() {
               discoveredEnemyKinds={discoveredEnemyKinds}
               narrowedOutRefs={narrowedOutRefs}
               intelFilterEnabled={intelFilterEnabled}
-              onToggleIntelFilter={() => setIntelFilterEnabled((v) => !v)}
+              mapCommand={mapCommand}
               myIntelCards={myIntelCards}
               myTeamHomeLng={myTeamHomeLng}
               attemptsLocked={withinProtection}
               enemyLocks={enemyLocks}
-              nowMs={now}
+              nowMs={clockNowMs}
               challenges={challengeMarkers}
-            />
-            <MapOverlay
-              gpsEnabled={gpsEnabled}
-              onToggleGps={toggleGps}
-              accuracy={gps.position?.accuracy ?? null}
-              error={gps.error}
             />
             {/* Camping warning rides at the top of the map; the Tag button at
                 the bottom-center. Both pointer-events-none on the wrapper so
@@ -620,7 +725,13 @@ export function Live() {
             actionsLocked={actionsLocked}
             myTeamLandmarks={myTeamLandmarks}
             placedCurses={myPlacedCurses}
+            pendingChallengeReviews={pendingChallengeReviews}
             events={events}
+            enemyTeamSize={players.filter((player) => player.team_id === enemyTeam.id).length}
+            onIntelPurchased={(purchase) => {
+              upsertCard(purchase.card)
+              upsertTeam({ ...myTeam, coins: purchase.team_coins })
+            }}
           />
         )}
 
@@ -636,8 +747,7 @@ export function Live() {
             myGps={myGps}
             events={events}
             players={players}
-            teams={teams}
-            nowMs={now}
+            nowMs={clockNowMs}
             actionsLocked={actionsLocked}
           />
         )}
@@ -649,6 +759,8 @@ export function Live() {
             connected={chat.connected}
             myPlayerId={me.id}
             teamColorClass={sideColorClass}
+            actionsLocked={actionsLocked}
+            lockedReason={lockedLabel}
           />
         )}
       </div>
@@ -656,8 +768,16 @@ export function Live() {
       {/* Bottom tab bar */}
       <nav className="grid grid-cols-4 border-t border-neutral-800 bg-neutral-950">
         <TabButton label={t('live.tab_map')} active={tab === 'map'} onClick={() => setTab('map')} />
-        <TabButton label={t('live.tab_actions')} active={tab === 'actions'} onClick={() => setTab('actions')} />
-        <TabButton label={t('live.tab_status')} active={tab === 'status'} onClick={() => setTab('status')} />
+        <TabButton
+          label={t('live.tab_actions')}
+          active={tab === 'actions'}
+          onClick={() => setTab('actions')}
+        />
+        <TabButton
+          label={t('live.tab_status')}
+          active={tab === 'status'}
+          onClick={() => setTab('status')}
+        />
         <TabButton
           label={t('chat.tab')}
           active={tab === 'chat'}
@@ -672,11 +792,12 @@ export function Live() {
       <MomentOverlay moment={moment} onDismiss={dismissMoment} />
 
       {/* Walking-only gentle nudge (top-center, over the map). */}
-      <WalkingNudge speeding={speeding} speedKmh={speedKmh} t={t} />
+      <WalkingNudge speeding={gameplayActive && speeding} speedKmh={speedKmh} t={t} />
 
       {/* Game-over screen — fixed/full-screen, sits over everything else. */}
       {isGameOver && (
         <GameOverOverlay
+          gameId={game.id}
           events={events}
           teams={teams}
           players={players}
@@ -691,6 +812,273 @@ export function Live() {
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
+
+function LiveSettingsMenu({
+  game,
+  myPlayerId,
+  myTeam,
+  nowMs,
+  onGameUpdate,
+  notificationStatus,
+  enableNotifications,
+  muted,
+  onToggleMute,
+  gpsEnabled,
+  onToggleGps,
+  gpsPosition,
+  gpsError,
+  intelFilterEnabled,
+  narrowedCount,
+  onToggleIntelFilter,
+  onMapCommand,
+  onClose,
+}: {
+  game: Game
+  myPlayerId: string
+  myTeam: Team
+  nowMs: number
+  onGameUpdate: (game: Game) => void
+  notificationStatus: PushNotificationStatus
+  enableNotifications: () => void
+  muted: boolean
+  onToggleMute: () => void
+  gpsEnabled: boolean
+  onToggleGps: () => void
+  gpsPosition: GpsPosition | null
+  gpsError: string | null
+  intelFilterEnabled: boolean
+  narrowedCount: number
+  onToggleIntelFilter: () => void
+  onMapCommand: (type: 'fit' | 'recenter') => void
+  onClose: () => void
+}) {
+  const t = useT()
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    closeButtonRef.current?.focus()
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  const gpsStatus = gpsEnabled
+    ? gpsError
+      ? t('settings.gps_error', { error: gpsError })
+      : gpsPosition
+        ? t('settings.gps_accuracy', { m: Math.round(gpsPosition.accuracy) })
+        : t('settings.gps_acquiring')
+    : t('live.gps_off')
+
+  return (
+    <div
+      className="fixed inset-0 z-[3000] flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="live-settings-title"
+        className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-neutral-700 bg-neutral-950 shadow-2xl sm:rounded-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
+          <h2 id="live-settings-title" className="text-lg font-semibold text-neutral-100">
+            {t('settings.title')}
+          </h2>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800 hover:text-white"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-5 py-4">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            {t('settings.preferences')}
+          </h3>
+          <div className="mt-2 divide-y divide-neutral-800 rounded-xl border border-neutral-800 bg-neutral-900/50">
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <span className="text-sm text-neutral-200">{t('settings.language')}</span>
+              <LanguageSwitcher />
+            </div>
+            <SettingsToggleRow
+              label={t('settings.sound')}
+              value={!muted}
+              onToggle={onToggleMute}
+              onLabel={t('sound.mute')}
+              offLabel={t('sound.unmute')}
+            />
+            <NotificationOptIn status={notificationStatus} enable={enableNotifications} />
+          </div>
+
+          <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            {t('settings.map')}
+          </h3>
+          <div className="mt-2 divide-y divide-neutral-800 rounded-xl border border-neutral-800 bg-neutral-900/50">
+            <SettingsToggleRow
+              label={t('settings.gps')}
+              description={gpsStatus}
+              value={gpsEnabled}
+              onToggle={onToggleGps}
+              onLabel={t('live.disable_gps')}
+              offLabel={t('live.enable_gps')}
+            />
+            <SettingsToggleRow
+              label={t('settings.intel_filter')}
+              description={
+                narrowedCount > 0
+                  ? t('settings.intel_filter_hint')
+                  : t('settings.intel_filter_unavailable')
+              }
+              value={intelFilterEnabled}
+              onToggle={onToggleIntelFilter}
+              onLabel={t('map.intel_filter_on', { n: narrowedCount })}
+              offLabel={t('map.intel_filter_off')}
+            />
+            <div className="grid grid-cols-2 gap-2 p-3">
+              <button
+                type="button"
+                onClick={() => onMapCommand('fit')}
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-xs font-medium text-neutral-100 hover:border-neutral-600 hover:bg-neutral-900"
+              >
+                {t('map.fit_vila_real')}
+              </button>
+              <button
+                type="button"
+                onClick={() => onMapCommand('recenter')}
+                disabled={!gpsPosition}
+                className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-xs font-medium text-neutral-100 hover:border-neutral-600 hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {t('map.recenter_on_me')}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 overflow-hidden rounded-xl border border-neutral-800">
+            <WeatherPausePanel
+              game={game}
+              myPlayerId={myPlayerId}
+              myTeam={myTeam}
+              nowMs={nowMs}
+              onGameUpdate={onGameUpdate}
+              embedded
+            />
+          </div>
+        </div>
+      </section>
+    </div>
+  )
+}
+
+function SettingsToggleRow({
+  label,
+  description,
+  value,
+  onToggle,
+  onLabel,
+  offLabel,
+}: {
+  label: string
+  description?: string
+  value: boolean
+  onToggle: () => void
+  onLabel: string
+  offLabel: string
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-sm text-neutral-200">{label}</p>
+        {description && <p className="mt-0.5 text-[11px] text-neutral-500">{description}</p>}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label={value ? onLabel : offLabel}
+        title={value ? onLabel : offLabel}
+        onClick={onToggle}
+        className={cn(
+          'relative h-7 w-12 shrink-0 rounded-full border transition',
+          value
+            ? 'border-emerald-400 bg-emerald-500/80'
+            : 'border-neutral-700 bg-neutral-800',
+        )}
+      >
+        <span
+          className={cn(
+            'absolute left-1 top-1 h-5 w-5 rounded-full bg-white shadow transition-transform',
+            value ? 'translate-x-5' : 'translate-x-0',
+          )}
+        />
+      </button>
+    </div>
+  )
+}
+
+function NotificationOptIn({
+  status,
+  enable,
+}: {
+  status: PushNotificationStatus
+  enable: () => void
+}) {
+  const t = useT()
+  if (status === 'enabled') {
+    return (
+      <div className="px-4 py-3 text-sm text-neutral-200">
+        <p>{t('settings.notifications')}</p>
+        <p className="mt-0.5 text-[11px] text-emerald-300">{t('settings.notifications_on')}</p>
+      </div>
+    )
+  }
+  if (status === 'unsupported' || status === 'unconfigured') {
+    return (
+      <div className="px-4 py-3 text-sm text-neutral-200">
+        <p>{t('settings.notifications')}</p>
+        <p className="mt-0.5 text-[11px] text-neutral-500">{t('settings.notifications_unavailable')}</p>
+      </div>
+    )
+  }
+  if (status === 'denied') {
+    return (
+      <div className="px-4 py-3 text-sm text-neutral-200">
+        <p>{t('settings.notifications')}</p>
+        <p role="alert" className="mt-0.5 text-[11px] text-amber-300">{t('push.denied')}</p>
+      </div>
+    )
+  }
+  return (
+    <div
+      className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-neutral-200"
+      role="status"
+      aria-live="polite"
+    >
+      <div>
+        <p>{t('settings.notifications')}</p>
+        {status === 'error' && <p className="mt-0.5 text-[11px] text-red-300">{t('push.error')}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={enable}
+        disabled={status === 'enabling'}
+        aria-busy={status === 'enabling'}
+        className="shrink-0 rounded-md bg-sky-500 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+      >
+        {status === 'enabling' ? t('push.enabling') : t('push.enable')}
+      </button>
+    </div>
+  )
+}
 
 function TabButton({
   label,
@@ -707,6 +1095,7 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
+      aria-pressed={active}
       className={cn(
         'relative px-3 py-3 text-center text-sm font-medium transition',
         active
@@ -724,22 +1113,13 @@ function TabButton({
   )
 }
 
-function Countdown({
-  endsAtMs,
-  nowMs,
-}: {
-  endsAtMs: number | null
-  nowMs: number
-}) {
+function Countdown({ endsAtMs, nowMs }: { endsAtMs: number | null; nowMs: number }) {
   if (!endsAtMs) return <span className="text-neutral-500">--:--</span>
   const remainingMs = Math.max(0, endsAtMs - nowMs)
   const h = Math.floor(remainingMs / 3_600_000)
   const m = Math.floor((remainingMs % 3_600_000) / 60_000)
   const s = Math.floor((remainingMs % 60_000) / 1000)
-  const text =
-    h > 0
-      ? `${h}:${pad2(m)}:${pad2(s)}`
-      : `${pad2(m)}:${pad2(s)}`
+  const text = h > 0 ? `${h}:${pad2(m)}:${pad2(s)}` : `${pad2(m)}:${pad2(s)}`
   return (
     <span
       className={cn(
@@ -767,40 +1147,6 @@ function mmss(remainingMs: number): string {
   return `${m}:${pad2(s)}`
 }
 
-function MapOverlay({
-  gpsEnabled,
-  onToggleGps,
-  accuracy,
-  error,
-}: {
-  gpsEnabled: boolean
-  onToggleGps: () => void
-  accuracy: number | null
-  error: string | null
-}) {
-  const t = useT()
-  return (
-    <div className="pointer-events-none absolute left-3 top-3 z-[1000] flex flex-col items-start gap-2">
-      <Button
-        variant={gpsEnabled ? 'secondary' : 'primary'}
-        onClick={onToggleGps}
-        className="pointer-events-auto py-2 text-xs"
-      >
-        {gpsEnabled ? t('live.gps_on') : t('live.enable_gps')}
-      </Button>
-      {gpsEnabled && (
-        <div className="pointer-events-none rounded bg-neutral-950/80 px-2 py-1 text-[11px] text-neutral-300">
-          {error
-            ? `GPS error: ${error}`
-            : accuracy != null
-              ? `accuracy ±${Math.round(accuracy)} m`
-              : 'acquiring…'}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function ActionsTab({
   gameId,
   myPlayerId,
@@ -814,7 +1160,10 @@ function ActionsTab({
   actionsLocked,
   myTeamLandmarks,
   placedCurses,
+  pendingChallengeReviews,
   events,
+  enemyTeamSize,
+  onIntelPurchased,
 }: {
   gameId: string
   myPlayerId: string
@@ -828,17 +1177,21 @@ function ActionsTab({
   actionsLocked: boolean
   myTeamLandmarks: import('@/lib/types').Landmark[]
   placedCurses: import('@/lib/types').PlacedCurse[]
+  pendingChallengeReviews: Card[]
   events: GameEvent[]
+  enemyTeamSize: number
+  onIntelPurchased: (purchase: import('@/lib/types').BuyIntelResponse) => void
 }) {
+  const t = useT()
   const myIntelCards = myCards.filter((c) => c.kind === 'intel')
   return (
     <section className="mx-auto flex h-full max-w-2xl flex-col gap-4 overflow-y-auto px-6 py-6">
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5">
         <p className="text-xs uppercase tracking-wider text-neutral-500">
-          Team {sideLabel} balance
+          {t('status.team_balance', { side: sideLabel })}
         </p>
         <p className="mt-1 text-3xl font-semibold tabular-nums">{coins}</p>
-        <p className="text-xs text-neutral-500">coins</p>
+        <p className="text-xs text-neutral-500">{t('common.coins')}</p>
       </div>
 
       <IntelPurchasePanel
@@ -849,6 +1202,7 @@ function ActionsTab({
         myIntelCards={myIntelCards}
         myGps={myGps}
         actionsLocked={actionsLocked}
+        onPurchased={onIntelPurchased}
       />
 
       <CursePurchasePanel
@@ -866,6 +1220,7 @@ function ActionsTab({
         myCandidateLandmarks={myTeamLandmarks}
         placedCurses={placedCurses}
         actionsLocked={actionsLocked}
+        targetTeamSize={enemyTeamSize}
       />
 
       <ChallengesPanel
@@ -884,6 +1239,8 @@ function ActionsTab({
         myPlayerId={myPlayerId}
         myTeamId={myTeamId}
         events={events}
+        pendingReviews={pendingChallengeReviews}
+        actionsLocked={actionsLocked}
       />
     </section>
   )
@@ -900,7 +1257,6 @@ function StatusTab({
   myGps,
   events,
   players,
-  teams,
   nowMs,
   actionsLocked,
 }: {
@@ -914,18 +1270,19 @@ function StatusTab({
   myGps: import('@/lib/types').GpsPosition | null
   events: GameEvent[]
   players: Player[]
-  teams: Team[]
   nowMs: number
   actionsLocked: boolean
 }) {
+  const { t, locale } = useI18n()
+  const challengeProofs = useMemo(() => buildChallengeProofIndex(events), [events])
   return (
     <section className="mx-auto flex h-full max-w-2xl flex-col gap-4 overflow-y-auto px-6 py-6">
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5">
         <p className="text-xs uppercase tracking-wider text-neutral-500">
-          Team {myTeam.side === 'east' ? 'East' : 'West'}
+          {t('common.team')} {t(myTeam.side === 'east' ? 'common.east' : 'common.west')}
         </p>
         <p className="mt-1 text-3xl font-semibold tabular-nums">{myTeam.coins}</p>
-        <p className="text-xs text-neutral-500">coins</p>
+        <p className="text-xs text-neutral-500">{t('common.coins')}</p>
       </div>
 
       <HardenFlagButton
@@ -938,9 +1295,9 @@ function StatusTab({
       />
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-        <h2 className="text-sm font-medium text-neutral-100">Curses on us</h2>
+        <h2 className="text-sm font-medium text-neutral-100">{t('status.curses_on_us')}</h2>
         {activeCurses.length === 0 ? (
-          <p className="mt-2 text-xs text-neutral-500">None.</p>
+          <p className="mt-2 text-xs text-neutral-500">{t('status.none')}</p>
         ) : (
           <ul className="mt-2 flex flex-col gap-1.5">
             {activeCurses.map((c) => (
@@ -948,11 +1305,18 @@ function StatusTab({
                 key={c.id}
                 className="flex items-center justify-between gap-3 rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs"
               >
-                <span className="font-mono text-neutral-200">{c.curse_ref}</span>
+                <span className="text-neutral-200">
+                  {localizeCatalogField(
+                    c.curse_ref,
+                    'name',
+                    CURSE_NAMES.get(c.curse_ref) ?? c.curse_ref,
+                    locale,
+                  )}
+                </span>
                 <span className="text-neutral-400">
                   {c.expires_at
-                    ? formatTimeRemaining(new Date(c.expires_at).getTime(), nowMs)
-                    : 'no timer'}
+                    ? formatTimeRemaining(new Date(c.expires_at).getTime(), nowMs, t)
+                    : t('curse.no_timer')}
                 </span>
               </li>
             ))}
@@ -967,25 +1331,38 @@ function StatusTab({
       <ChallengeHistoryList events={events} myTeamId={myTeam.id} />
 
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-        <h2 className="text-sm font-medium text-neutral-100">Timeline</h2>
+        <h2 className="text-sm font-medium text-neutral-100">{t('status.timeline_short')}</h2>
         {events.length === 0 ? (
-          <p className="mt-2 text-xs text-neutral-500">No events yet.</p>
+          <p className="mt-2 text-xs text-neutral-500">{t('status.timeline_empty')}</p>
         ) : (
           <ol className="mt-2 flex flex-col gap-1">
-            {events.map((e) => (
-              <li
-                key={e.id}
-                className="flex items-baseline gap-2 rounded px-2 py-1 text-xs odd:bg-neutral-900/40"
-              >
-                <span className="font-mono text-[10px] text-neutral-500">
-                  {formatClock(e.created_at)}
-                </span>
-                <span className="font-medium text-neutral-200">{e.type}</span>
-                <span className="text-neutral-400">
-                  {summariseEvent(e, players, teams)}
-                </span>
-              </li>
-            ))}
+            {events.map((e) => {
+              const proofUrl = challengeProofUrl(e, challengeProofs)
+              return (
+                <li
+                  key={e.id}
+                  className="flex items-baseline gap-2 rounded px-2 py-1 text-xs odd:bg-neutral-900/40"
+                >
+                  <span className="font-mono text-[10px] text-neutral-500">
+                    {formatClock(e.created_at)}
+                  </span>
+                  <span className="font-medium text-neutral-200">{eventTypeLabel(e.type, locale)}</span>
+                  <span className="text-neutral-400">
+                    {summariseEvent(e, players, t)}
+                    {proofUrl && (
+                      <a
+                        href={proofUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-2 text-sky-300 underline"
+                      >
+                        {t('challenge.view_photo')}
+                      </a>
+                    )}
+                  </span>
+                </li>
+              )
+            })}
           </ol>
         )}
       </div>
@@ -1002,9 +1379,13 @@ function formatClock(iso: string): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`
 }
 
-function formatTimeRemaining(endsMs: number, nowMs: number): string {
+function formatTimeRemaining(
+  endsMs: number,
+  nowMs: number,
+  t: (key: string, tokens?: Record<string, string | number>) => string,
+): string {
   const rem = Math.max(0, endsMs - nowMs)
-  if (rem === 0) return 'expired'
+  if (rem === 0) return t('common.expired')
   const m = Math.floor(rem / 60_000)
   const s = Math.floor((rem % 60_000) / 1000)
   return `${m}m ${pad2(s)}s`
@@ -1013,22 +1394,53 @@ function formatTimeRemaining(endsMs: number, nowMs: number): string {
 function summariseEvent(
   e: GameEvent,
   players: Player[],
-  _teams: Team[],
+  t: (key: string, tokens?: Record<string, string | number>) => string,
 ): string {
   const actor = e.actor_player_id
-    ? players.find((p) => p.id === e.actor_player_id)?.display_name ?? 'someone'
-    : 'system'
-  const keys = Object.keys(e.payload)
-  if (keys.length === 0) return `by ${actor}`
-  // Render up to 3 short scalar keys for a one-liner; pretty JSON for deep ones.
-  const scalars = keys
-    .filter((k) => {
-      const v = (e.payload as Record<string, unknown>)[k]
-      return v == null || ['string', 'number', 'boolean'].includes(typeof v)
-    })
-    .slice(0, 3)
-    .map((k) => `${k}=${String((e.payload as Record<string, unknown>)[k])}`)
-    .join(' ')
-  return `by ${actor}${scalars ? ' · ' + scalars : ''}`
+    ? (players.find((p) => p.id === e.actor_player_id)?.display_name ?? t('status.someone'))
+    : t('status.system')
+  return t('status.event_by', { actor })
 }
 
+function eventTypeLabel(type: string, locale: Locale): string {
+  const labelsPt: Record<string, string> = {
+    player_joined: 'Jogador entrou',
+    player_left: 'Jogador saiu',
+    player_ready: 'Jogador pronto',
+    game_started: 'Preparação iniciada',
+    game_live: 'Jogo iniciado',
+    game_paused: 'Jogo em pausa',
+    game_resumed: 'Jogo retomado',
+    game_won: 'Jogo ganho',
+    game_ended_by_timeout: 'Jogo terminado por tempo',
+    flags_assigned: 'Bandeiras atribuídas',
+    challenge_completed: 'Desafio completado',
+    challenge_submitted: 'Desafio submetido',
+    challenge_rejected: 'Desafio rejeitado',
+    curse_cast: 'Maldição lançada',
+    curse_expired: 'Maldição terminada',
+    curse_proof_submitted: 'Prova de maldição submetida',
+    flag_attempt_started: 'Tentativa de bandeira iniciada',
+    flag_attempt: 'Tentativa de bandeira',
+    flag_found: 'Bandeira encontrada',
+    game_finished: 'Jogo terminado',
+    intel_bought: 'Intel comprada',
+    intel_purchased: 'Intel comprada',
+    intel_lost: 'Intel perdida',
+    coin_drain: 'Dreno de moedas',
+    coins_deducted: 'Moedas gastas',
+    tag: 'Jogador apanhado',
+    player_respawning_set: 'Respawn iniciado',
+    player_respawn_arrived: 'Ponto de respawn alcançado',
+    player_respawning_cleared: 'Respawn concluído',
+    placed_curse_armed: 'Armadilha preparada',
+    placed_curse_triggered: 'Armadilha ativada',
+    flag_hardened: 'Bandeira reforçada',
+    time_bonus_awarded: 'Bónus de tempo atribuído',
+  }
+  if (locale === 'pt' && labelsPt[type]) return labelsPt[type]
+  return type
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}

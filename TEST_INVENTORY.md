@@ -56,7 +56,7 @@ Test cases:
 - `intel.eliminate-one`, `intel.eliminate-two`, `intel.decoy-reveal`: named refs are ruled out.
 - `intel.hot-cold`: landmarks outside distance bucket are ruled out.
 - `intel.surroundings`: no mechanical narrowing.
-- `intel.direction`: landmarks outside bearing bucket are ruled out.
+- `intel.direction`: the broad 90° quadrant is highlighted without automatically ruling out landmarks.
 
 Edge cases: malformed payloads from DB, duplicate cards, unknown future intel ref.
 

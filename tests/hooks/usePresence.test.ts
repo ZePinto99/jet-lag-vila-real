@@ -5,6 +5,15 @@ import { mockSupabaseClient } from '../test-utils'
 const position = { lat: 41.295, lng: -7.746, accuracy: 5, updated_at: 1000 }
 
 describe('usePresence', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+    jest.setSystemTime(1000)
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
   it('subscribes to the game positions channel and tracks the latest GPS payload', () => {
     const client = mockSupabaseClient()
     renderHook(() => usePresence('game-1', 'player-1', 'team-west', position))
@@ -30,8 +39,8 @@ describe('usePresence', () => {
     act(() => {
       channel.setPresenceState({
         'player-1': [
-          { player_id: 'player-1', team_id: 'team-west', lat: 1, lng: 1, accuracy: 10, updated_at: 1 },
-          { player_id: 'player-1', team_id: 'team-west', lat: 2, lng: 2, accuracy: 4, updated_at: 2 },
+          { player_id: 'player-1', team_id: 'team-west', lat: 1, lng: 1, accuracy: 10, updated_at: 900 },
+          { player_id: 'player-1', team_id: 'team-west', lat: 2, lng: 2, accuracy: 4, updated_at: 1000 },
         ],
       })
       channel.emitPresence('sync')
@@ -40,7 +49,29 @@ describe('usePresence', () => {
     expect(result.current.presence['player-1']).toMatchObject({
       lat: 2,
       lng: 2,
-      updated_at: 2,
+      updated_at: 1000,
     })
+  })
+
+  it('drops stale and identity-mismatched presence entries', () => {
+    const client = mockSupabaseClient()
+    const { result } = renderHook(() =>
+      usePresence('game-1', 'player-1', 'team-west', position),
+    )
+    const channel = client.channel.mock.results[0].value
+
+    act(() => {
+      channel.setPresenceState({
+        stale: [
+          { player_id: 'stale', team_id: 'team-east', lat: 1, lng: 1, accuracy: 5, updated_at: -30_001 },
+        ],
+        spoofed: [
+          { player_id: 'somebody-else', team_id: 'team-east', lat: 1, lng: 1, accuracy: 5, updated_at: 1000 },
+        ],
+      })
+      channel.emitPresence('sync')
+    })
+
+    expect(result.current.presence).toEqual({})
   })
 })

@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
+import { apiGet } from '@/lib/api'
+import { getDeviceId } from '@/lib/device'
 import { createClient } from '@/lib/supabase/client'
 import { useGameStore } from '@/store/gameStore'
 import type {
@@ -8,6 +10,7 @@ import type {
   Card,
   Game,
   GameEvent,
+  LiveStateResponse,
   Player,
   Team,
 } from '@/lib/types'
@@ -30,10 +33,7 @@ import type {
 // teams/players bindings, coin balances and respawn/flag-carrier state went
 // stale mid-game (the snapshot is only fetched on mount) — see PLAYTEST_TRIAGE
 // P0-1 / P1-1.
-export function useLiveGameRealtime(
-  gameId: string | null,
-  myTeamId: string | null,
-) {
+export function useLiveGameRealtime(gameId: string | null, myTeamId: string | null) {
   const setGame = useGameStore((s) => s.setGame)
   const upsertTeam = useGameStore((s) => s.upsertTeam)
   const upsertPlayer = useGameStore((s) => s.upsertPlayer)
@@ -42,12 +42,42 @@ export function useLiveGameRealtime(
   const removeActiveCurse = useGameStore((s) => s.removeActiveCurse)
   const upsertCard = useGameStore((s) => s.upsertCard)
   const removeCard = useGameStore((s) => s.removeCard)
+  const setLiveSnapshot = useGameStore((s) => s.setLiveSnapshot)
 
   useEffect(() => {
     if (!gameId) return
 
     const supabase = createClient()
     const channel = supabase.channel(`live:${gameId}`)
+    let cancelled = false
+    let reconcileInFlight = false
+    let hasSubscribed = false
+
+    // Postgres Changes is not a durable queue: events created while a mobile
+    // browser is suspended or offline are not replayed after the socket comes
+    // back. Reconcile the authoritative snapshot whenever the channel rejoins
+    // (and when the tab returns to the foreground), so notifications and live
+    // state recover without requiring a force refresh.
+    const reconcile = async () => {
+      if (cancelled || reconcileInFlight) return
+      reconcileInFlight = true
+      try {
+        const deviceId = getDeviceId()
+        const snapshot = await apiGet<LiveStateResponse>(
+          `/api/games/${gameId}/live-state?device_id=${encodeURIComponent(deviceId)}`,
+        )
+        if (!cancelled) setLiveSnapshot(snapshot)
+      } catch {
+        // Best-effort recovery. Supabase will continue attempting to rejoin,
+        // and the next online/visibility event gives us another chance.
+      } finally {
+        reconcileInFlight = false
+      }
+    }
+
+    const reconcileWhenVisible = () => {
+      if (document.visibilityState === 'visible') void reconcile()
+    }
 
     channel.on(
       'postgres_changes',
@@ -78,9 +108,7 @@ export function useLiveGameRealtime(
       (payload) => {
         if (payload.eventType === 'DELETE') return
         const player = payload.new as Player
-        const teamIds = new Set(
-          useGameStore.getState().teams.map((t) => t.id),
-        )
+        const teamIds = new Set(useGameStore.getState().teams.map((t) => t.id))
         if (!teamIds.has(player.team_id)) return
         upsertPlayer(player)
       },
@@ -90,7 +118,38 @@ export function useLiveGameRealtime(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'events', filter: `game_id=eq.${gameId}` },
       (payload) => {
-        appendEvent(payload.new as GameEvent)
+        const event = payload.new as GameEvent
+        appendEvent(event)
+        const eventPayload = event.payload as Record<string, unknown>
+
+        // DELETE payloads from Postgres Changes may contain only the primary
+        // key and table filters are unreliable for DELETEs. The append-only
+        // event is the durable, game-filtered signal for removing an expired
+        // or geofence-completed curse without a refresh.
+        if (event.type === 'curse_expired' || event.type === 'curse_completed') {
+          if (
+            eventPayload.target_team_id === myTeamId &&
+            typeof eventPayload.curse_id === 'string'
+          ) {
+            removeActiveCurse(eventPayload.curse_id)
+          }
+        }
+
+        // Hardened landmark details and own placed curses are team-private or
+        // hidden tables. Re-fetch the scoped snapshot only when the event says
+        // the changed state belongs to this client team.
+        const hardenChanged =
+          event.type === 'flag_hardened' && eventPayload.team_id === myTeamId
+        const ownPlacementChanged =
+          (event.type === 'placed_curse_armed' && eventPayload.team_id === myTeamId) ||
+          (event.type === 'placed_curse_triggered' &&
+            eventPayload.owner_team_id === myTeamId)
+        // Pause/resume changes automatic GPS behavior immediately. Reconcile
+        // from the durable event as well as the games-row subscription so a
+        // missed/coalesced UPDATE cannot leave a client performing actions
+        // under the wrong phase.
+        const phaseChanged = event.type === 'game_paused' || event.type === 'game_resumed'
+        if (hardenChanged || ownPlacementChanged || phaseChanged) void reconcile()
       },
     )
 
@@ -121,14 +180,42 @@ export function useLiveGameRealtime(
             if (old.id) removeCard(old.id)
             return
           }
-          upsertCard(payload.new as Card)
+          const card = payload.new as Card
+          if (card.ref === 'intel.surroundings') {
+            // The durable DB payload contains a private object_path, while the
+            // team-scoped live-state response replaces it with a fresh signed
+            // URL. Never overwrite the UI with the raw realtime row.
+            void reconcile()
+            return
+          }
+          upsertCard(card)
         },
       )
     }
 
-    channel.subscribe()
+    channel.subscribe((status) => {
+      if (status !== 'SUBSCRIBED') return
+      if (hasSubscribed) void reconcile()
+      hasSubscribed = true
+    })
+
+    // A weather proposal only updates the games row; unlike an applied
+    // pause/resume it does not create a durable event. Mobile browsers can
+    // occasionally miss that single Postgres Changes message while the page
+    // remains visible. Reconcile a lightweight authoritative snapshot on a
+    // slow cadence so the opposing team's confirmation prompt still appears.
+    const reconcileInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void reconcile()
+    }, 15_000)
+
+    window.addEventListener('online', reconcile)
+    document.addEventListener('visibilitychange', reconcileWhenVisible)
 
     return () => {
+      cancelled = true
+      window.clearInterval(reconcileInterval)
+      window.removeEventListener('online', reconcile)
+      document.removeEventListener('visibilitychange', reconcileWhenVisible)
       supabase.removeChannel(channel)
     }
   }, [
@@ -142,5 +229,6 @@ export function useLiveGameRealtime(
     removeActiveCurse,
     upsertCard,
     removeCard,
+    setLiveSnapshot,
   ])
 }

@@ -47,6 +47,11 @@ export function HardenFlagButton({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  // Landmark rows are intentionally not realtime-broadcast (their `kind`
+  // would reveal flag assignments). Lock the control immediately from the
+  // successful team-scoped response; a reload rehydrates the true value from
+  // /live-state.
+  const [locallyHardened, setLocallyHardened] = useState(false)
   // Confirm-spend modal (G21) — replaces the old inline two-step confirm.
   const [confirming, setConfirming] = useState(false)
 
@@ -54,10 +59,8 @@ export function HardenFlagButton({
     () => myTeamLandmarks.find((l) => l.kind === 'flag_real') ?? null,
     [myTeamLandmarks],
   )
-  const alreadyHardened = useMemo(
-    () => myTeamLandmarks.some((l) => l.hardened),
-    [myTeamLandmarks],
-  )
+  const alreadyHardened =
+    locallyHardened || myTeamLandmarks.some((landmark) => landmark.hardened)
 
   const notLive = gameStatus !== 'live'
   const insufficientCoins = teamCoins < HARDEN_COST
@@ -70,15 +73,15 @@ export function HardenFlagButton({
     actionsLocked
 
   const disabledReason = !realFlag
-    ? 'No real flag assigned yet'
+    ? t('status.harden_no_flag')
     : alreadyHardened
-      ? 'Already hardened'
+      ? t('status.hardened')
       : actionsLocked
         ? t('curse.actions_locked')
         : notLive
-          ? 'Not available right now'
+          ? t('status.harden_unavailable')
           : insufficientCoins
-            ? `Costs ${HARDEN_COST} coins — you have ${teamCoins}`
+            ? t('status.harden_cost', { cost: HARDEN_COST, coins: teamCoins })
             : null
 
   async function handleClick() {
@@ -96,7 +99,8 @@ export function HardenFlagButton({
         `/api/games/${gameId}/harden-flag`,
         body,
       )
-      setSuccess('Flag challenge hardened.')
+      setLocallyHardened(true)
+      setSuccess(t('status.harden_success'))
       setConfirming(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
@@ -109,10 +113,9 @@ export function HardenFlagButton({
   // status. Otherwise it'd look like the button vanished.
   return (
     <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-      <h2 className="text-sm font-medium text-neutral-100">Harden your flag</h2>
+      <h2 className="text-sm font-medium text-neutral-100">{t('status.harden_title')}</h2>
       <p className="mt-1 text-xs text-neutral-400">
-        Spend {HARDEN_COST} coins to upgrade your real flag&apos;s challenge to
-        a harder variant. Once per game.
+        {t('status.harden_hint', { cost: HARDEN_COST })}
       </p>
       <div className="mt-3 flex flex-col gap-2">
         <button
@@ -132,10 +135,10 @@ export function HardenFlagButton({
           )}
         >
           {busy
-            ? 'Hardening…'
+            ? t('status.hardening')
             : alreadyHardened
-              ? 'Already hardened'
-              : `Harden flag · ${HARDEN_COST} coins`}
+              ? t('status.hardened')
+              : t('status.harden_action', { cost: HARDEN_COST })}
         </button>
         <ConfirmSpendModal
           open={confirming}
@@ -154,12 +157,12 @@ export function HardenFlagButton({
           <p className="text-[11px] text-neutral-500">{disabledReason}</p>
         )}
         {success && (
-          <p className="rounded bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-200">
+          <p role="status" className="rounded bg-emerald-950/70 px-2 py-1 text-[11px] text-emerald-200">
             {success}
           </p>
         )}
         {error && (
-          <p className="rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
+          <p role="alert" className="rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
             {error}
           </p>
         )}

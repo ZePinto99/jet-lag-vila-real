@@ -7,10 +7,14 @@
 // review. Accept credits the submitter; reject sends it back for a retake.
 
 import { useMemo, useState } from 'react'
+import challengesSeed from '@/data/challenges.json'
 import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
-import { useT } from '@/lib/i18n/context'
-import type { GameEvent } from '@/lib/types'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
+import type { Card, ChallengeDefinition, GameEvent } from '@/lib/types'
+
+const CHALLENGES = challengesSeed as ChallengeDefinition[]
 
 interface PendingReview {
   cardId: string
@@ -26,6 +30,8 @@ interface ChallengeReviewPanelProps {
   myPlayerId: string
   myTeamId: string
   events: GameEvent[]
+  pendingReviews?: Card[]
+  actionsLocked?: boolean
 }
 
 export function ChallengeReviewPanel({
@@ -33,13 +39,48 @@ export function ChallengeReviewPanel({
   myPlayerId,
   myTeamId,
   events,
+  pendingReviews = [],
+  actionsLocked = false,
 }: ChallengeReviewPanelProps) {
-  const t = useT()
+  const { t, locale } = useI18n()
   const [busyCard, setBusyCard] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Remember the exact submission version we optimistically resolved. A card
+  // can be rejected and resubmitted with the same id; keying only by card id
+  // would hide that new proof forever in the reviewer tab.
+  const [resolvedLocally, setResolvedLocally] = useState<Map<string, string>>(
+    () => new Map(),
+  )
 
   const pending = useMemo<PendingReview[]>(() => {
-    // Latest relevant event per card_id decides its state.
+    // Seed from the complete durable snapshot first. Recent events then add
+    // realtime submissions or remove reviews resolved since that snapshot.
+    const outByCard = new Map<string, PendingReview>()
+    for (const card of pendingReviews) {
+      if (card.kind !== 'challenge' || card.state !== 'pending' || card.team_id === myTeamId) {
+        continue
+      }
+      const definition = CHALLENGES.find((item) => item.id === card.ref)
+      const payload = card.payload as Record<string, unknown>
+      outByCard.set(card.id, {
+        cardId: card.id,
+        challengeRef: card.ref,
+        locationName: localizeCatalogField(
+          card.ref,
+          'location_name',
+          definition?.location_name ?? card.ref,
+          locale,
+        ),
+        photoUrl: typeof payload.photo_url === 'string' ? payload.photo_url : '',
+        rewardCoins: definition?.reward_coins ?? 0,
+        createdAt:
+          typeof payload.submitted_at === 'string'
+            ? payload.submitted_at
+            : card.updated_at,
+      })
+    }
+
+    // Latest relevant event per card_id decides any newer state.
     const latest = new Map<string, GameEvent>()
     for (const e of events) {
       if (
@@ -54,25 +95,39 @@ export function ChallengeReviewPanel({
       const prev = latest.get(cardId)
       if (!prev || e.created_at >= prev.created_at) latest.set(cardId, e)
     }
-    const out: PendingReview[] = []
     for (const [cardId, e] of latest) {
-      if (e.type !== 'challenge_submitted') continue
+      if (e.type !== 'challenge_submitted') {
+        outByCard.delete(cardId)
+        continue
+      }
       const p = e.payload as Record<string, unknown>
       if (p.reviewing_team_id !== myTeamId) continue
-      out.push({
+      outByCard.set(cardId, {
         cardId,
         challengeRef: typeof p.challenge_ref === 'string' ? p.challenge_ref : '',
-        locationName:
-          typeof p.location_name === 'string' ? p.location_name : 'Challenge',
+        locationName: localizeCatalogField(
+          typeof p.challenge_ref === 'string' ? p.challenge_ref : '',
+          'location_name',
+          typeof p.location_name === 'string' ? p.location_name : t('challenge.panel_title'),
+          locale,
+        ),
         photoUrl: typeof p.photo_url === 'string' ? p.photo_url : '',
         rewardCoins: typeof p.reward_coins === 'number' ? p.reward_coins : 0,
         createdAt: e.created_at,
       })
     }
-    return out.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  }, [events, myTeamId])
+    for (const [cardId, resolvedSubmissionAt] of resolvedLocally) {
+      if (outByCard.get(cardId)?.createdAt === resolvedSubmissionAt) {
+        outByCard.delete(cardId)
+      }
+    }
+    return Array.from(outByCard.values()).sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    )
+  }, [events, locale, myTeamId, pendingReviews, resolvedLocally, t])
 
-  async function review(cardId: string, accept: boolean) {
+  async function review(cardId: string, accept: boolean, submissionCreatedAt: string) {
+    if (actionsLocked || busyCard !== null) return
     setBusyCard(cardId)
     setError(null)
     try {
@@ -84,6 +139,11 @@ export function ChallengeReviewPanel({
           card_id: cardId,
         },
       )
+      setResolvedLocally((current) => {
+        const next = new Map(current)
+        next.set(cardId, submissionCreatedAt)
+        return next
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
@@ -96,6 +156,11 @@ export function ChallengeReviewPanel({
       <h2 className="text-sm font-medium text-neutral-100">
         {t('challenge.review_title')}
       </h2>
+      {actionsLocked && (
+        <p role="alert" className="mt-2 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
+          {t('curse.actions_locked')}
+        </p>
+      )}
       {pending.length === 0 ? (
         <p className="mt-2 text-xs text-neutral-500">
           {t('challenge.review_none')}
@@ -128,8 +193,8 @@ export function ChallengeReviewPanel({
               <div className="mt-2 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => review(r.cardId, false)}
-                  disabled={busyCard === r.cardId}
+                  onClick={() => review(r.cardId, false, r.createdAt)}
+                  disabled={actionsLocked || busyCard !== null}
                   className="flex-1 rounded-md bg-neutral-800 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-200 transition hover:bg-neutral-700 disabled:opacity-50"
                 >
                   {busyCard === r.cardId
@@ -138,8 +203,8 @@ export function ChallengeReviewPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={() => review(r.cardId, true)}
-                  disabled={busyCard === r.cardId}
+                  onClick={() => review(r.cardId, true, r.createdAt)}
+                  disabled={actionsLocked || busyCard !== null}
                   className="flex-1 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-neutral-950 transition hover:bg-emerald-400 disabled:opacity-50"
                 >
                   {busyCard === r.cardId
@@ -152,7 +217,7 @@ export function ChallengeReviewPanel({
         </ul>
       )}
       {error && (
-        <p className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
+        <p role="alert" className="mt-3 rounded bg-red-950/70 px-2 py-1 text-[11px] text-red-200">
           {error}
         </p>
       )}

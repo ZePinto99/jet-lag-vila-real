@@ -4,6 +4,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { awardChallenge } from '@/lib/server/challengeAward'
+import { isTeamActionLocked } from '@/lib/server/actionLock'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { validatePublicProofPhoto } from '@/lib/server/storageProof'
 import challengesCatalog from '@/data/challenges.json'
 import type {
   Card,
@@ -163,6 +166,9 @@ export async function POST(
   if (!callerTeam) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  if (await isTeamActionLocked(supabase, game.id, callerTeam.id)) {
+    return NextResponse.json({ error: 'actions_locked' }, { status: 409 })
+  }
 
   // 5. Find the team's challenge card by ref. Must exist AND be `available`.
   const { data: cardRow, error: cardError } = await supabase
@@ -212,6 +218,9 @@ export async function POST(
         { status: 400 },
       )
     }
+    if (!isPositionFresh(pos.updated_at, Date.now())) {
+      return NextResponse.json({ error: 'stale_position' }, { status: 409 })
+    }
     const seed = getSeedLandmarkByRef(def.landmark_ref)
     if (!seed) {
       return NextResponse.json(
@@ -241,64 +250,73 @@ export async function POST(
     if (!photo_url) {
       return NextResponse.json({ error: 'photo_required' }, { status: 400 })
     }
+    const proof = await validatePublicProofPhoto({
+      supabase,
+      bucket: 'challenge-photos',
+      publicUrl: photo_url,
+      gameId: game.id,
+      playerId: caller.id,
+    })
+    if (!proof.ok) {
+      return NextResponse.json(
+        { error: proof.error ?? 'invalid_photo_url' },
+        { status: 400 },
+      )
+    }
     const enemyTeam = teams.find((t) => t.id !== callerTeam.id)
     if (!enemyTeam) {
       return NextResponse.json({ error: 'no_reviewing_team' }, { status: 409 })
     }
     const submittedAt = new Date().toISOString()
-    const { data: pendingRow, error: pendingError } = await supabase
-      .from('cards')
-      .update({
-        state: 'pending',
-        payload: {
-          ...(card.payload ?? {}),
-          photo_url,
-          submitted_at: submittedAt,
-          submitted_by: caller.id,
-          review_status: 'submitted',
-          ...(text_submission !== undefined ? { text_submission } : {}),
-        },
-        updated_at: submittedAt,
-      })
-      .eq('id', card.id)
-      .eq('state', 'available')
-      .select()
-      .maybeSingle()
+    const pendingPayload = {
+      ...(card.payload ?? {}),
+      photo_url,
+      submitted_at: submittedAt,
+      submitted_by: caller.id,
+      review_status: 'submitted',
+      ...(text_submission !== undefined ? { text_submission } : {}),
+    }
+    const eventPayload = {
+      team_id: callerTeam.id,
+      reviewing_team_id: enemyTeam.id,
+      challenge_ref,
+      card_id: card.id,
+      photo_url,
+      reward_coins,
+      location_name: def.location_name,
+      submitter_player_id: caller.id,
+    }
+    const { data: pendingData, error: pendingError } = await supabase.rpc(
+      'submit_challenge_review_atomic',
+      {
+        p_game_id: game.id,
+        p_team_id: callerTeam.id,
+        p_card_id: card.id,
+        p_actor_player_id: caller.id,
+        p_card_payload: pendingPayload,
+        p_event_payload: eventPayload,
+      },
+    )
     if (pendingError) {
       return NextResponse.json(
-        { error: 'card_update_failed', details: pendingError.message },
+        { error: 'challenge_submit_failed', details: pendingError.message },
         { status: 500 },
       )
     }
-    if (!pendingRow) {
+    const pending = pendingData as { error?: string } | null
+    if (!pending || pending.error) {
+      const error = pending?.error ?? 'challenge_submit_failed'
       return NextResponse.json(
-        { error: 'challenge_not_available' },
-        { status: 409 },
-      )
-    }
-
-    // Notify the reviewing team (event flows over realtime to all clients).
-    const { error: submittedEventError } = await supabase
-      .from('events')
-      .insert({
-        game_id: game.id,
-        type: 'challenge_submitted',
-        actor_player_id: caller.id,
-        payload: {
-          team_id: callerTeam.id,
-          reviewing_team_id: enemyTeam.id,
-          challenge_ref,
-          card_id: card.id,
-          photo_url,
-          reward_coins,
-          location_name: def.location_name,
-          submitter_player_id: caller.id,
+        { error },
+        {
+          status: [
+            'challenge_not_available',
+            'game_not_in_play',
+            'game_expired',
+            'player_respawning',
+            'actions_locked',
+          ].includes(error) ? 409 : error === 'forbidden' ? 403 : 500,
         },
-      })
-    if (submittedEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: submittedEventError.message },
-        { status: 500 },
       )
     }
 
@@ -323,6 +341,7 @@ export async function POST(
       card,
       def,
       actorPlayerId: caller.id,
+      requestingPlayerId: caller.id,
     })
     const response: SubmitChallengeResponse = {
       status: 'completed',
@@ -332,7 +351,13 @@ export async function POST(
     return NextResponse.json(response)
   } catch (err) {
     const message = err instanceof Error ? err.message : 'award_failed'
-    const status = message === 'challenge_not_available' ? 409 : 500
+    const status = [
+      'challenge_not_available',
+      'game_not_in_play',
+      'game_expired',
+      'player_respawning',
+      'actions_locked',
+    ].includes(message) ? 409 : message === 'forbidden' ? 403 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

@@ -14,7 +14,7 @@ describe('usePlacedCurseTrigger', () => {
     )
   })
 
-  it('posts once when entering an enemy defense zone', async () => {
+  it('posts once per entry and retries after leaving and re-entering', async () => {
     // RULEBOOK placed-curses extension: hidden curse triggers on enemy zone entry.
     const { rerender } = renderHook(
       ({ myGps }) =>
@@ -39,5 +39,12 @@ describe('usePlacedCurseTrigger', () => {
 
     rerender({ myGps: { ...gps, updated_at: 2000 } })
     expect(global.fetch).toHaveBeenCalledTimes(1)
+
+    rerender({
+      myGps: { ...gps, lat: 41.3, lng: -7.75, updated_at: 3000 },
+    })
+    rerender({ myGps: { ...gps, updated_at: 4000 } })
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalledTimes(2))
   })
 })

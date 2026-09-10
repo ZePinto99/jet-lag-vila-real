@@ -1,5 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { useCurseExpiryPoll } from '@/lib/hooks/useCurseExpiryPoll'
+import { useGameStore } from '@/store/gameStore'
+import { makeCurse } from '../test-utils'
 
 describe('useCurseExpiryPoll', () => {
   beforeEach(() => {
@@ -11,6 +13,10 @@ describe('useCurseExpiryPoll', () => {
   })
 
   it('polls expire-curses every 20 seconds while curses are active', async () => {
+    useGameStore.setState({ activeCurses: [makeCurse({ id: 'expired-1' })] })
+    global.fetch = jest.fn().mockResolvedValue(
+      new Response(JSON.stringify({ expired_curse_ids: ['expired-1'] }), { status: 200 }),
+    )
     renderHook(() => useCurseExpiryPoll('game-1', 2))
 
     await act(async () => {
@@ -24,6 +30,7 @@ describe('useCurseExpiryPoll', () => {
         body: JSON.stringify({ device_id: 'device-1' }),
       }),
     )
+    expect(useGameStore.getState().activeCurses).toHaveLength(0)
   })
 
   it('does not poll without a game or active curses', () => {

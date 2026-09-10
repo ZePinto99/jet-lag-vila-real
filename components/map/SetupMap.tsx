@@ -1,41 +1,30 @@
 'use client'
 
-// Read-only planning map for the setup phase (PLAYTEST_TRIAGE P3-2), now the
-// PRIMARY, map-first assignment surface (A2/A3/A4). Shows every candidate
-// landmark in both team pools (public info before roles are assigned) plus
-// neutrals. The team's own pool markers are TAPPABLE — tapping cycles the
-// landmark's role (none → real → decoy → empty → none) via `onCycleRole`,
-// staying in sync with the list fallback. No GPS, no actions.
+// Focused planning map for flag setup. Only the current team's assignable
+// pool is rendered: enemy and neutral landmarks are irrelevant to this step
+// and made the old overview needlessly dense. Markers use compact numbers;
+// the parent renders the selected landmark name and explicit role controls.
 //
 // MUST be dynamic-imported with ssr:false — Leaflet touches `window` on import.
 
 import 'leaflet/dist/leaflet.css'
-import { MapContainer, TileLayer, CircleMarker, Circle, Tooltip } from 'react-leaflet'
+import { CircleMarker, MapContainer, Tooltip } from 'react-leaflet'
 import seedLandmarks from '@/data/landmarks.json'
-import {
-  PLAY_AREA_CENTRE,
-  PLAY_AREA_RADIUS_M,
-} from '@/lib/intel/overlays'
 import type { FlagRole, SeedLandmark, TeamSide } from '@/lib/types'
+import { LibertyBasemap } from '@/components/map/LibertyBasemap'
 
 const SEED = seedLandmarks as SeedLandmark[]
+const SEED_BY_ID = new Map(SEED.map((seed) => [seed.id, seed]))
 
 const TEAM_COLOR: Record<TeamSide, string> = {
   west: '#3b82f6',
   east: '#ec4899',
 }
-const NEUTRAL_COLOR = '#737373'
 
-// Role tint for own-pool markers — matches the list UI (RoleButton) tones.
 const ROLE_COLOR: Record<FlagRole, string> = {
-  real: '#10b981', // emerald
-  decoy: '#f59e0b', // amber
-  empty: '#a3a3a3', // neutral
-}
-const ROLE_BADGE: Record<FlagRole, string> = {
-  real: 'REAL',
-  decoy: 'DECOY',
-  empty: 'EMPTY',
+  real: '#10b981',
+  decoy: '#f59e0b',
+  empty: '#737373',
 }
 
 function SetupMap({
@@ -43,92 +32,57 @@ function SetupMap({
   myHomeRef,
   selections,
   poolIds,
-  onCycleRole,
+  selectedRef,
+  onSelectLandmark,
 }: {
   mySide: TeamSide
   myHomeRef: string | null
   selections: Map<string, FlagRole | null>
   poolIds: string[]
-  onCycleRole: (seedId: string) => void
+  selectedRef: string | null
+  onSelectLandmark: (seedId: string) => void
 }) {
-  const poolSet = new Set(poolIds)
+  const pool = poolIds
+    .map((id) => SEED_BY_ID.get(id))
+    .filter((seed): seed is SeedLandmark => seed !== undefined)
+  const bounds = pool.map((seed) => [seed.lat, seed.lng] as [number, number])
 
   return (
-    <div className="h-72 w-full overflow-hidden rounded-xl border border-neutral-800">
+    <div className="h-72 w-full overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950 sm:h-80">
       <MapContainer
-        center={[PLAY_AREA_CENTRE.lat, PLAY_AREA_CENTRE.lng]}
-        zoom={14}
+        bounds={bounds}
+        boundsOptions={{ padding: [36, 36], maxZoom: 15 }}
         scrollWheelZoom
         className="h-full w-full"
         style={{ background: '#0a0a0a' }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          subdomains="abcd"
-          maxZoom={20}
-        />
+        <LibertyBasemap />
 
-        {/* Play-area boundary (matches the live out-of-bounds disk). */}
-        <Circle
-          center={[PLAY_AREA_CENTRE.lat, PLAY_AREA_CENTRE.lng]}
-          radius={PLAY_AREA_RADIUS_M}
-          pathOptions={{
-            color: '#525252',
-            weight: 1,
-            fill: false,
-            dashArray: '4 4',
-          }}
-        />
-
-        {SEED.map((seed) => {
-          const isMine = seed.team_pool === mySide
-          const isPool = poolSet.has(seed.id)
-          const role = isPool ? selections.get(seed.id) ?? null : null
-          // Own-pool markers are role-tinted (or team color when unassigned);
-          // everything else keeps its team/neutral color.
-          const baseColor =
-            seed.team_pool === 'neutral'
-              ? NEUTRAL_COLOR
-              : TEAM_COLOR[seed.team_pool as TeamSide]
-          const color = role ? ROLE_COLOR[role] : baseColor
+        {pool.map((seed, index) => {
+          const role = selections.get(seed.id) ?? null
+          const selected = seed.id === selectedRef
           const isHome = seed.id === myHomeRef
           return (
             <CircleMarker
               key={seed.id}
               center={[seed.lat, seed.lng]}
-              radius={isHome ? 12 : isPool ? 10 : isMine ? 9 : 7}
+              radius={selected ? 13 : isHome ? 11 : 10}
               pathOptions={{
-                color: '#ffffff',
-                fillColor: color,
-                fillOpacity: isMine || seed.team_pool === 'neutral' ? 0.9 : 0.45,
-                weight: isHome ? 4 : isPool ? 3 : 2,
+                color: selected ? '#ffffff' : isHome ? '#d4d4d8' : '#fafafa',
+                fillColor: role ? ROLE_COLOR[role] : TEAM_COLOR[mySide],
+                fillOpacity: role ? 1 : 0.9,
+                weight: selected ? 4 : isHome ? 3 : 2,
               }}
-              // Only the team's own assignable pool is interactive.
-              interactive={isPool}
-              eventHandlers={
-                isPool ? { click: () => onCycleRole(seed.id) } : undefined
-              }
+              eventHandlers={{ click: () => onSelectLandmark(seed.id) }}
             >
-              {isPool ? (
-                // Own-pool: permanent label so names stay visible while
-                // selecting (A4), with a role badge once assigned.
-                <Tooltip
-                  permanent
-                  direction="top"
-                  offset={[0, -8]}
-                  className={role ? 'map-label map-label--strong' : 'map-label'}
-                >
-                  {seed.name}
-                  {role ? ` · ${ROLE_BADGE[role]}` : ''}
-                </Tooltip>
-              ) : (
-                // Enemy / neutral markers: hover-only label, non-interactive.
-                <Tooltip direction="top" offset={[0, -6]} className="map-label">
-                  {seed.name}
-                  {isHome ? ' (home)' : ''}
-                </Tooltip>
-              )}
+              <Tooltip
+                permanent
+                direction="center"
+                offset={[0, 0]}
+                className="setup-map-index"
+              >
+                {index + 1}
+              </Tooltip>
             </CircleMarker>
           )
         })}

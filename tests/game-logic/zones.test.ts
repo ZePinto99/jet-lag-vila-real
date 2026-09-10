@@ -1,6 +1,11 @@
 /** @jest-environment node */
 
-import { DEFENSE_ZONE_RADIUS_M, isInDefenseZone } from '@/lib/geo/zones'
+import {
+  DEFENSE_ZONE_RADIUS_M,
+  ENEMY_CANDIDATE_RAID_RADIUS_M,
+  isInDefenseZone,
+  isRaiderForDefendingTeam,
+} from '@/lib/geo/zones'
 
 describe('isInDefenseZone', () => {
   const ownCandidate = { lat: 41.295, lng: -7.746 }
@@ -21,5 +26,19 @@ describe('isInDefenseZone', () => {
 
   it('returns false when the team has no candidates', () => {
     expect(isInDefenseZone(ownCandidate, [])).toBe(false)
+  })
+
+  it('overrides overlap immunity only within 50 m of the defending objective', () => {
+    const overlappingOwn = [{ lat: 41.295, lng: -7.746 }]
+    const defending = [{ lat: 41.295, lng: -7.746 }]
+    expect(ENEMY_CANDIDATE_RAID_RADIUS_M).toBe(50)
+    expect(isRaiderForDefendingTeam(ownCandidate, overlappingOwn, defending)).toBe(true)
+    expect(
+      isRaiderForDefendingTeam(
+        { lat: 41.296, lng: -7.746 },
+        [{ lat: 41.296, lng: -7.746 }],
+        defending,
+      ),
+    ).toBe(false)
   })
 })

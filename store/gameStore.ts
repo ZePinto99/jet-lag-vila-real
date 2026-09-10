@@ -7,6 +7,7 @@ import { create } from 'zustand'
 import type {
   ActiveCurse,
   Card,
+  CurseProofReceipt,
   EnemyLandmark,
   Game,
   GameEvent,
@@ -40,8 +41,10 @@ export interface GameStoreState {
   myTeamLandmarks: Landmark[]
   enemyLandmarks: EnemyLandmark[]
   activeCurses: ActiveCurse[] // curses targeting my team
+  myCurseProofs: CurseProofReceipt[] // private-photo receipts; never object paths
   myCards: Card[]              // my team's cards (challenge/curse/intel, any state)
   myPlacedCurses: PlacedCurse[] // my team's armed placements (hidden from enemy)
+  pendingChallengeReviews: Card[] // complete unresolved review union from server
   events: GameEvent[]          // append-only; capped at MAX_EVENTS_KEPT client-side
 
   // local-only realtime state
@@ -65,6 +68,7 @@ export interface GameStoreActions {
   setPresence: (presence: Record<string, PresencePayload>) => void
   appendEvent: (event: GameEvent) => void
   upsertActiveCurse: (curse: ActiveCurse) => void
+  addCurseProof: (proof: CurseProofReceipt) => void
   removeActiveCurse: (id: string) => void
   upsertCard: (card: Card) => void
   removeCard: (id: string) => void
@@ -84,8 +88,10 @@ const initialState: GameStoreState = {
   myTeamLandmarks: [],
   enemyLandmarks: [],
   activeCurses: [],
+  myCurseProofs: [],
   myCards: [],
   myPlacedCurses: [],
+  pendingChallengeReviews: [],
   events: [],
 
   myGps: null,
@@ -168,8 +174,10 @@ export const useGameStore = create<GameStore>((set) => ({
         myTeamLandmarks: snapshot.my_team_landmarks,
         enemyLandmarks: snapshot.enemy_landmarks,
         activeCurses: snapshot.active_curses,
+        myCurseProofs: snapshot.my_curse_proofs ?? [],
         myCards: snapshot.my_cards,
         myPlacedCurses: snapshot.my_placed_curses ?? [],
+        pendingChallengeReviews: snapshot.pending_challenge_reviews ?? [],
         events: cappedEvents,
       }
     }),
@@ -205,6 +213,12 @@ export const useGameStore = create<GameStore>((set) => ({
     set((state) => ({
       activeCurses: state.activeCurses.filter((c) => c.id !== id),
     })),
+
+  addCurseProof: (proof) =>
+    set((state) => {
+      if (state.myCurseProofs.some((item) => item.id === proof.id)) return {}
+      return { myCurseProofs: [...state.myCurseProofs, proof] }
+    }),
 
   upsertCard: (card) =>
     set((state) => {

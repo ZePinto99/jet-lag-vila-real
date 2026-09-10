@@ -93,82 +93,39 @@ export async function POST(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  // Load events for scoring.
-  const { data: eventsData } = await supabase
-    .from('events')
-    .select('*')
-    .eq('game_id', game.id)
-    .order('created_at', { ascending: true })
-  const events = (eventsData ?? []) as GameEvent[]
-
-  const scores = computeScores({ events, teams, players })
-  const { winner_team_id, reason } = pickTimeoutWinner(scores)
-
-  // Optimistic transition: only fire from current status.
-  const { data: updatedRow, error: updateErr } = await supabase
-    .from('games')
-    .update({ status: 'finished', ended_at: new Date().toISOString() })
-    .eq('id', game.id)
-    .in('status', ['live', 'flag_found'])
-    .select()
-    .maybeSingle()
-
-  if (updateErr) {
+  // The database locks the game + both team balances, recomputes the complete
+  // score from the ledger, performs the final coin flip when needed, and
+  // persists the terminal events in one transaction. Concurrent retries return
+  // that stored result and never flip twice.
+  const { data: finishData, error: finishError } = await supabase.rpc(
+    'finish_game_by_timeout_atomic',
+    { p_game_id: game.id, p_actor_player_id: caller.id },
+  )
+  if (finishError) {
     return NextResponse.json(
-      { error: 'game_update_failed', details: updateErr.message },
+      { error: 'game_finish_failed', details: finishError.message },
       { status: 500 },
     )
   }
-
-  // Lost the race — someone else finished it. Return the already-finished
-  // response without duplicating the event.
-  if (!updatedRow) {
-    const { data: refetched } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', game.id)
-      .single()
+  const finish = finishData as (EndByTimeoutResponse & { error?: string }) | null
+  if (!finish || finish.error) {
+    if (finish?.error === 'already_finished') {
+      const { data: refetched } = await supabase
+        .from('games')
+        .select('*')
+        .eq('id', game.id)
+        .single()
+      return NextResponse.json(
+        await buildFinishedResponse(supabase, refetched as Game),
+        { status: 200 },
+      )
+    }
     return NextResponse.json(
-      await buildFinishedResponse(supabase, refetched as Game),
-      { status: 200 },
+      { error: finish?.error ?? 'game_finish_failed' },
+      { status: finish?.error === 'not_yet_expired' ? 409 : 500 },
     )
   }
-
-  const finishedGame = updatedRow as Game
-
-  await supabase.from('events').insert({
-    game_id: finishedGame.id,
-    type: 'game_ended_by_timeout',
-    actor_player_id: caller.id,
-    payload: {
-      winner_team_id,
-      reason,
-      scores: scores.map((s) => ({
-        team_id: s.team_id,
-        team_side: s.team_side,
-        total: s.total,
-      })),
-    },
-  })
-
-  // Also fire game_won so the rest of the UI (GameOver overlay, history)
-  // sees the same terminal event family it already understands.
-  if (winner_team_id) {
-    await supabase.from('events').insert({
-      game_id: finishedGame.id,
-      type: 'game_won',
-      actor_player_id: caller.id,
-      payload: { winner_team_id, reason },
-    })
-  }
-
-  const response: EndByTimeoutResponse = {
-    game: finishedGame,
-    winner_team_id,
-    reason,
-    scores,
-  }
-  return NextResponse.json(response)
+  return NextResponse.json(finish)
 }
 
 async function buildFinishedResponse(
@@ -192,7 +149,15 @@ async function buildFinishedResponse(
     .eq('game_id', game.id)
     .order('created_at', { ascending: true })
   const events = (eventsData ?? []) as GameEvent[]
-  const scores = computeScores({ events, teams, players })
+  const timeoutEvent = [...events]
+    .reverse()
+    .find((event) => event.type === 'game_ended_by_timeout')
+  const persistedScores = (timeoutEvent?.payload as { scores?: unknown } | undefined)?.scores
+  // Timeout results are immutable historical records. Never reinterpret an
+  // old finished game after scoring rules change.
+  const scores = Array.isArray(persistedScores)
+    ? (persistedScores as EndByTimeoutResponse['scores'])
+    : computeScores({ events, teams, players })
 
   // Try to honour an existing game_won event's winner; else recompute.
   const wonEvent = [...events]

@@ -175,6 +175,7 @@ export function FlagAttemptButton({
       device_id: getDeviceId(),
       player_id: myPlayerId,
       landmark_ref: target.ref,
+      pos: myGpsPos,
     }).catch(() => {})
   }
 

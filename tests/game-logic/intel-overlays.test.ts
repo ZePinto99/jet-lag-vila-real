@@ -28,6 +28,13 @@ describe('intel overlays', () => {
     expect(overlays[0].reason).toContain('not north')
   })
 
+  it('draws north/south from the same persisted pivot used for narrowing', () => {
+    const overlays = getIntelOverlays([
+      makeCard({ payload: { intel_ref: 'intel.north-south', direction: 'north', pivot_lat: 41.2982 } }),
+    ], null)
+    expect(overlays[0].rings[0]).toContainEqual([41.2982, 180])
+  })
+
   it('skips east/west overlays until home longitude is known', () => {
     const card = makeCard({
       payload: { intel_ref: 'intel.east-west', direction: 'west' },
@@ -53,5 +60,20 @@ describe('intel overlays', () => {
       'Ruled out: > 1000 m from buy position',
       'Ruled out: < 500 m from buy position',
     ])
+  })
+
+  it('highlights a broad direction quadrant without hiding the rest of the map', () => {
+    const overlays = getIntelOverlays([
+      makeCard({ payload: { intel_ref: 'intel.direction', bearing: 'S' } }),
+    ], -7.746)
+
+    expect(overlays).toHaveLength(1)
+    expect(overlays[0].rings).toHaveLength(1)
+    expect(overlays[0].reason).toBe('Hint: S quadrant from city centre')
+    expect(overlays[0]).toMatchObject({
+      fillColor: '#fbbf24',
+      fillOpacity: 0.12,
+      strokeColor: '#f59e0b',
+    })
   })
 })

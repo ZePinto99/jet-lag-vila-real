@@ -13,12 +13,11 @@
 // MUST be dynamic-imported by the parent with `ssr: false` — Leaflet touches
 // `window` during module init.
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import {
   MapContainer,
-  TileLayer,
   CircleMarker,
   Circle,
   Marker,
@@ -29,6 +28,7 @@ import {
 } from 'react-leaflet'
 
 import seedLandmarks from '@/data/landmarks.json'
+import { LibertyBasemap } from '@/components/map/LibertyBasemap'
 import { DEFENSE_ZONE_RADIUS_M, isInDefenseZone } from '@/lib/geo/zones'
 import { radarPingVisible } from '@/lib/geo/radar'
 import type { ChallengeMarker } from '@/lib/hooks/useActiveChallenges'
@@ -89,7 +89,7 @@ interface GameMapProps {
    */
   narrowedOutRefs?: Set<string>
   intelFilterEnabled?: boolean
-  onToggleIntelFilter?: () => void
+  mapCommand?: { type: 'fit' | 'recenter'; requestId: number } | null
   /**
    * My team's intel cards (kind='intel'). Used to compute geographic
    * overlays — half-planes for N/S + E/W, ring complements for hot-cold.
@@ -220,66 +220,30 @@ function LandmarkPopupBody({
   )
 }
 
-function MapControls({
+function MapCommandController({
+  command,
   myGps,
-  intelFilterEnabled,
-  intelFilterAvailable,
-  narrowedCount,
-  onToggleIntelFilter,
 }: {
+  command: GameMapProps['mapCommand']
   myGps: GpsPosition | null
-  intelFilterEnabled: boolean
-  intelFilterAvailable: boolean
-  narrowedCount: number
-  onToggleIntelFilter: () => void
 }) {
   const map = useMap()
-  return (
-    <div className="pointer-events-none absolute right-3 top-3 z-[1000] flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => map.flyToBounds(getPlayAreaBounds(), { padding: [24, 24] })}
-        className="pointer-events-auto rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-xs font-medium text-neutral-100 shadow-lg backdrop-blur hover:bg-neutral-800"
-      >
-        Fit Vila Real
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          if (myGps) map.flyTo([myGps.lat, myGps.lng], 16)
-        }}
-        disabled={!myGps}
-        className="pointer-events-auto rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-1.5 text-xs font-medium text-neutral-100 shadow-lg backdrop-blur hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Recenter on me
-      </button>
-      <button
-        type="button"
-        onClick={onToggleIntelFilter}
-        disabled={!intelFilterAvailable}
-        className={
-          'pointer-events-auto rounded-md border px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur disabled:cursor-not-allowed disabled:opacity-50 ' +
-          (intelFilterEnabled
-            ? 'border-amber-400 bg-amber-500/30 text-amber-100 hover:bg-amber-500/40'
-            : 'border-neutral-700 bg-neutral-900/90 text-neutral-100 hover:bg-neutral-800')
-        }
-        title={
-          intelFilterAvailable
-            ? intelFilterEnabled
-              ? `Intel filter ON — ${narrowedCount} ruled out`
-              : 'Toggle the intel filter to dim ruled-out enemies'
-            : 'Buy intel to enable this filter'
-        }
-      >
-        {intelFilterEnabled ? `Intel filter ON (${narrowedCount})` : 'Intel filter OFF'}
-      </button>
-    </div>
-  )
+  const handledRequestRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (!command || handledRequestRef.current === command.requestId) return
+    handledRequestRef.current = command.requestId
+    if (command.type === 'fit') {
+      map.flyToBounds(getPlayAreaBounds(), { padding: [24, 24] })
+    } else if (myGps) {
+      map.flyTo([myGps.lat, myGps.lng], 16)
+    }
+  }, [command, map, myGps])
+  return null
 }
 
 function MapLegend({ myTeamSide, enemyTeamSide }: { myTeamSide: TeamSide; enemyTeamSide: TeamSide }) {
   return (
-    <div className="pointer-events-none absolute left-3 top-24 z-[1000] rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-2 text-[11px] text-neutral-200 shadow-lg backdrop-blur">
+    <div className="pointer-events-none absolute left-3 top-3 z-[1000] rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-2 text-[11px] text-neutral-200 shadow-lg backdrop-blur">
       <div className="font-semibold text-neutral-100 uppercase tracking-wider mb-1">Legend</div>
       <div className="flex items-center gap-2">
         <span className="inline-block h-3 w-3 rounded-full border-2 border-white" style={{ background: TEAM_COLOR[myTeamSide] }} />
@@ -312,7 +276,7 @@ function GameMap({
   discoveredEnemyKinds = {},
   narrowedOutRefs,
   intelFilterEnabled = false,
-  onToggleIntelFilter,
+  mapCommand = null,
   myIntelCards = [],
   myTeamHomeLng = null,
   attemptsLocked = false,
@@ -365,14 +329,9 @@ function GameMap({
         style={{ background: '#0a0a0a' }}
       >
         <FitToPlayArea />
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          subdomains="abcd"
-          maxZoom={20}
-        />
+        <LibertyBasemap />
 
-        {/* Out-of-play overlay — always on; grays everything > 2.5 km from
+        {/* Out-of-play overlay — always on; grays everything > 1.5 km from
             city centre. */}
         <Polygon
           positions={outOfBoundsOverlay.rings}
@@ -392,21 +351,18 @@ function GameMap({
             key={`intel-overlay-${i}`}
             positions={o.rings}
             pathOptions={{
-              fillColor: '#000000',
-              fillOpacity: 0.35,
-              stroke: false,
+              fillColor: o.fillColor ?? '#000000',
+              fillOpacity: o.fillOpacity ?? 0.35,
+              stroke: o.strokeColor != null,
+              color: o.strokeColor,
+              opacity: o.strokeColor ? 0.65 : 0,
+              weight: o.strokeColor ? 2 : 0,
               interactive: false,
             }}
           />
         ))}
 
-        <MapControls
-          myGps={myGps}
-          intelFilterEnabled={intelFilterEnabled}
-          intelFilterAvailable={narrowedOutRefs != null && narrowedOutRefs.size > 0}
-          narrowedCount={narrowedOutRefs?.size ?? 0}
-          onToggleIntelFilter={() => onToggleIntelFilter?.()}
-        />
+        <MapCommandController command={mapCommand} myGps={myGps} />
         <MapLegend myTeamSide={myTeam.side} enemyTeamSide={enemyTeam.side} />
 
         {/* Defense zones — 200 m circles around each of my candidate landmarks.

@@ -7,7 +7,7 @@ describe('HardenFlagButton', () => {
   beforeEach(() => {
     window.localStorage.setItem('device_id', 'device-1')
     global.fetch = jest.fn().mockResolvedValue(
-      new Response(JSON.stringify({ landmark_ref: 'landmark.utad', team_coins: 0 }), {
+      new Response(JSON.stringify({ landmark_ref: 'landmark.vila-velha', team_coins: 0 }), {
         status: 200,
       }),
     )
@@ -34,18 +34,18 @@ describe('HardenFlagButton', () => {
         gameId="game-1"
         myPlayerId="player-1"
         gameStatus="live"
-        myTeamLandmarks={[makeLandmark({ ref: 'landmark.utad', kind: 'flag_real' })]}
+        myTeamLandmarks={[makeLandmark({ ref: 'landmark.vila-velha', kind: 'flag_real' })]}
         teamCoins={150}
       />,
       { language: 'pt' },
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Harden flag · 150 coins' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Reforçar bandeira · 150 moedas' }))
     // Confirm-spend modal (G21): Cancel + "Confirmar e gastar" in PT.
     expect(await screen.findByRole('button', { name: /Cancelar/ })).toBeVisible()
     await userEvent.click(screen.getByRole('button', { name: /Confirmar e gastar/ }))
 
-    await waitFor(() => expect(screen.getByText('Flag challenge hardened.')).toBeVisible())
+    await waitFor(() => expect(screen.getByText('Desafio da bandeira reforçado.')).toBeVisible())
     expect(global.fetch).toHaveBeenCalledWith(
       '/api/games/game-1/harden-flag',
       expect.objectContaining({
@@ -53,7 +53,7 @@ describe('HardenFlagButton', () => {
         body: JSON.stringify({
           device_id: 'device-1',
           player_id: 'player-1',
-          landmark_ref: 'landmark.utad',
+          landmark_ref: 'landmark.vila-velha',
         }),
       }),
     )

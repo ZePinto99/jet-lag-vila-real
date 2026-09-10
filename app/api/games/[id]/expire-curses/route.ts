@@ -1,13 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import type {
-  ActiveCurse,
-  ExpireCursesResponse,
-  Game,
-  Player,
-  Team,
-} from '@/lib/types'
+import type { ExpireCursesResponse, Game, Player, Team } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // Idempotent housekeeping: find expired active_curses rows for this game,
@@ -66,6 +60,10 @@ export async function POST(
     return NextResponse.json({ error: 'not_found' }, { status: 404 })
   }
   const game = gameRow as Game
+  if (game.status === 'paused') {
+    const response: ExpireCursesResponse = { expired_curse_ids: [] }
+    return NextResponse.json(response)
+  }
 
   // 2. Caller must be a player in this game (soft auth on device_id).
   const { data: teamsData, error: teamsError } = await supabase
@@ -102,66 +100,17 @@ export async function POST(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
-  // 3. Find expired rows.
-  const nowIso = new Date().toISOString()
-  const { data: expiredRows, error: expiredLookupError } = await supabase
-    .from('active_curses')
-    .select('*')
-    .eq('game_id', game.id)
-    .not('expires_at', 'is', null)
-    .lt('expires_at', nowIso)
-
-  if (expiredLookupError) {
+  const { data: expiredData, error: expiredError } = await supabase.rpc(
+    'expire_curses_atomic',
+    { p_game_id: game.id, p_actor_player_id: caller.id },
+  )
+  if (expiredError) {
     return NextResponse.json(
-      {
-        error: 'active_curse_lookup_failed',
-        details: expiredLookupError.message,
-      },
+      { error: 'active_curse_expiry_failed', details: expiredError.message },
       { status: 500 },
     )
   }
-  const expired = (expiredRows ?? []) as ActiveCurse[]
-
-  const expired_curse_ids: string[] = []
-
-  // 4. For each: insert curse_expired event, then delete the row.
-  // Sequential keeps event ordering predictable for clients listening on
-  // postgres_changes. With at most one or two expirations per cron tick this
-  // isn't a performance concern.
-  for (const row of expired) {
-    const { error: eventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'curse_expired',
-      actor_player_id: caller.id,
-      payload: {
-        curse_id: row.id,
-        target_team_id: row.target_team_id,
-        curse_ref: row.curse_ref,
-      },
-    })
-    if (eventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: eventError.message },
-        { status: 500 },
-      )
-    }
-
-    const { error: deleteError } = await supabase
-      .from('active_curses')
-      .delete()
-      .eq('id', row.id)
-    if (deleteError) {
-      return NextResponse.json(
-        {
-          error: 'active_curse_delete_failed',
-          details: deleteError.message,
-        },
-        { status: 500 },
-      )
-    }
-
-    expired_curse_ids.push(row.id)
-  }
+  const expired_curse_ids = (expiredData ?? []) as string[]
 
   const response: ExpireCursesResponse = { expired_curse_ids }
   return NextResponse.json(response)

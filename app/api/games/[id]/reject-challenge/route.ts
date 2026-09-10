@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getGameplayActionBlock } from '@/lib/server/actionLock'
 import type { Card, Game, Player, Team } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,8 @@ export async function POST(
   if (!caller || caller.id !== player_id) {
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
+  const actionBlock = await getGameplayActionBlock(supabase, game.id, caller)
+  if (actionBlock) return NextResponse.json({ error: actionBlock }, { status: 409 })
 
   const { data: cardRow, error: cardError } = await supabase
     .from('cards')
@@ -110,49 +113,28 @@ export async function POST(
     return NextResponse.json({ error: 'cannot_review_own' }, { status: 403 })
   }
 
-  const now = new Date().toISOString()
-  const { data: reverted, error: revertError } = await supabase
-    .from('cards')
-    .update({
-      state: 'available',
-      payload: {
-        ...(card.payload ?? {}),
-        review_status: 'rejected',
-        rejected_at: now,
-        rejected_by_team_id: caller.team_id,
-      },
-      updated_at: now,
-    })
-    .eq('id', card.id)
-    .eq('state', 'pending')
-    .select()
-    .maybeSingle()
-  if (revertError) {
-    return NextResponse.json(
-      { error: 'card_update_failed', details: revertError.message },
-      { status: 500 },
-    )
-  }
-  if (!reverted) {
-    return NextResponse.json({ error: 'not_pending' }, { status: 409 })
-  }
-
-  const { error: eventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'challenge_rejected',
-    actor_player_id: caller.id,
-    payload: {
-      team_id: card.team_id,
-      reviewing_team_id: caller.team_id,
-      challenge_ref: card.ref,
-      card_id: card.id,
+  const { data: rejectedData, error: rejectError } = await supabase.rpc(
+    'reject_challenge_review_atomic',
+    {
+      p_game_id: game.id,
+      p_card_id: card.id,
+      p_reviewer_player_id: caller.id,
+      p_reviewer_team_id: caller.team_id,
     },
-  })
-  if (eventError) {
+  )
+  if (rejectError) {
     return NextResponse.json(
-      { error: 'event_insert_failed', details: eventError.message },
+      { error: 'challenge_reject_failed', details: rejectError.message },
       { status: 500 },
     )
+  }
+  const rejected = rejectedData as { error?: string } | null
+  if (!rejected || rejected.error) {
+    const error = rejected?.error ?? 'challenge_reject_failed'
+    const status = error === 'cannot_review_own' || error === 'forbidden' ? 403 :
+      ['not_pending', 'game_not_in_play', 'game_expired', 'player_respawning', 'actions_locked'].includes(error)
+        ? 409 : error === 'not_found' ? 404 : 500
+    return NextResponse.json({ error }, { status })
   }
 
   return NextResponse.json({ ok: true })

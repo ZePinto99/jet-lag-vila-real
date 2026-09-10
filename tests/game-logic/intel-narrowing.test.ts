@@ -44,6 +44,22 @@ describe('computeNarrowedRefs', () => {
     ).toEqual(new Set(['enemy.south', 'enemy.east']))
   })
 
+  it('uses the persisted enemy-pool latitude pivot with a legacy city fallback', () => {
+    const pivoted = makeCard({
+      payload: { intel_ref: 'intel.north-south', direction: 'north', pivot_lat: 41.298 },
+    })
+    expect(
+      computeNarrowedRefs({ intelCards: [pivoted], enemyLandmarks, myTeamHomeLng: null, seedLookup }),
+    ).toEqual(new Set(['enemy.south', 'enemy.east']))
+
+    const legacy = makeCard({
+      payload: { intel_ref: 'intel.north-south', direction: 'north' },
+    })
+    expect(
+      computeNarrowedRefs({ intelCards: [legacy], enemyLandmarks, myTeamHomeLng: null, seedLookup }),
+    ).toEqual(new Set(['enemy.south', 'enemy.east']))
+  })
+
   it('uses home longitude for east/west intel and skips when missing', () => {
     const card = makeCard({
       payload: { intel_ref: 'intel.east-west', direction: 'east' },
@@ -90,6 +106,20 @@ describe('computeNarrowedRefs', () => {
 
     expect(
       computeNarrowedRefs({ intelCards: [card], enemyLandmarks, myTeamHomeLng: -7.746, seedLookup }),
+    ).toEqual(new Set())
+  })
+
+  it('keeps Direction as a non-eliminating visual hint', () => {
+    const card = makeCard({
+      payload: { intel_ref: 'intel.direction', bearing: 'S' },
+    })
+    expect(
+      computeNarrowedRefs({
+        intelCards: [card],
+        enemyLandmarks,
+        myTeamHomeLng: -7.746,
+        seedLookup,
+      }),
     ).toEqual(new Set())
   })
 })

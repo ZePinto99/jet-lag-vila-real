@@ -130,43 +130,45 @@ export async function POST(
     return NextResponse.json({ error: 'team_lookup_failed' }, { status: 500 })
   }
 
-  // Insert new player.
-  const { data: insertedPlayer, error: insertError } = await supabase
-    .from('players')
-    .insert({
-      team_id: targetTeam.id,
-      display_name,
-      device_id,
-      role: 'player',
-      ready: false,
-      flag_carrier: false,
-    })
-    .select()
-    .single()
-
-  if (insertError || !insertedPlayer) {
+  const targetCount = existingPlayers.filter(
+    (player) => player.team_id === targetTeam.id,
+  ).length
+  if (targetCount >= 4) {
     return NextResponse.json(
-      { error: 'player_insert_failed', details: insertError?.message },
+      { error: preferred_side ? 'team_full' : 'game_full' },
+      { status: 409 },
+    )
+  }
+
+  const { data: joinData, error: insertError } = await supabase.rpc(
+    'join_player_atomic',
+    {
+      p_game_id: game.id,
+      p_team_id: targetTeam.id,
+      p_display_name: display_name,
+      p_device_id: device_id,
+    },
+  )
+  if (insertError) {
+    return NextResponse.json(
+      { error: 'player_insert_failed', details: insertError.message },
       { status: 500 },
     )
   }
-  const me = insertedPlayer as Player
-
-  // Emit player_joined event.
-  const { error: eventError } = await supabase.from('events').insert({
-    game_id: game.id,
-    type: 'player_joined',
-    actor_player_id: me.id,
-    payload: { player_id: me.id, team_id: targetTeam.id },
-  })
-  if (eventError) {
-    return NextResponse.json(
-      { error: 'event_insert_failed', details: eventError.message },
-      { status: 500 },
-    )
+  const joined = joinData as {
+    error?: string
+    player?: Player
+    existing?: boolean
+  } | null
+  if (!joined?.player || joined.error) {
+    const error = joined?.error ?? 'player_insert_failed'
+    const status = error === 'team_full' || error === 'game_not_in_lobby'
+      ? 409 : error === 'not_found' ? 404 : 500
+    return NextResponse.json({ error }, { status })
   }
+  const me = joined.player
 
   const players: Player[] = [...existingPlayers, me]
   const response: JoinGameResponse = { game, teams, players, me }
-  return NextResponse.json(response, { status: 201 })
+  return NextResponse.json(response, { status: joined.existing ? 200 : 201 })
 }

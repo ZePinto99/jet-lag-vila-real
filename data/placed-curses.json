@@ -9,7 +9,7 @@
   {
     "id": "placed.slow-trap",
     "name": "Slow Trap",
-    "cost_coins": 120,
+    "cost_coins": 80,
     "casts_curse_ref": "curse.slow-walk",
     "description": "An enemy who enters here drags their team to a crawl (slow walk) for 5 minutes."
   },
@@ -18,6 +18,7 @@
     "name": "Quarantine Field",
     "cost_coins": 120,
     "casts_curse_ref": "curse.solo-quarantine",
-    "description": "An enemy who enters here scatters their team — each member must stay 50 m apart for 15 minutes."
+    "description": "An enemy who enters here pulls their team together — everyone must stay within 10 m of each other for 15 minutes.",
+    "min_team_size": 2
   }
 ]

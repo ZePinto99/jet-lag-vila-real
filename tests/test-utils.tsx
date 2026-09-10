@@ -79,7 +79,7 @@ export function makeTeam(overrides: Partial<Team> = {}): Team {
     game_id: 'game-1',
     name: 'Team West',
     side: 'west',
-    home_landmark_id: 'landmark.utad',
+    home_landmark_id: 'landmark.vila-velha',
     coins: 100,
     created_at: createdAt,
     ...overrides,
@@ -97,6 +97,8 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
     ready: true,
     is_host: false,
     respawning: false,
+    respawn_target_ref: null,
+    respawn_arrived: false,
     created_at: createdAt,
     ...overrides,
   }
@@ -106,7 +108,7 @@ export function makeLandmark(overrides: Partial<Landmark> = {}): Landmark {
   return {
     id: 'landmark-row-1',
     game_id: 'game-1',
-    ref: 'landmark.utad',
+    ref: 'landmark.vila-velha',
     lat: 41.2867,
     lng: -7.7399,
     team_id: 'team-west',

@@ -3,9 +3,11 @@ import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPushToPlayers } from '@/lib/push/server'
 import { haversineMeters } from '@/lib/geo/haversine'
-import { isInDefenseZone } from '@/lib/geo/zones'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
+import { isInDefenseZone, isRaiderForDefendingTeam } from '@/lib/geo/zones'
+import { isTeamActionLocked } from '@/lib/server/actionLock'
 import type {
-  Card,
   Game,
   Landmark,
   LandmarkKind,
@@ -18,6 +20,7 @@ import type {
 // (rulebook §6), but GPS drift in narrow Vila Real streets routinely produces
 // 5–10 m error, so the server accepts up to 10 m.
 const TAG_RANGE_M = 10
+const CAMPING_RADIUS_M = 50
 
 const FLAG_KINDS: LandmarkKind[] = ['flag_real', 'flag_decoy', 'flag_empty']
 
@@ -47,6 +50,18 @@ interface RejectedTarget {
   player_id: string
   reason: string
 }
+
+interface CampingStateResponse {
+  inside_zone: boolean
+  seconds_in_zone: number
+  seconds_outside: number
+  locked: boolean
+  last_heartbeat_at: string
+}
+
+type BulkTagResult =
+  | { tagged_player_ids: string[] }
+  | { error: string; player_id?: string }
 
 export async function POST(
   request: Request,
@@ -136,9 +151,16 @@ export async function POST(
     return NextResponse.json({ error: 'forbidden' }, { status: 403 })
   }
 
+  if (!isPositionFresh(tagger_pos.updated_at, Date.now())) {
+    return NextResponse.json({ error: 'stale_tagger_position' }, { status: 409 })
+  }
+
   // 6. Tagger must not currently be respawning.
   if (tagger.respawning) {
     return NextResponse.json({ error: 'tagger_respawning' }, { status: 409 })
+  }
+  if (await isTeamActionLocked(supabase, game.id, tagger.team_id)) {
+    return NextResponse.json({ error: 'actions_locked' }, { status: 409 })
   }
 
   // 7. Tagger must be inside their own defense zone (200 m of any own flag landmark).
@@ -168,6 +190,61 @@ export async function POST(
     )
   }
 
+  // Refresh the durable camping ledger from the exact same fresh position
+  // used to adjudicate this tag. The database wrapper rechecks this fresh,
+  // non-locked row in the tag transaction, so omitting the UI heartbeat or
+  // calling this route directly cannot bypass the 50 m / 2 min rule.
+  const insideCampingZone = ownFlagLandmarks.some(
+    (landmark) => haversineMeters(tagger_pos, landmark) <= CAMPING_RADIUS_M,
+  )
+  const { data: campingData, error: campingError } = await supabase.rpc(
+    'update_player_camping_state',
+    {
+      p_game_id: game.id,
+      p_player_id: tagger.id,
+      p_inside_zone: insideCampingZone,
+    },
+  )
+  if (campingError) {
+    return NextResponse.json(
+      { error: 'camping_update_failed', details: campingError.message },
+      { status: 500 },
+    )
+  }
+  const campingState = campingData as CampingStateResponse | { error: string }
+  if ('error' in campingState) {
+    return NextResponse.json({ error: campingState.error }, { status: 409 })
+  }
+  if (campingState.locked) {
+    return NextResponse.json({ error: 'camping_locked' }, { status: 409 })
+  }
+
+  // A target is normally a raider outside their own defense union. The 50 m
+  // objective override prevents overlapping unions from granting immunity to
+  // an attacker who is standing on one of this defender's candidates.
+  const { data: allFlagLandmarksData, error: allFlagLandmarksError } =
+    await supabase
+      .from('landmarks')
+      .select('*')
+      .eq('game_id', game.id)
+      .in('kind', FLAG_KINDS)
+  if (allFlagLandmarksError) {
+    return NextResponse.json(
+      {
+        error: 'landmark_lookup_failed',
+        details: allFlagLandmarksError.message,
+      },
+      { status: 500 },
+    )
+  }
+  const flagLandmarksByTeam = new Map<string, Landmark[]>()
+  for (const landmark of (allFlagLandmarksData ?? []) as Landmark[]) {
+    if (!landmark.team_id) continue
+    const existing = flagLandmarksByTeam.get(landmark.team_id) ?? []
+    existing.push(landmark)
+    flagLandmarksByTeam.set(landmark.team_id, existing)
+  }
+
   // 8. Adjudicate each target.
   const playersById = new Map(players.map((p) => [p.id, p]))
   const tagged_player_ids: string[] = []
@@ -178,8 +255,6 @@ export async function POST(
 
   type ValidatedTarget = {
     target: Player
-    posLat: number
-    posLng: number
   }
   const validated: ValidatedTarget[] = []
 
@@ -198,6 +273,10 @@ export async function POST(
       })
       continue
     }
+    if (!isPositionFresh(t.pos.updated_at, Date.now())) {
+      rejected.push({ player_id: t.player_id, reason: 'stale_position' })
+      continue
+    }
     const distance = haversineMeters(tagger_pos, t.pos)
     if (distance > TAG_RANGE_M) {
       rejected.push({ player_id: t.player_id, reason: 'out_of_range' })
@@ -207,115 +286,65 @@ export async function POST(
       rejected.push({ player_id: t.player_id, reason: 'already_respawning' })
       continue
     }
-    validated.push({ target, posLat: t.pos.lat, posLng: t.pos.lng })
+    if (!isRaiderForDefendingTeam(
+      t.pos,
+      flagLandmarksByTeam.get(target.team_id) ?? [],
+      ownFlagLandmarks,
+    )) {
+      rejected.push({ player_id: t.player_id, reason: 'target_not_raider' })
+      continue
+    }
+    validated.push({ target })
   }
 
-  // 9. Apply mutations sequentially for each valid target.
-  for (const { target } of validated) {
-    // 9a. Insert tag row. Use tagger_pos (defender's coords at moment of tag),
-    // matching the architecture spec.
-    const { error: tagInsertError } = await supabase.from('tags').insert({
-      game_id: game.id,
-      raider_player_id: target.id,
-      defender_player_id: tagger.id,
-      lat: tagger_pos.lat,
-      lng: tagger_pos.lng,
-    })
-    if (tagInsertError) {
+  // 9. Apply every route-validated target in one transaction. The RPC locks
+  // all raiders in UUID order and commits the whole batch or none of it.
+  const respawnTarget = nearestNeutralLandmark(tagger_pos)
+  if (!respawnTarget) {
+    return NextResponse.json({ error: 'respawn_target_missing' }, { status: 500 })
+  }
+  if (validated.length > 0) {
+    const validatedIds = validated.map(({ target }) => target.id)
+    const { data: applyData, error: applyError } = await supabase.rpc(
+      'apply_tags_atomic',
+      {
+        p_game_id: game.id,
+        p_raider_player_ids: validatedIds,
+        p_defender_player_id: tagger.id,
+        p_lat: tagger_pos.lat,
+        p_lng: tagger_pos.lng,
+        p_respawn_target_ref: respawnTarget.landmark.id,
+        p_expected_camping_heartbeat_at: campingState.last_heartbeat_at,
+      },
+    )
+    if (applyError) {
       return NextResponse.json(
-        { error: 'tag_insert_failed', details: tagInsertError.message },
+        { error: 'tag_insert_failed', details: applyError.message },
         { status: 500 },
       )
     }
-
-    // 9b. Set target.respawning = true.
-    const { error: respawnUpdateError } = await supabase
-      .from('players')
-      .update({ respawning: true })
-      .eq('id', target.id)
-    if (respawnUpdateError) {
-      return NextResponse.json(
-        {
-          error: 'player_update_failed',
-          details: respawnUpdateError.message,
-        },
-        { status: 500 },
-      )
-    }
-
-    // 9c. Expire one random in-hand intel card on the target's team.
-    const { data: intelCardsData, error: intelLookupError } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('game_id', game.id)
-      .eq('team_id', target.team_id)
-      .eq('kind', 'intel')
-      .eq('state', 'in_hand')
-
-    if (intelLookupError) {
-      return NextResponse.json(
-        { error: 'cards_lookup_failed', details: intelLookupError.message },
-        { status: 500 },
-      )
-    }
-    const intelCards = (intelCardsData ?? []) as Card[]
-    if (intelCards.length > 0) {
-      const victim = intelCards[Math.floor(Math.random() * intelCards.length)]
-      const { error: expireError } = await supabase
-        .from('cards')
-        .update({ state: 'expired', updated_at: new Date().toISOString() })
-        .eq('id', victim.id)
-        .eq('state', 'in_hand') // optimistic guard against double-expire
-      if (expireError) {
-        return NextResponse.json(
-          { error: 'card_update_failed', details: expireError.message },
-          { status: 500 },
-        )
+    const applyResult = applyData as BulkTagResult
+    if ('error' in applyResult) {
+      if (applyResult.error === 'target_state_changed') {
+        for (const playerId of validatedIds) {
+          rejected.push({
+            player_id: playerId,
+            reason: playerId === applyResult.player_id
+              ? 'already_respawning'
+              : 'batch_aborted',
+          })
+        }
+      } else {
+        return NextResponse.json({ error: applyResult.error }, { status: 409 })
       }
+    } else {
+      tagged_player_ids.push(...applyResult.tagged_player_ids)
     }
-
-    // 9d. Append `tag` event.
-    const { error: tagEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'tag',
-      actor_player_id: tagger.id,
-      payload: {
-        raider_player_id: target.id,
-        defender_player_id: tagger.id,
-        lat: tagger_pos.lat,
-        lng: tagger_pos.lng,
-      },
-    })
-    if (tagEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: tagEventError.message },
-        { status: 500 },
-      )
-    }
-
-    // 9e. Append `player_respawning_set` event.
-    const { error: respawnEventError } = await supabase.from('events').insert({
-      game_id: game.id,
-      type: 'player_respawning_set',
-      actor_player_id: tagger.id,
-      payload: {
-        player_id: target.id,
-        team_id: target.team_id,
-      },
-    })
-    if (respawnEventError) {
-      return NextResponse.json(
-        { error: 'event_insert_failed', details: respawnEventError.message },
-        { status: 500 },
-      )
-    }
-
-    tagged_player_ids.push(target.id)
   }
 
   // Lock-screen alert to tagged raiders (best-effort; no-op without VAPID).
   if (tagged_player_ids.length > 0) {
-    void sendPushToPlayers(tagged_player_ids, {
+    await sendPushToPlayers(tagged_player_ids, {
       title: 'Tagged!',
       body: "You've been tagged — respawn at a neutral landmark.",
       tag: 'tagged',

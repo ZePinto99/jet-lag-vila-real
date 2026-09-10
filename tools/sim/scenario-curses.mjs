@@ -3,6 +3,7 @@
 // prolongs the freeze). E16 Check-in: a tap-to-acknowledge control appears.
 
 import { mkdirSync } from 'node:fs'
+import { strict as assert } from 'node:assert'
 import { execSync } from 'node:child_process'
 import { launchBrowser, makeClient, setupLiveGame, coord, SHOTS, sleep } from './harness.mjs'
 
@@ -29,45 +30,44 @@ db(
 console.log(`inserted frozen=${frozenId} + check-in on EAST`)
 
 const browser = await launchBrowser()
-const bib = coord('landmark.biblioteca-municipal')
-const east = await makeClient(browser, { deviceId: g.eDevice, lat: bib.lat, lng: bib.lng })
-await east.goto(`/game/${g.code}`)
-await east.page.waitForSelector('.leaflet-container', { timeout: 20000 })
-await east.enableGps()
-await sleep(4000) // GPS fix -> anchor captured; banner renders
+try {
+  const bib = coord('landmark.biblioteca-municipal')
+  const east = await makeClient(browser, { deviceId: g.eDevice, lat: bib.lat, lng: bib.lng })
+  await east.goto(`/game/${g.code}`)
+  await east.page.waitForSelector('.leaflet-container', { timeout: 20000 })
+  await east.enableGps()
+  await sleep(4000) // GPS fix -> anchor captured; banner renders
 
-// In place: Frozen shown with a drift readout.
-const hasFrozen = await east.page.getByText(/^Frozen$/).count()
-const hasDrift = await east.page.getByText(/Drift .* from start/i).count()
-await east.shot('curse-inplace.png')
-console.log(`  ${hasFrozen ? '✅' : '❌'} Frozen banner shown; drift readout=${hasDrift}`)
+  // In place: Frozen shown with a drift readout.
+  const hasFrozen = await east.page.getByText(/^Frozen$/).count()
+  const hasDrift = await east.page.getByText(/Drift .* from start/i).count()
+  assert.ok(hasFrozen > 0, 'Frozen curse banner must render')
+  assert.ok(hasDrift > 0, 'Frozen curse must show a live drift readout')
+  await east.shot('curse-inplace.png')
+  console.log('  ✅ Frozen banner and drift readout shown')
 
-// E16: check-in acknowledge control present, then tap it.
-const ackBtn = east.page.getByRole('button', { name: /Check in now/i })
-const hasAck = await ackBtn.count()
-if (hasAck) {
+  // E16: check-in acknowledge control present, then tap it.
+  const ackBtn = east.page.getByRole('button', { name: /Check in now/i })
+  await ackBtn.first().waitFor({ timeout: 10000 })
   await ackBtn.first().click()
-  await sleep(600)
+  await east.page.getByText(/Checked in/i).waitFor({ timeout: 5000 })
+  await east.shot('curse-checkin-acked.png')
+  console.log('  ✅ check-in prompt acknowledges immediately')
+
+  // E15: move out of place -> drift goes red, and the curse expiry extends.
+  const expBefore = db(`select extract(epoch from expires_at)::int from active_curses where id='${frozenId}';`)[0]
+  await east.setPos(bib.lat + 0.0006, bib.lng) // ~66 m -> drift > 10 m
+  console.log('moved east ~66 m out of place; waiting for extend…')
+  await sleep(16000)
+  await east.shot('curse-outofplace.png')
+  const expAfter = db(`select extract(epoch from expires_at)::int from active_curses where id='${frozenId}';`)[0]
+  const delta = Number(expAfter) - Number(expBefore)
+  assert.ok(delta > 0, `wandering should extend Frozen expiry (delta=${delta})`)
+  east.assertNoUnexpectedErrors()
+  console.log(`  ✅ wandering extended the freeze server-side (+${delta}s)`)
+} finally {
+  // Cleanup is guaranteed even when a browser assertion fails.
+  db(`delete from active_curses where game_id='${g.gid}';`)
+  await browser.close()
 }
-const acked = await east.page.getByText(/Checked in/i).count()
-console.log(`  ${hasAck ? '✅' : '❌'} check-in ack button present; after tap "Checked in"=${acked}`)
-await east.shot('curse-checkin-acked.png')
-
-// E15: move out of place -> drift goes red, and the curse expiry extends.
-const expBefore = db(`select extract(epoch from expires_at)::int from active_curses where id='${frozenId}';`)[0]
-await east.setPos(bib.lat + 0.0006, bib.lng) // ~66 m -> drift > 10 m
-console.log('moved east ~66 m out of place; waiting for extend…')
-await sleep(16000)
-await east.shot('curse-outofplace.png')
-const expAfter = db(`select extract(epoch from expires_at)::int from active_curses where id='${frozenId}';`)[0]
-const delta = Number(expAfter) - Number(expBefore)
-console.log(
-  delta > 0
-    ? `  ✅ wandering extended the freeze server-side (+${delta}s)`
-    : `  ❌ expiry not extended (delta=${delta})`,
-)
-
-// cleanup injected curses
-db(`delete from active_curses where game_id='${g.gid}';`)
-await browser.close()
 console.log('done')
