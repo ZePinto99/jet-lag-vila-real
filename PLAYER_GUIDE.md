@@ -2,6 +2,11 @@
 
 *Walk. Hunt. Photograph the flag. Get home.*
 
+> **New player?** Open **How to play** in the app for the illustrated version of
+> this sheet — diagrams for the defense zones, the tag radius and the camping
+> rule, plus the mistakes that lose games. This page is the at-a-glance card; the
+> app has the walkthrough.
+
 **Win condition:** First team to photograph the enemy's **real flag** and return to **their own home base** with the photo uploaded wins.
 
 ---
@@ -36,6 +41,7 @@ Every player can buy intel and cast curses in the app at any time — there is n
 - When a defender gets within **5 m** of any enemy raider, a **Tag button activates** in the app — no manual typing needed.
 - Tapping it tags **every adversary currently within that 5 m radius** simultaneously. If two raiders are bunched together, both get caught in one tap.
 - Defender must be in their **own defense zone**. The target must be outside theirs, unless they are within 50 m of one of the defender's candidates; the app verifies both fresh GPS fixes.
+- Your phone lights the button at **5 m**, but the server accepts up to **10 m** — two phones in a narrow street rarely agree. The server's number is the one that counts.
 - One Tag tap discards at most **1 random intel card from the raiding team in total**, even when several raiders are caught.
 - A tagged raider:
   - Must walk to the specifically assigned **nearest neutral landmark**
@@ -139,4 +145,4 @@ Still tied → most challenges → most coins → coin flip.
 
 ---
 
-**When in doubt: check the app.**
+**When in doubt: check the app.** The full rules with diagrams are under **How to play**.

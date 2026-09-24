@@ -42,6 +42,8 @@ import { isMuted as soundIsMuted, setMuted as soundSetMuted } from '@/lib/sound'
 import { ToastLayer } from '@/components/game/ToastLayer'
 import { MomentOverlay } from '@/components/game/MomentOverlay'
 import { WalkingNudge } from '@/components/game/WalkingNudge'
+import { BoundaryNudge } from '@/components/game/BoundaryNudge'
+import { getPlayAreaState } from '@/lib/geo/playArea'
 import { ChaseHud } from '@/components/game/ChaseHud'
 import { TimeBonusBanner } from '@/components/game/TimeBonusBanner'
 import { WeatherPausePanel } from '@/components/game/WeatherPausePanel'
@@ -235,6 +237,13 @@ export function Live() {
 
   // Walking-only gentle nudge — flags vehicle-speed movement from my GPS.
   const { speedKmh, speeding } = useWalkingSpeed(myGps)
+
+  // Out-of-bounds warning (RULEBOOK §12.1). Derived, never stored: a boundary
+  // warning is advisory, so it must not depend on server round-trips.
+  const playAreaState = useMemo(
+    () => (myGps ? getPlayAreaState({ lat: myGps.lat, lng: myGps.lng }) : null),
+    [myGps],
+  )
 
   // A short alert cue the moment camping locks the Tag button.
   const prevCampingRef = useRef(camping.status)
@@ -799,6 +808,9 @@ export function Live() {
       {/* Walking-only gentle nudge (top-center, over the map). */}
       <WalkingNudge speeding={gameplayActive && speeding} speedKmh={speedKmh} t={t} />
 
+      {/* Out-of-bounds warning, just below the walking nudge (RULEBOOK §12.1). */}
+      <BoundaryNudge state={gameplayActive ? playAreaState : null} />
+
       {/* Game-over screen — fixed/full-screen, sits over everything else. */}
       {isGameOver && (
         <GameOverOverlay
@@ -967,6 +979,23 @@ function LiveSettingsMenu({
               </button>
             </div>
           </div>
+
+          {/* The guide is most wanted mid-game, when a rule is in dispute. It
+              opens in a new tab so an argument never costs anyone their live
+              game state. */}
+          <a
+            href="/guide"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-sky-900 bg-sky-950/40 px-4 py-3 transition hover:border-sky-700 hover:bg-sky-900/40"
+          >
+            <span className="text-sm font-medium text-sky-100">
+              {t('landing.player_guide')}
+            </span>
+            <span aria-hidden="true" className="text-sky-400">
+              ↗
+            </span>
+          </a>
 
           <div className="mt-5 overflow-hidden rounded-xl border border-neutral-800">
             <WeatherPausePanel
