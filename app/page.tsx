@@ -61,6 +61,19 @@ export default function HomePage() {
           <div className="text-lg font-medium">{t('landing.join_game')}</div>
           <div className="mt-1 text-sm text-neutral-400">{t('landing.join_game_desc')}</div>
         </Link>
+        {/* Reference, not an action — so it sits after the three ways into a
+            game, with a sky accent to set it apart from the emerald rejoin. */}
+        <Link
+          href="/guide"
+          className="rounded-lg border border-sky-800 bg-sky-950/40 px-5 py-5 text-center transition hover:border-sky-600 hover:bg-sky-900/40"
+        >
+          <div className="text-lg font-medium text-sky-100">
+            {t('landing.player_guide')}
+          </div>
+          <div className="mt-1 text-sm text-sky-300/80">
+            {t('landing.player_guide_desc')}
+          </div>
+        </Link>
       </div>
     </main>
   )

@@ -295,7 +295,7 @@ export const MESSAGES: MessageDict = {
   'curse.ledger_intel_loss': { en: 'Enemy team lost an intel card ({name}).', pt: 'A equipa adversária perdeu uma carta de intel ({name}).' },
   'curse.ledger_no_intel': { en: 'Enemy team had no intel cards to lose.', pt: 'A equipa adversária não tinha cartas de intel para perder.' },
   'curse.ledger_full_stop': { en: 'Enemy team is locked out of app actions for the duration.', pt: 'As ações da app da equipa adversária ficam bloqueadas durante a maldição.' },
-  'curse.ledger_check_in': { en: 'Affected players acknowledge in-app prompts every 2 minutes; misses are logged.', pt: 'Os jogadores afetados confirmam avisos da app a cada 2 minutos; as falhas ficam registadas.' },
+  'curse.ledger_check_in': { en: 'Affected players acknowledge in-app prompts every 2 minutes. Honour-based — nothing is recorded.', pt: 'Os jogadores afetados confirmam avisos da app a cada 2 minutos. Por honra — nada fica registado.' },
 
   // ---------- actions tab: challenges ----------
   'challenge.panel_title': { en: 'Challenges', pt: 'Desafios' },
@@ -582,6 +582,16 @@ export const MESSAGES: MessageDict = {
   },
   'walk.speed': { en: '~{speed} km/h', pt: '~{speed} km/h' },
 
+  // Out-of-bounds warnings (RULEBOOK §12.1). Warning only, never a penalty.
+  'bounds.near_edge': {
+    en: '⚠️ Approaching the play-area edge — {m} m left',
+    pt: '⚠️ A aproximar-te do limite da área de jogo — faltam {m} m',
+  },
+  'bounds.outside': {
+    en: '🛑 Outside the play area — walk back {m} m',
+    pt: '🛑 Fora da área de jogo — volta atrás {m} m',
+  },
+
   // End-game chase HUD.
   'chase.carrier': {
     en: '🏁 {home} m to home · nearest hunter {hunter} m',
@@ -815,6 +825,341 @@ export const MESSAGES: MessageDict = {
   'setup.progress': { en: '{count} of 5 assigned', pt: '{count} de 5 atribuídos' },
   'setup.selection_complete': { en: 'Ready', pt: 'Pronto' },
   'setup.step_photo': { en: 'Step 2', pt: 'Passo 2' },
+
+  // ---------- player guide (/guide) ----------
+  //
+  // Every number in this block is interpolated from lib/gameConstants.ts or the
+  // seed data — never typed into the string — so a balance change cannot leave
+  // the guide lying to players.
+
+  'landing.player_guide': { en: 'How to play', pt: 'Como se joga' },
+  'landing.player_guide_desc': {
+    en: 'Illustrated guide — read it before you start',
+    pt: 'Guia ilustrado — lê antes de começar',
+  },
+
+  'guide.title': { en: 'How to play', pt: 'Como se joga' },
+  'guide.subtitle': {
+    en: 'Walk. Hunt. Photograph the flag. Get home.',
+    pt: 'Anda. Caça. Fotografa a bandeira. Volta a casa.',
+  },
+  'guide.back': { en: 'Back', pt: 'Voltar' },
+  'guide.jump_to': { en: 'Jump to', pt: 'Ir para' },
+  'guide.to_top': { en: 'Back to top', pt: 'Voltar ao topo' },
+  'guide.in_app_hint': {
+    en: 'Full lists with live prices are in the game itself — this guide teaches the rules behind them.',
+    pt: 'As listas completas com preços atuais estão no próprio jogo — este guia ensina as regras por trás delas.',
+  },
+
+  // -- 1. the game in 60 seconds --
+  'guide.sixty.nav': { en: '60 seconds', pt: '60 segundos' },
+  'guide.sixty.heading': { en: 'The game in 60 seconds', pt: 'O jogo em 60 segundos' },
+  'guide.sixty.goal': {
+    en: 'Two teams. Each hides one real flag among five candidate landmarks. First team to photograph the enemy’s real flag and walk it back to their own home base wins.',
+    pt: 'Duas equipas. Cada uma esconde uma bandeira verdadeira entre cinco locais candidatos. Ganha a primeira equipa que fotografar a bandeira verdadeira do adversário e a levar até à sua própria base.',
+  },
+  'guide.sixty.walking': {
+    en: 'On foot only — no buses, taxis, scooters or lifts.',
+    pt: 'Só a pé — sem autocarros, táxis, trotinetes ou boleias.',
+  },
+  'guide.sixty.referee': {
+    en: 'The app is the referee. It checks your GPS, holds the coins and decides tags — there is no human judge to argue with.',
+    pt: 'A app é o árbitro. Verifica o teu GPS, guarda as moedas e decide as capturas — não há juiz humano com quem discutir.',
+  },
+  'guide.sixty.stat_duration': { en: '{n} h', pt: '{n} h' },
+  'guide.sixty.stat_duration_label': { en: 'on the clock', pt: 'de jogo' },
+  'guide.sixty.stat_area': { en: '{n} km', pt: '{n} km' },
+  'guide.sixty.stat_area_label': { en: 'play radius', pt: 'raio de jogo' },
+  'guide.sixty.stat_teams': { en: '2 × 1–4', pt: '2 × 1–4' },
+  'guide.sixty.stat_teams_label': { en: 'players', pt: 'jogadores' },
+
+  // -- 2. where you play --
+  'guide.where.nav': { en: 'The map', pt: 'O mapa' },
+  'guide.where.heading': { en: 'Where you play', pt: 'Onde se joga' },
+  'guide.where.body': {
+    en: 'Everything happens inside a {radius} m circle over Vila Real. Step outside it and you are out of bounds.',
+    pt: 'Tudo acontece dentro de um círculo de {radius} m sobre Vila Real. Sair dele é ficar fora dos limites.',
+  },
+  'guide.where.pools': {
+    en: 'Each team gets a pool of {n} landmarks on their own side of the city and picks {pick} of them as candidates: {real} real flag, {decoy} decoys and {empty} empty.',
+    pt: 'Cada equipa recebe um conjunto de {n} locais no seu lado da cidade e escolhe {pick} como candidatos: {real} bandeira verdadeira, {decoy} enganos e {empty} vazios.',
+  },
+  'guide.where.markers': {
+    en: 'You place identical physical markers at the real flag and both decoys. The empty spots get nothing — so a marker you find could be either.',
+    pt: 'Colocas marcadores físicos idênticos na bandeira verdadeira e nos dois enganos. Os locais vazios não levam nada — por isso um marcador que encontres pode ser qualquer um deles.',
+  },
+  'guide.where.map_caption': {
+    en: 'Team West’s pool. Team East has its own {n} on the far side.',
+    pt: 'O conjunto da Equipa Oeste. A Equipa Este tem os seus {n} do outro lado.',
+  },
+  'guide.where.map_offline': {
+    en: 'No map tiles? The dots still show the real spacing.',
+    pt: 'Sem mapa de fundo? Os pontos continuam a mostrar as distâncias reais.',
+  },
+  'guide.where.pool_list': { en: 'See the landmark names', pt: 'Ver os nomes dos locais' },
+  'guide.where.pool_west': { en: 'Team West', pt: 'Equipa Oeste' },
+  'guide.where.pool_east': { en: 'Team East', pt: 'Equipa Este' },
+  'guide.where.home_base': { en: 'home base', pt: 'base' },
+
+  // -- 3. defender or raider --
+  'guide.roles.nav': { en: 'Roles', pt: 'Funções' },
+  'guide.roles.heading': { en: 'Defender or raider?', pt: 'Defensor ou atacante?' },
+  'guide.roles.body': {
+    en: 'You are not assigned a role — your feet decide it, second by second. Your team’s defense zone is every point within {radius} m of any of your own candidates, so it is a lumpy blob, not one circle.',
+    pt: 'A tua função não é atribuída — são os teus pés que a decidem, a cada segundo. A zona de defesa da tua equipa é tudo o que fica a menos de {radius} m de qualquer um dos teus candidatos, por isso é uma mancha irregular e não um círculo.',
+  },
+  'guide.roles.defender': {
+    en: 'Inside it you are a defender and can tag.',
+    pt: 'Dentro dela és defensor e podes capturar.',
+  },
+  'guide.roles.raider': {
+    en: 'Outside it you are a raider and can be tagged.',
+    pt: 'Fora dela és atacante e podes ser capturado.',
+  },
+  'guide.roles.overlap': {
+    en: 'The zones overlap in the middle of town. An enemy who comes within {n} m of one of your candidates counts as a raider for you even there — so you can both be defenders of your own ground and raiders on theirs at the same time.',
+    pt: 'As zonas sobrepõem-se no centro da cidade. Um adversário que chegue a menos de {n} m de um dos teus candidatos conta como atacante para ti mesmo aí — podem ambos ser defensores do seu terreno e atacantes no do outro ao mesmo tempo.',
+  },
+  'guide.roles.diagram_alt': {
+    en: 'Three overlapping 200-metre circles around Team West’s candidate landmarks form one lumpy defense zone, with a separate circle for Team East. Numbered pins show a teammate inside the zone, an enemy who has walked into it, and you standing outside it.',
+    pt: 'Três círculos de 200 metros sobrepostos em volta dos locais candidatos da Equipa Oeste formam uma zona de defesa irregular, com um círculo separado para a Equipa Este. Pinos numerados mostram um colega dentro da zona, um adversário que entrou nela e tu fora dela.',
+  },
+  'guide.roles.label_zone': { en: 'Your zone', pt: 'A tua zona' },
+  'guide.roles.label_one': {
+    en: 'Your teammate, inside your zone — a defender.',
+    pt: 'O teu colega, dentro da tua zona — defensor.',
+  },
+  'guide.roles.label_two': {
+    en: 'An enemy who walked in — a raider you can tag.',
+    pt: 'Um adversário que entrou — atacante que podes capturar.',
+  },
+  'guide.roles.label_three': {
+    en: 'You, out on neutral ground — a raider yourself.',
+    pt: 'Tu, em terreno neutro — também és atacante.',
+  },
+
+  // -- 4. tagging --
+  'guide.tag.nav': { en: 'Tagging', pt: 'Capturas' },
+  'guide.tag.heading': { en: 'Tagging and being tagged', pt: 'Capturar e ser capturado' },
+  'guide.tag.body': {
+    en: 'Get within {radius} m of an enemy raider while you are inside your own defense zone and the Tag button lights up on its own. There is nothing to type.',
+    pt: 'Chega a menos de {radius} m de um atacante adversário enquanto estás dentro da tua zona de defesa e o botão de captura acende sozinho. Não há nada para escrever.',
+  },
+  'guide.tag.bunching': {
+    en: 'One tap catches every raider inside that circle at once — but it only ever costs them 1 intel card in total. Bunching up is cheap for raiders.',
+    pt: 'Um toque apanha todos os atacantes dentro desse círculo ao mesmo tempo — mas só lhes custa 1 carta de intel no total. Andar em grupo é barato para os atacantes.',
+  },
+  'guide.tag.tolerance': {
+    en: 'Your phone lights the button at {client} m; the server allows up to {server} m, because two phones in a narrow street rarely agree. The server’s number is the one that counts.',
+    pt: 'O teu telemóvel acende o botão aos {client} m; o servidor aceita até {server} m, porque dois telemóveis numa rua estreita raramente concordam. O número do servidor é o que conta.',
+  },
+  'guide.tag.diagram_alt': {
+    en: 'A defender at the centre of a 5-metre circle containing two enemy raiders, and below it the two respawn stages: walk to the assigned neutral landmark, then confirm and walk 45 metres away.',
+    pt: 'Um defensor no centro de um círculo de 5 metros com dois atacantes adversários, e abaixo as duas fases de regresso: caminhar até ao local neutro atribuído, confirmar e afastar-se 45 metros.',
+  },
+  'guide.tag.label_radius': { en: '{n} m', pt: '{n} m' },
+  'guide.tag.label_defender': { en: 'You', pt: 'Tu' },
+  'guide.tag.label_raiders': { en: 'Both caught in one tap', pt: 'Ambos apanhados num toque' },
+  'guide.tag.label_cost': { en: 'Their team loses 1 intel card', pt: 'A equipa deles perde 1 carta de intel' },
+  'guide.tag.label_step1': { en: 'Walk to the assigned neutral landmark', pt: 'Caminha até ao local neutro atribuído' },
+  'guide.tag.label_step2': { en: 'Confirm, then walk {n} m away', pt: 'Confirma e afasta-te {n} m' },
+
+  // -- 5. camping --
+  'guide.camping.nav': { en: 'Camping', pt: 'Acampar' },
+  'guide.camping.heading': { en: 'Don’t camp your own flag', pt: 'Não acampes na tua bandeira' },
+  'guide.camping.body': {
+    en: 'Standing guard on your own flag is the one thing you cannot do. Loiter within {radius} m of any of your own candidates and the app switches off your own Tag button, leaving you next to your flag unable to defend it.',
+    pt: 'Ficar de guarda à tua própria bandeira é a única coisa que não podes fazer. Fica a menos de {radius} m de qualquer um dos teus candidatos e a app desliga o teu próprio botão de captura, deixando-te ao lado da bandeira sem a poder defender.',
+  },
+  'guide.camping.patrol': {
+    en: 'Patrol the ring instead: stay in your zone, keep out of the inner circle.',
+    pt: 'Patrulha o anel: mantém-te na tua zona, mas fora do círculo interior.',
+  },
+  'guide.camping.diagram_alt': {
+    en: 'A hatched 50-metre no-standing circle around your own candidate landmark, with a timeline marking a warning at 90 seconds and the Tag button switching off at 120 seconds.',
+    pt: 'Um círculo tracejado de 50 metros em volta do teu local candidato onde não podes ficar, com uma linha temporal que marca um aviso aos 90 segundos e o botão de captura a desligar aos 120 segundos.',
+  },
+  'guide.camping.label_radius': { en: '{n} m — don’t linger', pt: '{n} m — não fiques' },
+  'guide.camping.label_landmark': { en: 'Your own candidate', pt: 'O teu candidato' },
+  'guide.camping.label_warn': { en: '{n} s — the app warns you', pt: '{n} s — a app avisa-te' },
+  'guide.camping.label_lock': { en: '{n} s — your Tag button switches off', pt: '{n} s — o teu botão de captura desliga' },
+  'guide.camping.label_reset': { en: 'Leave for {n} s to reset it', pt: 'Afasta-te {n} s para reiniciar' },
+
+  // -- 6. attempting a flag --
+  'guide.flag.nav': { en: 'Flag attempts', pt: 'Tentativas' },
+  'guide.flag.heading': { en: 'Attempting a flag', pt: 'Tentar uma bandeira' },
+  'guide.flag.body': {
+    en: 'Walk to an enemy candidate, get within about {range} m and tap Attempt. The app reveals a small photo task, you submit a real photo, and the server checks your GPS before telling you what you found.',
+    pt: 'Vai até um candidato adversário, chega a cerca de {range} m e toca em Tentar. A app revela uma pequena tarefa fotográfica, envias uma fotografia real e o servidor verifica o teu GPS antes de te dizer o que encontraste.',
+  },
+  'guide.flag.protection': {
+    en: 'No attempts in the first {n} minutes — use that time to earn coins and buy intel.',
+    pt: 'Sem tentativas nos primeiros {n} minutos — aproveita para ganhar moedas e comprar intel.',
+  },
+  'guide.flag.public_text': {
+    en: 'The photo task is public and the same whether or not the flag is there, so reading it tells you nothing. That is also why hardening tightens the GPS radius instead of changing the task — a harder task would give the real flag away.',
+    pt: 'A tarefa fotográfica é pública e é igual esteja ou não lá a bandeira, por isso lê-la não te diz nada. É também por isso que reforçar aperta o raio de GPS em vez de mudar a tarefa — uma tarefa mais difícil denunciaria a bandeira verdadeira.',
+  },
+  'guide.flag.diagram_alt': {
+    en: 'One photographed marker branching into three outcomes: the real flag lets you walk home to win, a decoy costs all your intel plus a 15-minute lockout, and an empty spot only locks the landmark for 15 minutes.',
+    pt: 'Um marcador fotografado ramifica em três resultados: a bandeira verdadeira deixa-te ir para casa e ganhar, um engano custa todo o teu intel mais 15 minutos de bloqueio, e um local vazio apenas bloqueia o local durante 15 minutos.',
+  },
+  'guide.flag.label_start': { en: 'You photograph a marker', pt: 'Fotografas um marcador' },
+  'guide.flag.label_real': { en: 'Real flag', pt: 'Verdadeira' },
+  'guide.flag.label_real_body': { en: 'Walk home to win', pt: 'Vai a casa e ganha' },
+  'guide.flag.label_decoy': { en: 'Decoy', pt: 'Engano' },
+  'guide.flag.label_decoy_body': { en: 'Lose ALL intel', pt: 'Perdes TODO o intel' },
+  'guide.flag.label_empty': { en: 'Empty', pt: 'Vazio' },
+  'guide.flag.label_empty_body': { en: 'Nothing lost', pt: 'Não perdes nada' },
+  'guide.flag.lockout': {
+    en: 'A decoy or an empty spot locks that landmark for your team for {n} minutes.',
+    pt: 'Um engano ou um local vazio bloqueia esse local para a tua equipa durante {n} minutos.',
+  },
+  'guide.flag.carrier': {
+    en: 'Find the real flag and the app tells everyone immediately — including the team you just robbed. They will come for you on the walk home.',
+    pt: 'Se encontrares a bandeira verdadeira, a app avisa todos de imediato — incluindo a equipa que acabaste de roubar. Vão atrás de ti no caminho de volta.',
+  },
+
+  // -- 7. coins, intel and curses --
+  'guide.economy.nav': { en: 'Coins', pt: 'Moedas' },
+  'guide.economy.heading': { en: 'Coins, intel and curses', pt: 'Moedas, intel e maldições' },
+  'guide.economy.body': {
+    en: 'You start with {start} coins and earn {bonus} more every {interval} minutes just for playing. Challenges are the real income: {min}–{max} coins each, three live at a time, and {first} extra for the first team to finish any of them.',
+    pt: 'Começas com {start} moedas e ganhas mais {bonus} a cada {interval} minutos só por jogares. Os desafios são a verdadeira receita: {min}–{max} moedas cada, três ativos ao mesmo tempo, e {first} extra para a primeira equipa que completar qualquer um.',
+  },
+  'guide.economy.review': {
+    en: 'Photo challenges go to the other team to check. If they don’t reject it within {n} seconds it passes automatically.',
+    pt: 'Os desafios com fotografia vão à outra equipa para verificação. Se não os rejeitarem em {n} segundos, passam automaticamente.',
+  },
+  'guide.economy.spending': {
+    en: 'Coins buy three things: intel to narrow down their flag ({intelMin}–{intelMax}), curse dice to slow them down ({die} each, roll 1–3 at once), and one {harden}-coin hardening of your own real flag.',
+    pt: 'As moedas compram três coisas: intel para localizar a bandeira deles ({intelMin}–{intelMax}), dados de maldição para os atrasar ({die} cada, lança 1 a 3 de uma vez), e um reforço da tua própria bandeira por {harden} moedas.',
+  },
+  'guide.economy.diagram_alt': {
+    en: 'Challenges and a time bonus feed a pool of coins, which pays out into intel, curses and hardening your own flag.',
+    pt: 'Os desafios e o bónus de tempo alimentam um conjunto de moedas, que paga intel, maldições e o reforço da tua própria bandeira.',
+  },
+  'guide.economy.label_challenges': { en: 'Challenges', pt: 'Desafios' },
+  'guide.economy.label_coins': { en: 'Coins', pt: 'Moedas' },
+  'guide.economy.label_passive': { en: '+{n} every {interval} min', pt: '+{n} a cada {interval} min' },
+  'guide.economy.label_intel': { en: 'Intel — find their flag', pt: 'Intel — achar a bandeira' },
+  'guide.economy.label_curses': { en: 'Curses — slow them down', pt: 'Maldições — atrasá-los' },
+  'guide.economy.label_harden': { en: 'Harden — guard yours', pt: 'Reforço — proteger a tua' },
+
+  'guide.curses.heading': { en: 'How curses are enforced', pt: 'Como as maldições são fiscalizadas' },
+  'guide.curses.body': {
+    en: 'Roll one to three dice. The total sets the tier: 1–3 minor, 4–8 medium, 9 or more major. Curses never stack on the same effect.',
+    pt: 'Lança um a três dados. O total define o nível: 1–3 menor, 4–8 médio, 9 ou mais maior. As maldições nunca se acumulam no mesmo efeito.',
+  },
+  'guide.curses.legend_intro': {
+    en: 'Each curse is tagged with how the app checks it:',
+    pt: 'Cada maldição indica como a app a verifica:',
+  },
+  'guide.curses.legend_a': {
+    en: 'GPS-assisted — the app shows live position or speed readouts.',
+    pt: 'Apoiada por GPS — a app mostra leituras de posição ou velocidade.',
+  },
+  'guide.curses.legend_b': {
+    en: 'Photo-verified — the app asks for a proof photo within a time window.',
+    pt: 'Verificada por fotografia — a app pede uma fotografia de prova dentro de um prazo.',
+  },
+  'guide.curses.legend_c': {
+    en: 'Honour system — the app reminds you, nothing checks you.',
+    pt: 'Por honra — a app lembra-te, mas nada te verifica.',
+  },
+  'guide.curses.legend_l': {
+    en: 'Ledger only — pure app effect on coins, intel or your buttons.',
+    pt: 'Só registo — efeito da app nas moedas, no intel ou nos teus botões.',
+  },
+  'guide.curses.placed': {
+    en: 'Placed curses are different: you arm one at a landmark and it waits, hidden, for an enemy to walk in. They cannot see it coming.',
+    pt: 'As maldições colocadas são diferentes: armas uma num local e ela fica à espera, escondida, que um adversário entre. Eles não a vêem chegar.',
+  },
+  'guide.curses.team_size': {
+    en: 'In a 1v1 game, curses and challenges that need a teammate are left out.',
+    pt: 'Num jogo 1 contra 1, as maldições e os desafios que exigem um colega ficam de fora.',
+  },
+
+  // -- 8. reading intel --
+  'guide.intel.nav': { en: 'Intel', pt: 'Intel' },
+  'guide.intel.heading': { en: 'Reading intel', pt: 'Ler o intel' },
+  'guide.intel.body': {
+    en: 'Intel does not point at the flag — it crosses candidates off. Your team may only ever buy {cap} cards in the whole game, so each one has to remove more of the map than the last.',
+    pt: 'O intel não aponta para a bandeira — risca candidatos. A tua equipa só pode comprar {cap} cartas em todo o jogo, por isso cada uma tem de eliminar mais mapa do que a anterior.',
+  },
+  'guide.intel.sequence': {
+    en: 'Sequence matters. A north/south split halves five candidates to two or three; an eliminate card then takes one of those away. Buying two cards that rule out the same ground wastes one.',
+    pt: 'A ordem importa. Uma divisão norte/sul reduz cinco candidatos a dois ou três; uma carta de eliminação tira depois um deles. Comprar duas cartas que excluem o mesmo terreno desperdiça uma.',
+  },
+  'guide.intel.loss': {
+    en: 'Getting tagged costs you one random card. Photographing a decoy costs you every card you own — which is why a guess is never free.',
+    pt: 'Ser capturado custa-te uma carta aleatória. Fotografar um engano custa-te todas as cartas que tens — por isso adivinhar nunca é grátis.',
+  },
+  'guide.intel.diagram_alt': {
+    en: 'Five candidate markers, then a purchased north/south card, then the same five with two struck out and three still live.',
+    pt: 'Cinco marcadores candidatos, depois uma carta norte/sul comprada, e os mesmos cinco com dois riscados e três ainda em jogo.',
+  },
+  'guide.intel.label_before': { en: 'Five candidates, any could hold it', pt: 'Cinco candidatos, pode ser qualquer um' },
+  'guide.intel.label_card': { en: 'Buy one intel card', pt: 'Compra uma carta de intel' },
+  'guide.intel.label_after': { en: 'Two ruled out — three left to walk', pt: 'Dois excluídos — faltam três' },
+  'guide.intel.label_ruled_out': { en: 'Ruled out', pt: 'Excluídos' },
+
+  // -- 9. how to lose by accident --
+  'guide.mistakes.nav': { en: 'Common mistakes', pt: 'Erros comuns' },
+  'guide.mistakes.heading': { en: 'How to lose by accident', pt: 'Como perder sem querer' },
+  'guide.mistakes.decoy': {
+    en: 'Photographing a decoy on a hunch. It wipes every intel card your team has bought, and you cannot buy them back past the cap.',
+    pt: 'Fotografar um engano por palpite. Apaga todas as cartas de intel que a tua equipa comprou, e não as podes recomprar depois do limite.',
+  },
+  'guide.mistakes.camping': {
+    en: 'Guarding your own flag too closely. Past {n} seconds inside the inner circle your own Tag button stops working.',
+    pt: 'Guardar a tua bandeira demasiado de perto. Passados {n} segundos dentro do círculo interior, o teu botão de captura deixa de funcionar.',
+  },
+  'guide.mistakes.bounds': {
+    en: 'Drifting outside the play circle. Watch the edge on the map.',
+    pt: 'Sair do círculo de jogo sem dar conta. Atenção ao limite no mapa.',
+  },
+  'guide.mistakes.clock': {
+    en: 'Forgetting the walk. Crossing town between the two home bases takes roughly 15 minutes each way — a flag you find late may not make it home.',
+    pt: 'Esquecer a caminhada. Atravessar a cidade entre as duas bases leva cerca de 15 minutos em cada sentido — uma bandeira encontrada tarde pode não chegar a casa.',
+  },
+  'guide.mistakes.radar': {
+    en: 'Thinking the enemy radar is broken. It pulses on and off on purpose, and only ever shows enemies standing inside your own defense zones.',
+    pt: 'Achar que o radar dos adversários está avariado. Ele pisca de propósito e só mostra adversários que estejam dentro das tuas zonas de defesa.',
+  },
+
+  // -- 10. endgame --
+  'guide.endgame.nav': { en: 'Winning', pt: 'Ganhar' },
+  'guide.endgame.heading': { en: 'Winning, and the clock', pt: 'Ganhar, e o relógio' },
+  'guide.endgame.body': {
+    en: 'A game ends the moment a flag carrier crosses into their own home base — or when the {n}-minute clock runs out.',
+    pt: 'O jogo acaba no momento em que quem leva a bandeira entra na sua própria base — ou quando os {n} minutos terminam.',
+  },
+  'guide.endgame.points': {
+    en: 'If the clock wins, points decide: {flag} for photographing the enemy’s real flag, {challenge} per challenge completed, {tag} per successful tag. Curse casts and leftover coins score nothing.',
+    pt: 'Se o relógio ganhar, decidem os pontos: {flag} por fotografar a bandeira verdadeira do adversário, {challenge} por desafio completado, {tag} por captura bem-sucedida. As maldições lançadas e as moedas que sobram não valem pontos.',
+  },
+  'guide.endgame.tiebreak': {
+    en: 'Still tied? Most challenges, then most coins, then a coin flip.',
+    pt: 'Continua empatado? Mais desafios, depois mais moedas, depois moeda ao ar.',
+  },
+  'guide.endgame.weather': {
+    en: 'If the weather turns, either team can propose a pause; the other has {n} minutes to confirm. Resuming needs both teams too.',
+    pt: 'Se o tempo piorar, qualquer equipa pode propor uma pausa; a outra tem {n} minutos para confirmar. Retomar também exige as duas equipas.',
+  },
+  'guide.endgame.diagram_alt': {
+    en: 'The four phases of a game as a numbered timeline: lobby, setup, the three-hour hunt, and winning either by carrying the flag home or on points.',
+    pt: 'As quatro fases de um jogo numa linha temporal numerada: sala de espera, preparação, as três horas de caça, e a vitória por levar a bandeira a casa ou por pontos.',
+  },
+  'guide.endgame.label_lobby': { en: 'Lobby', pt: 'Sala de espera' },
+  'guide.endgame.label_lobby_body': { en: 'Pick a side, then ready up', pt: 'Escolhe um lado e fica pronto' },
+  'guide.endgame.label_setup': { en: 'Setup', pt: 'Preparação' },
+  'guide.endgame.label_setup_body': { en: 'Hide your flag among five candidates', pt: 'Esconde a bandeira entre cinco candidatos' },
+  'guide.endgame.label_hunt': { en: 'The hunt', pt: 'A caça' },
+  'guide.endgame.label_hunt_body': { en: 'Earn, curse, raid and tag', pt: 'Ganha, amaldiçoa, ataca e captura' },
+  'guide.endgame.label_end': { en: 'Win', pt: 'Vitória' },
+  'guide.endgame.label_end_body': { en: 'Carry the photo home, or win on points', pt: 'Leva a fotografia a casa, ou ganha por pontos' },
+  'guide.endgame.label_protection': { en: 'No flag attempts for the first {n} min', pt: 'Sem tentativas nos primeiros {n} min' },
 }
 
 export type MessageKey = keyof typeof MESSAGES
