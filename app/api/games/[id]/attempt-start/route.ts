@@ -6,6 +6,10 @@ import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { isTeamActionLocked } from '@/lib/server/actionLock'
+import {
+  ATTEMPT_START_RADIUS_M,
+  PROTECTION_WINDOW_MS,
+} from '@/lib/gameConstants'
 import type { Game, Landmark, LandmarkKind, Player, Team } from '@/lib/types'
 
 // POST /api/games/[id]/attempt-start
@@ -22,8 +26,6 @@ import type { Game, Landmark, LandmarkKind, Player, Team } from '@/lib/types'
 // caller is in this game and the target is a real enemy candidate so we don't
 // pollute the log with garbage.
 
-const PROTECTION_WINDOW_MS = 30 * 60_000
-const ATTEMPT_START_RADIUS_M = 28
 const FLAG_KINDS: LandmarkKind[] = ['flag_real', 'flag_decoy', 'flag_empty']
 
 const GpsPositionSchema = z.object({

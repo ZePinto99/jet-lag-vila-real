@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateGameCode } from '@/lib/codes'
+import { STARTING_COINS } from '@/lib/gameConstants'
 import type {
   CreateGameResponse,
   Game,
@@ -82,14 +83,14 @@ export async function POST(request: Request) {
         game_id: game.id,
         name: 'Team West',
         side: 'west',
-        coins: 100,
+        coins: STARTING_COINS,
         home_landmark_id: 'landmark.miradouro-vila-velha',
       },
       {
         game_id: game.id,
         name: 'Team East',
         side: 'east',
-        coins: 100,
+        coins: STARTING_COINS,
         home_landmark_id: 'landmark.biblioteca-municipal',
       },
     ])

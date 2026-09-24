@@ -5,6 +5,7 @@ import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { NEUTRAL_LEAVE_RADIUS_M } from '@/lib/gameConstants'
 import type {
   Game,
   Player,
@@ -19,7 +20,7 @@ import type {
 const NEUTRAL_CLEAR_RADIUS_M = 30
 // Hysteresis prevents noisy GPS at exactly 30 m from immediately clearing the
 // immunity stage; the raider must visibly leave the neutral's vicinity.
-const NEUTRAL_LEAVE_RADIUS_M = 45
+// NEUTRAL_LEAVE_RADIUS_M lives in lib/gameConstants.ts (quoted by the guide).
 
 const GpsPositionSchema = z.object({
   lat: z.number(),

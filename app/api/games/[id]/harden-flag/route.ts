@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getGameplayActionBlock } from '@/lib/server/actionLock'
+import { HARDEN_COST } from '@/lib/gameConstants'
 import type {
   Game,
   HardenFlagResponse,
@@ -10,10 +11,10 @@ import type {
   Team,
 } from '@/lib/types'
 
-// RULEBOOK §5.3 / §7.3: a team may spend 150 coins ONCE to harden their own
-// flag's challenge. We interpret "their own flag's challenge" as referring to
-// the real flag specifically — see route handler note for the ambiguity.
-const HARDEN_COST = 150
+// RULEBOOK §5.3 / §7.3: a team may spend HARDEN_COST coins ONCE to harden their
+// own flag's challenge. We interpret "their own flag's challenge" as referring
+// to the real flag specifically — see route handler note for the ambiguity.
+// The cost itself lives in lib/gameConstants.ts so the player guide quotes it.
 
 const HardenFlagRequestSchema = z.object({
   device_id: z.string().min(1).max(128),

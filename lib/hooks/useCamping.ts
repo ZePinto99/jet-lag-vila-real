@@ -12,9 +12,9 @@ import { apiPost } from '@/lib/api'
 import { getDeviceId } from '@/lib/device'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
+import { CAMPING_RADIUS_M } from '@/lib/gameConstants'
 import type { GpsPosition, Landmark } from '@/lib/types'
 
-export const CAMPING_RADIUS_M = 50
 export const CAMPING_WARNING_S = 90
 export const CAMPING_LOCK_S = 120
 export const CAMPING_COOLDOWN_S = 60

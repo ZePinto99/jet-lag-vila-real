@@ -13,6 +13,10 @@ import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import type { Locale } from '@/lib/i18n/messages'
 import { apiGet, apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
+import {
+  DEFAULT_DURATION_MIN,
+  PROTECTION_WINDOW_MS,
+} from '@/lib/gameConstants'
 import { getDeviceId } from '@/lib/device'
 import { useGameStore } from '@/store/gameStore'
 import { useGPS } from '@/lib/hooks/useGPS'
@@ -95,8 +99,9 @@ const CURSE_NAMES = new Map(
   (cursesSeed as Array<{ id: string; name: string }>).map((curse) => [curse.id, curse.name]),
 )
 
-const DEFAULT_DURATION_MIN = 180 // 3 hours per RULEBOOK §4.2
-const ATTEMPT_PROTECTION_MIN = 30 // RULEBOOK §5.2 — no flag attempts in first 30 min
+// Game length and the opening no-attempts window both come from
+// lib/gameConstants.ts so this view, the API routes that enforce them and the
+// player guide that explains them never drift apart.
 
 export function Live() {
   const t = useT()
@@ -433,7 +438,7 @@ export function Live() {
   // started_at so it survives refresh / late join.
   const attemptsUnlockAtMs = useMemo<number | null>(() => {
     if (!game?.started_at) return null
-    return new Date(game.started_at).getTime() + ATTEMPT_PROTECTION_MIN * 60_000
+    return new Date(game.started_at).getTime() + PROTECTION_WINDOW_MS
   }, [game?.started_at])
 
   // Auto-end on 3-hour timeout. Fire-once guarded by a ref so the 1 Hz

@@ -8,10 +8,7 @@
 // client uses it to render the results breakdown.
 
 import type { GameEvent, Player, Team, TeamScore } from '@/lib/types'
-
-const FLAG_PTS = 10
-const CHALLENGE_PTS = 1
-const TAG_PTS = 1
+import { CHALLENGE_PTS, FLAG_PTS, TAG_PTS } from '@/lib/gameConstants'
 
 interface ScoringInput {
   events: GameEvent[]

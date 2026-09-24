@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { dueTimeBonusIntervals } from '@/lib/timeBonuses'
+import { DEFAULT_DURATION_MIN, TIME_BONUS } from '@/lib/gameConstants'
 import type { Game, Player, Team } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
@@ -17,9 +18,6 @@ import type { Game, Player, Team } from '@/lib/types'
 const TimeTickRequestSchema = z.object({
   device_id: z.string().min(1).max(128),
 })
-
-const TIME_BONUS = 20
-const DEFAULT_DURATION_MIN = 180
 
 interface TimeTickResponse {
   credited_intervals: number[]

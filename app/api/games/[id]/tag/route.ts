@@ -7,6 +7,7 @@ import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
 import { isInDefenseZone, isRaiderForDefendingTeam } from '@/lib/geo/zones'
 import { isTeamActionLocked } from '@/lib/server/actionLock'
+import { CAMPING_RADIUS_M, TAG_RANGE_M } from '@/lib/gameConstants'
 import type {
   Game,
   Landmark,
@@ -16,11 +17,9 @@ import type {
   Team,
 } from '@/lib/types'
 
-// Server-side GPS tolerance for tag proximity. Clients enforce 5 m for the UX
-// (rulebook §6), but GPS drift in narrow Vila Real streets routinely produces
-// 5–10 m error, so the server accepts up to 10 m.
-const TAG_RANGE_M = 10
-const CAMPING_RADIUS_M = 50
+// TAG_RANGE_M (server GPS tolerance, 10 m vs the client's 5 m) and
+// CAMPING_RADIUS_M both live in lib/gameConstants.ts so the player guide states
+// the same numbers this route enforces.
 
 const FLAG_KINDS: LandmarkKind[] = ['flag_real', 'flag_decoy', 'flag_empty']
 

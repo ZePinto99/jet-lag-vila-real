@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { computeScores, pickTimeoutWinner } from '@/lib/results/scoring'
+import { DEFAULT_DURATION_MIN } from '@/lib/gameConstants'
 import type {
   EndByTimeoutResponse,
   Game,
@@ -9,8 +10,6 @@ import type {
   Player,
   Team,
 } from '@/lib/types'
-
-const DEFAULT_DURATION_MIN = 180
 
 const Body = z.object({
   device_id: z.string().min(1).max(128),

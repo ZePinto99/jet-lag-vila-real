@@ -6,6 +6,7 @@ import { getGameplayActionBlock } from '@/lib/server/actionLock'
 import { buildCurseCastParams } from '@/lib/curses/castParams'
 import { supportsTeamSize } from '@/lib/teamSizeEligibility'
 import cursesCatalog from '@/data/curses.json'
+import { COIN_COST_PER_DIE } from '@/lib/gameConstants'
 import type {
   ActiveCurse,
   BuyCurseResponse,
@@ -36,10 +37,9 @@ const CURSES = cursesCatalog as CurseDefinition[]
 const CURSE_BY_ID = new Map<string, CurseDefinition>(CURSES.map((c) => [c.id, c]))
 
 // ---------------------------------------------------------------------------
-// Cost (RULEBOOK §7.3 / §8.2): 50 coins per die.
+// Cost (RULEBOOK §7.3 / §8.2): COIN_COST_PER_DIE coins per die, in
+// lib/gameConstants.ts so the player guide quotes the same figure.
 // ---------------------------------------------------------------------------
-
-const COIN_COST_PER_DIE = 50
 
 // ---------------------------------------------------------------------------
 // Body validation

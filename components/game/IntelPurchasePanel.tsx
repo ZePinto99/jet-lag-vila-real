@@ -17,6 +17,7 @@ import { useState } from 'react'
 import intelSeed from '@/data/intel.json'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
+import { INTEL_CAP } from '@/lib/gameConstants'
 import { getDeviceId } from '@/lib/device'
 import { useI18n } from '@/lib/i18n/context'
 import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
@@ -38,7 +39,6 @@ interface IntelSeed {
 
 const INTEL_CATALOG: IntelSeed[] = intelSeed as IntelSeed[]
 
-const INTEL_CAP = 4
 const HOT_COLD_REF = 'intel.hot-cold'
 
 interface IntelPurchasePanelProps {

@@ -3,9 +3,9 @@ import { z } from 'zod'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { CAMPING_RADIUS_M } from '@/lib/gameConstants'
 import type { Game, Landmark, LandmarkKind, Player, Team } from '@/lib/types'
 
-const CAMPING_RADIUS_M = 50
 const FLAG_KINDS: LandmarkKind[] = ['flag_real', 'flag_decoy', 'flag_empty']
 
 const BodySchema = z.object({

@@ -9,6 +9,7 @@ import { compass4FromPoint, eastWestOf } from '@/lib/intel/direction'
 import { buildHotColdAnswer } from '@/lib/intel/answers'
 import { northSouthPivotForDefendingSide } from '@/lib/intel/northSouth'
 import intelCatalog from '@/data/intel.json'
+import { INTEL_CAP } from '@/lib/gameConstants'
 import type {
   BuyIntelResponse,
   Card,
@@ -18,13 +19,6 @@ import type {
   Player,
   Team,
 } from '@/lib/types'
-
-// ---------------------------------------------------------------------------
-// Constants (RULEBOOK §11 — intel reference)
-// ---------------------------------------------------------------------------
-
-// Anti-spam cap: a team may not buy more than 4 intel cards total (any state).
-const INTEL_CAP = 4
 
 // ---------------------------------------------------------------------------
 // Body validation

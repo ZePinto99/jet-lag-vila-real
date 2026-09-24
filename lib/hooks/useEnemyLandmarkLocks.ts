@@ -11,9 +11,13 @@
 // Memoised on (events, myTeamId).
 
 import { useMemo } from 'react'
+import { LANDMARK_LOCKOUT_MS } from '@/lib/gameConstants'
 import type { FlagAttemptResult, GameEvent } from '@/lib/types'
 
-export const LANDMARK_LOCKOUT_MS = 15 * 60_000
+// Re-exported for the client components that already import it from here; the
+// value itself lives in lib/gameConstants.ts alongside the attempt radii, so the
+// server route and the player guide read the same number.
+export { LANDMARK_LOCKOUT_MS }
 
 export interface EnemyLandmarkLock {
   result: FlagAttemptResult

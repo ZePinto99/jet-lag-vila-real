@@ -6,6 +6,12 @@ import { isTeamActionLocked } from '@/lib/server/actionLock'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { validatePublicProofPhoto } from '@/lib/server/storageProof'
 import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
+import {
+  ATTEMPT_RANGE_M,
+  HARDENED_RANGE_M,
+  LANDMARK_LOCKOUT_MS,
+  PROTECTION_WINDOW_MS,
+} from '@/lib/gameConstants'
 import type {
   AttemptFlagResponse,
   FlagAttemptResult,
@@ -16,29 +22,14 @@ import type {
   Team,
 } from '@/lib/types'
 
-// Server-side geofence radius for flag attempts. RULEBOOK §5.2 sets the
-// attempt geofence at 20 m, and the client lights the button at 20 m
-// (FLAG_ATTEMPT_RADIUS_M). But urban GPS drift in Vila Real's narrow, densely
-// clustered streets routinely adds 5–10 m of error — so a raider who is plainly
-// at the landmark when the button lit can read 22–25 m by the time the POST
-// lands, producing intermittent out_of_geofence rejections. Mirroring the Tag
-// route's 5 m→10 m buffer, the server accepts up to 28 m. See PLAYTEST_TRIAGE
-// P1-2.
-const ATTEMPT_RANGE_M = 28
-
-// A hardened landmark (team spent 150 coins) is harder to capture: the raider
-// must be more precisely on the spot. We tighten the radius rather than swap
-// the visible challenge text, so hardening never leaks which enemy candidate is
-// the real flag (only the real flag can be hardened). See PLAYTEST_TRIAGE P2-1.
-const HARDENED_RANGE_M = 12
-
-// No flag attempts in the first 30 minutes (P2-3). Server-derived from
-// game.started_at so it survives refresh / late join.
-const PROTECTION_WINDOW_MS = 30 * 60_000
-
-// After a failed attempt (decoy/empty), the team is locked out of THAT landmark
-// for 15 minutes (P2-4).
-const LANDMARK_LOCKOUT_MS = 15 * 60_000
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+//
+// The attempt geofence radii, the opening protection window and the per-landmark
+// lockout all live in lib/gameConstants.ts so the in-app player guide can state
+// the same numbers this route enforces. See that file for the rationale behind
+// the 20 m client / 28 m server split and the hardened 12 m radius.
 
 const GpsPositionSchema = z.object({
   lat: z.number(),

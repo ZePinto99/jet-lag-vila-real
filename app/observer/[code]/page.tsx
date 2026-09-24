@@ -16,6 +16,7 @@ import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { gameClockNow } from '@/lib/gameClock'
+import { DEFAULT_DURATION_MIN } from '@/lib/gameConstants'
 import type {
   Game,
   GameByCodeResponse,
@@ -49,7 +50,6 @@ interface ObserverStateResponse {
   scores: TeamScore[]
 }
 
-const DEFAULT_DURATION_MIN = 180 // RULEBOOK §4.2 — 3 hours.
 const WEST_COLOR = '#3b82f6'
 const EAST_COLOR = '#ec4899'
 
