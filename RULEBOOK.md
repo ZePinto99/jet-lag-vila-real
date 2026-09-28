@@ -28,7 +28,7 @@ A walking-only Capture the Flag game inspired by Jet Lag: The Game, set in Vila 
 
 ### 3.1 Boundaries
 
-Play area is the **compact core of Vila Real**, anchored on Avenida Carvalho Araújo. The UTAD campus and Mateus side are not used for home bases, flag candidates, or challenges. The out-of-bounds polygon is a ~1.5 km disk centred on the avenue (`PLAY_AREA_CENTRE` / `PLAY_AREA_RADIUS_M` in `lib/intel/overlays.ts`).
+Play area is the **compact core of Vila Real**, anchored on Avenida Carvalho Araújo. The UTAD campus and Mateus side are not used for home bases, flag candidates, or challenges. The out-of-bounds polygon is a ~1.5 km disk centred on the avenue (`PLAY_AREA_CENTRE` / `PLAY_AREA_RADIUS_M` in `lib/geo/playArea.ts`). The app warns you when you come within 150 m of the edge and again once you are outside it — a warning only, never a penalty.
 
 ### 3.2 Home bases
 
@@ -99,9 +99,9 @@ From city center (Sé), approximate one-way walking times:
 | Forum, Mercado, train station | 5–15 min |
 | Vila Velha (West home) | ~10 min |
 | Jardim da Carreira / São Pedro (N) | ~5–10 min |
-| Biblioteca Municipal (East home) | ~5 min |
+| Biblioteca Municipal (East home) | ~10–12 min (805 m) |
 
-Vila Velha ↔ Biblioteca (the two home bases) is ~680 m in a straight line and roughly a 10–15 min walk. Plan curses and intel costs accordingly.
+Vila Velha ↔ Biblioteca (the two home bases) is ~680 m in a straight line and roughly a 9–12 min walk. Straight-line figures are lower bounds: Vila Real is a ridge-and-valley town, so the walked route is reliably longer than the map distance. Plan curses and intel costs accordingly.
 
 ---
 
@@ -109,7 +109,9 @@ Vila Velha ↔ Biblioteca (the two home bases) is ~680 m in a straight line and 
 
 ### 4.1 Setup (30 min)
 
-1. Players assemble at the city-center neutral landmark (Sé).
+1. Players assemble at the city-center landmark (Sé).
+
+> ⚠️ **Open design question — do not treat as settled.** §3.3 lists the Sé Catedral in the **East candidate pool**, and `data/landmarks.json` confirms `team_pool: "east"` — so East may hide its real flag there, and this step gathers both teams at a possible flag site. Three ways out, each with different gameplay consequences: (a) move the assembly point to a true neutral (Largo do Pelourinho is 61 m away), (b) remove Sé from the East pool, or (c) accept the leak as flavour. Pick one before the next game.
 2. Teams form, app accounts are created, and players join the game. The creator is the lobby host; there is no gameplay captain role.
 3. Teams walk to their home bases. Timer does not start yet.
 4. At home base, the team collectively selects 5 candidate landmarks and secretly assigns: 1 real flag, 2 decoys, 2 empty. Any team member can do this in the app.
@@ -124,7 +126,7 @@ Open play. Teams freely move, raid, defend, complete challenges, buy intel, cast
 
 Game ends when **either**:
 - A team's raider photographs the enemy real flag (validated on the spot) and subsequently crosses their own home base geofence (winner declared by app), **or**
-- The 3-hour timer expires (see tiebreaker, §11).
+- The 3-hour timer expires (see tiebreaker, §13).
 
 ### 4.4 Wrap (30 min)
 
@@ -278,7 +280,7 @@ Each curse is tagged with its **enforcement category**:
 - **[A] Slow Walk** — 5 min, average speed below 2.5 km/h; live GPS speed warning, honor-system compliance
 - **[B] Single File** — 5 min, team must walk in a single file; app prompts twice for group photo from the front
 - **[B] Photo Tax** — 6 min, selfie at any sign every 2 min (about 3 proofs)
-- **[L] Check-in** — 10 min, each affected player acknowledges an in-app prompt every 2 min (about 5 taps); misses are logged without an automatic action lock
+- **[C] Check-in** — 10 min, each affected player acknowledges an in-app prompt every 2 min (about 5 taps); honour-based, nothing is recorded and no action lock applies
 
 ### Medium (rolls 4–8)
 
@@ -388,4 +390,4 @@ All open questions resolved for v1. Listed here as a record.
 3. **Photo validation:** The server requires a current geofence fix and a real image in the expected Storage path. The opposing team eyeballs logged proof where peer review applies. Trust + log; EXIF is not a security boundary.
 4. **Phone discharge:** Players bring power banks. A dead phone means that player can't buy intel, cast curses, or trigger tags until recharged — honor-system play in the meantime. No captain transfer needed since there is no captain role.
 5. **Inclement weather:** Any player may propose a "weather pause" for their team; a player from the other team must confirm within 5 min. Pause stops the game timer and all curse timers. Resume is also two-team. Decision to abort entirely is a group call.
-6. **Curse compliance verification:** Mixed enforcement, tagged per curse in §10. Three categories: GPS-verified [A] for measurable movement (Slow Walk, Frozen, Detour, Buddy Up, Team Quarantine, Pilgrimage), photo-verified [B] for state proof (Outfit Swap, Pose Patrol, Single File, Photo Tax), honor system [C] for the unverifiable (Mute, Backwards), ledger-only [L] for app-state effects (Coin Drain, Intel Loss, Full Stop, Check-in).
+6. **Curse compliance verification:** Mixed enforcement, tagged per curse in §10. Three categories: GPS-verified [A] for measurable movement (Slow Walk, Frozen, Detour, Buddy Up, Team Quarantine, Pilgrimage), photo-verified [B] for state proof (Outfit Swap, Pose Patrol, Single File, Photo Tax), honor system [C] for the unverifiable (Mute, Backwards, Check-in), ledger-only [L] for app-state effects (Coin Drain, Intel Loss, Full Stop).
