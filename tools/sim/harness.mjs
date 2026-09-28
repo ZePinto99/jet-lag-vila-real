@@ -12,7 +12,7 @@
 //
 // Run a scenario:  node tools/sim/scenario-<name>.mjs
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
@@ -192,17 +192,53 @@ export async function setupLiveGame(tag = String(Date.now())) {
   }
 }
 
+// Docker environment for the psql shell-out.
+//
+// Some sandboxes deny access to ~/.docker/config.json, which makes a bare
+// `docker` invocation fail with "Cannot connect to the Docker daemon" even
+// though the daemon socket is reachable. Point DOCKER_CONFIG at a scratch dir
+// and name the socket explicitly — but only as a FALLBACK: an environment that
+// already exports either variable (or needs neither, e.g. stock Docker Desktop
+// on CI) keeps its own values.
+function dockerEnv() {
+  const env = { ...process.env }
+  if (!env.DOCKER_CONFIG) {
+    env.DOCKER_CONFIG = `${env.TMPDIR || '/tmp'}/dockercfg`
+  }
+  if (!env.DOCKER_HOST) {
+    // Rancher Desktop's socket. Only used when nothing else is configured; if
+    // it is absent, docker falls back to its own default socket resolution.
+    const rancherSocket = `${env.HOME}/.rd/docker.sock`
+    if (existsSync(rancherSocket)) env.DOCKER_HOST = `unix://${rancherSocket}`
+  }
+  return env
+}
+
 // Direct DB access (local container) for clock control + curse injection +
 // assertions the API doesn't expose.
 export function db(sql) {
   const out = execSync(
     `docker exec supabase_db_jet-lag-the-game-vr psql -U postgres -d postgres -tAc ${JSON.stringify(sql)}`,
-    { encoding: 'utf8' },
+    { encoding: 'utf8', env: dockerEnv() },
   )
   return out.split('\n').filter((l) => l && !/^(INSERT|UPDATE|DELETE|SELECT) \d/.test(l))
 }
+/**
+ * Run a multi-statement script (transactions, psql meta-commands) through
+ * stdin. `db()` uses -c, which cannot carry a BEGIN/COMMIT block.
+ */
+export function dbScript(sql) {
+  return execSync(
+    `docker exec -i supabase_db_jet-lag-the-game-vr psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -`,
+    { encoding: 'utf8', env: dockerEnv(), input: sql },
+  )
+}
 // Backdate started_at so the 30-min flag-attempt protection window is over and
 // time-bonus intervals have elapsed.
+//
+// Prefer advanceClock() from ./clock.mjs for anything beyond the game spine:
+// this helper moves games.started_at ONLY, so curse timers, event-derived
+// lockouts/cooldowns and camping state stay where they were.
 export function backdateStart(gid, minutes) {
   db(`update games set started_at = now() - interval '${minutes} minutes' where id='${gid}';`)
 }
@@ -275,11 +311,11 @@ export async function launchBrowser() {
 // a controllable GPS position.
 export async function makeClient(
   browser,
-  { deviceId, lat, lng, locale = 'en', notifications = false },
+  { deviceId, lat, lng, locale = 'en', notifications = false, accuracy = 8 },
 ) {
   const context = await browser.newContext({
     permissions: notifications ? ['geolocation', 'notifications'] : ['geolocation'],
-    geolocation: { latitude: lat, longitude: lng, accuracy: 8 },
+    geolocation: { latitude: lat, longitude: lng, accuracy },
     viewport: { width: 430, height: 880 },
     deviceScaleFactor: 2,
   })
@@ -315,8 +351,11 @@ export async function makeClient(
     async goto(path) {
       await page.goto(BASE + path, { waitUntil: 'domcontentloaded' })
     },
-    async setPos(la, ln) {
-      await context.setGeolocation({ latitude: la, longitude: ln, accuracy: 8 })
+    // Teleport. Accuracy is now settable so scenarios can model an urban
+    // canyon (25 m) instead of the old hardcoded perfect 8 m; existing callers
+    // that pass two arguments keep the previous behaviour.
+    async setPos(la, ln, acc = 8) {
+      await context.setGeolocation({ latitude: la, longitude: ln, accuracy: acc })
     },
     async enableGps() {
       let btn = page.getByRole('button', { name: /Enable GPS|GPS: ON|Ativar GPS/i })

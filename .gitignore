@@ -38,3 +38,4 @@ next-env.d.ts
 # local sim harness artifacts
 /dev.log
 /tools/sim/shots/
+/tools/sim/artifacts/
