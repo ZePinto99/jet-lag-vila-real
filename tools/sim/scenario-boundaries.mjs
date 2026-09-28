@@ -12,7 +12,7 @@
 //   attempt hardened 12 m      lib/gameConstants.ts:86
 //   home base 30 m             complete-run route
 //   respawn arrive 30 / leave 45  lib/gameConstants.ts:103
-//   challenge 100 m            submit-challenge/route.ts:26
+//   challenge 60 m             lib/gameConstants.ts (CHALLENGE_GEOFENCE_M)
 //   presence freshness 30 s    lib/geo/positionFreshness.ts:5
 
 import { strict as assert } from 'node:assert'
@@ -286,7 +286,11 @@ await strictStep(rec, 'home base geofence', async () => {
 })
 
 // ---------------------------------------------------------------------------
-// 7. CHALLENGE 100 m — measured on a fresh game (the last one is finished)
+// 7. CHALLENGE 60 m — measured on a fresh game (the last one is finished)
+//
+// Was 100 m (finding P10), which let a team claim a landmark from a block away:
+// Largo do Pelourinho's old circle reached Avenida Carvalho Araújo ~82 m off.
+// Now 60 m, which still absorbs urban GPS drift but forces an actual visit.
 // ---------------------------------------------------------------------------
 await strictStep(rec, 'challenge geofence', async () => {
   const g2 = await makeGameN(1, 1, `bnd2-${seed}`)
@@ -311,22 +315,41 @@ await strictStep(rec, 'challenge geofence', async () => {
     `status=${r1.status} ${r1.body.error}`,
   )
 
-  const near = offsetMeters(site, 90, 0)
-  const proofB = await uploadChallengeProof(g2.gid, g2.west[0].player, 'near')
+  // 90 m used to be accepted under the old 100 m fence. It must now be refused,
+  // which is the whole point of P10.
+  const blockAway = offsetMeters(site, 90, 0)
+  const proofB = await uploadChallengeProof(g2.gid, g2.west[0].player, 'blockaway')
   const r2 = await post(`/api/games/${g2.gid}/submit-challenge`, {
     device_id: g2.west[0].device,
     player_id: g2.west[0].player,
     challenge_ref: ch.id,
-    pos: freshPos(near),
+    pos: freshPos(blockAway),
     photo_url: proofB,
   })
   rec.check(
-    'challenge submit at 90 m (inside 100 m) → accepted',
-    r2.status < 400,
+    'challenge submit at 90 m (outside the new 60 m) → rejected',
+    r2.status === 409 && r2.body.error === 'out_of_geofence',
     `status=${r2.status} ${r2.body.error ?? 'ok'}`,
   )
+
+  // Just inside the fence must still be accepted, so the tightening did not
+  // simply break challenge submission.
+  const near = offsetMeters(site, 45, 0)
+  const proofC = await uploadChallengeProof(g2.gid, g2.west[0].player, 'near')
+  const r3 = await post(`/api/games/${g2.gid}/submit-challenge`, {
+    device_id: g2.west[0].device,
+    player_id: g2.west[0].player,
+    challenge_ref: ch.id,
+    pos: freshPos(near),
+    photo_url: proofC,
+  })
+  rec.check(
+    'challenge submit at 45 m (inside 60 m) → accepted',
+    r3.status < 400,
+    `status=${r3.status} ${r3.body.error ?? 'ok'}`,
+  )
   rec.note(
-    `NOTE: 100 m is loose — ${ch.landmark_ref} can be claimed from 90 m away, a block distant in Vila Real's core`,
+    `challenge geofence is 60 m: ${ch.landmark_ref} refused at 90 m, accepted at 45 m`,
   )
 })
 

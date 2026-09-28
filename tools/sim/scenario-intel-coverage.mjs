@@ -1,4 +1,4 @@
-// Intel coverage sweep: all 8 cards in data/intel.json, their payload shapes,
+// Intel coverage sweep: all 7 cards in data/intel.json, their payload shapes,
 // their TRUTHFULNESS against the hidden landmarks.kind, how much each one
 // actually narrows the enemy pool, and the whole-game intel economy (cap 4,
 // duplicates, expiry, exact-coin edge).
@@ -17,14 +17,19 @@
 //   narrowing semantics        lib/intel/narrowing.ts
 //   hot/cold buckets           lib/intel/answers.ts
 //   N/S pivot per defender     lib/intel/northSouth.ts
-//   E/W pivot = enemy home     buy-intel/route.ts:297-319
 //   direction origin           lib/geo/playArea.ts PLAY_AREA_CENTRE
 //   decoy wipes ALL in_hand    0026_two_stage_respawn.sql:130-133
 //   tag expires 1 random       0039_one_intel_loss_per_tag_action.sql:155-164
 //
 // Because the cap is 4 per team per game and each ref may be bought once, the
-// 8-card tour is split across two games; East buys in both, so every answer is
-// measured against the SAME West real flag (landmark.miradouro-vila-velha).
+// 7-card tour is split across two games (4 + 3); East buys in both, so every
+// answer is measured against the SAME West real flag
+// (landmark.miradouro-vila-velha).
+//
+// intel.east-west (the former I2) was REMOVED from data/intel.json — it
+// eliminated exactly one candidate 6 times in 7 for 30 coins and narrowed 4/5
+// when a defender hid on its own home (SIM_EVALUATION P3a). It is therefore not
+// in ALL_REFS and no longer part of this sweep.
 
 import {
   makeGameN,
@@ -96,12 +101,13 @@ const clearRespawn = (playerId) =>
  * Re-roll West's hidden roles without changing the five chosen landmarks.
  *
  * The harness's WEST_ASSIGN puts the real flag ON West's home base
- * (miradouro-vila-velha is both). That is a legal but DEGENERATE layout for
- * two cards: I2's pivot is the defender's home (route.ts:307-318), so
- * pivot == target, and I8's bearing from PLAY_AREA_CENTRE happens to be
- * unique. Measuring narrowing only there would overstate both. This rewrites
+ * (miradouro-vila-velha is both). That is a legal but DEGENERATE layout: the
+ * Direction bearing from PLAY_AREA_CENTRE happens to be unique there, so
+ * measuring narrowing only at that layout would overstate it. (This also used
+ * to collapse the removed intel.east-west pivot onto its own target — the
+ * defect that got that card deleted; see SIM_EVALUATION P3a.) This rewrites
  * `kind` to the layout a different setup submission would have produced, so
- * the same 8 cards can be measured against an off-home real flag too.
+ * the same 7 cards can be measured against an off-home real flag too.
  */
 function relabelWest(gid, wTeamId, { real, decoys }) {
   const quoted = (arr) => arr.map((r) => `'${r}'`).join(',')
@@ -162,6 +168,8 @@ function narrowedByCard(payload, candidates) {
       }
       break
     }
+    // Historical only — the card is gone from the catalogue, but this mirrors
+    // lib/intel/narrowing.ts, which still decodes pre-removal cards.
     case 'intel.east-west': {
       const pivot = payload.pivot_lng
       for (const c of candidates) {
@@ -301,17 +309,6 @@ async function buyAndVerify(g, ref, { playerPos = null } = {}) {
       const expected = real.lat > answer.pivot_lat ? 'north' : 'south'
       truthOk = answer.direction === expected && answer.pivot_lat === NS_PIVOT_WEST
       truthDetail = `direction=${answer.direction} expected=${expected} pivot=${answer.pivot_lat} (northSouth.ts west=${NS_PIVOT_WEST}) realLat=${real.lat}`
-      break
-    }
-    case 'intel.east-west': {
-      shapeOk =
-        (answer.direction === 'east' || answer.direction === 'west') &&
-        typeof answer.pivot_lng === 'number'
-      // Pivot is the DEFENDING team's home base (route.ts:307-318).
-      const westHomeLng = coord('landmark.miradouro-vila-velha').lng
-      const expected = real.lng > answer.pivot_lng ? 'east' : 'west'
-      truthOk = answer.direction === expected && answer.pivot_lng === westHomeLng
-      truthDetail = `direction=${answer.direction} expected=${expected} pivot=${answer.pivot_lng} westHomeLng=${westHomeLng} realLng=${real.lng}`
       break
     }
     case 'intel.eliminate-one': {
@@ -473,9 +470,9 @@ await strictStep(rec, 'duplicate purchase of the same intel_ref', async () => {
   )
 })
 
-await strictStep(rec, 'card 2: intel.east-west', () => buyAndVerify(gA, 'intel.east-west'))
-await strictStep(rec, 'card 3: intel.eliminate-one', () => buyAndVerify(gA, 'intel.eliminate-one'))
-await strictStep(rec, 'card 4: intel.eliminate-two', () => buyAndVerify(gA, 'intel.eliminate-two'))
+await strictStep(rec, 'card 2: intel.eliminate-one', () => buyAndVerify(gA, 'intel.eliminate-one'))
+await strictStep(rec, 'card 3: intel.eliminate-two', () => buyAndVerify(gA, 'intel.eliminate-two'))
+await strictStep(rec, 'card 4: intel.decoy-reveal', () => buyAndVerify(gA, 'intel.decoy-reveal'))
 
 // ---------------------------------------------------------------------------
 // INTEL CAP — the 5th purchase in game A
@@ -516,32 +513,45 @@ await strictStep(rec, 'intel cap = 4', async () => {
     player_id: gA.east[0].player,
     intel_ref: 'intel.direction',
   })
-  // 0015:245-249 counts cards in ANY state, so the slot is NOT freed. Asserted
-  // as the DOCUMENTED behaviour; the finding is reported in the summary.
+  // P1 FIXED (0054): the cap counts only `in_hand`, so a card destroyed by an
+  // enemy action frees its slot and can be replaced.
   rec.check(
-    'cap counts EXPIRED cards: with 3 in hand + 1 lost, purchase still 409 intel_cap_reached',
-    r2.status === 409 && r2.body.error === 'intel_cap_reached',
+    'P1 FIXED (0054): with 3 in hand + 1 lost to the enemy, the slot is free and the rebuy succeeds',
+    r2.status === 200 && r2.body.error === undefined,
     `status=${r2.status} error=${r2.body.error} in_hand=${inHand} total=${afterExpiry.length}`,
   )
+  // The anti-farm guard must survive the narrower cap: a freed slot must NOT
+  // let the team re-buy the SAME ref it just lost, or intel becomes churnable
+  // by deliberately absorbing tags.
+  const rDup = await post(`/api/games/${gA.gid}/buy-intel`, {
+    device_id: gA.east[0].device,
+    player_id: gA.east[0].player,
+    intel_ref: victim.ref,
+  })
+  rec.check(
+    'anti-farm intact: the freed slot cannot re-buy the ref the enemy destroyed',
+    rDup.status === 409 &&
+      ['intel_already_purchased', 'intel_cap_reached'].includes(rDup.body.error),
+    `status=${rDup.status} error=${rDup.body.error} (re-buying ${victim.ref})`,
+  )
   rec.note(
-    'FINDING: losing intel to a tag permanently burns the purchase slot (0015:245-249 counts any state). A team tagged 4 times can hold 0 cards with 0 purchases left.',
+    'P1 (fixed, migration 0054): the cap now counts only in_hand intel, so a tag / intel-loss curse / decoy wipe costs the CARD but not the purchase slot. Sound because intel is never self-consumed — the only writer of state=consumed (0015:110) filters kind=challenge at 0015:117, so for intel `expired` means exactly "the enemy destroyed it". The duplicate-ref guard is deliberately left state-agnostic and is now the whole anti-farm mechanism. P16 resolves with it: Intel Loss costs exactly the one card its catalogue text promises.',
   )
 })
 
 // ---------------------------------------------------------------------------
-// GAME B — refs 5-8
+// GAME B — refs 5-7
 // ---------------------------------------------------------------------------
 
 const gB = await makeGameN(2, 2, `intelB-${seed}`)
-rec.note(`game B ${gB.code} — East buys decoy-reveal, hot-cold, surroundings, direction`)
+rec.note(`game B ${gB.code} — East buys hot-cold, surroundings, direction`)
 setCoins(gB.gid, gB.eTeam, 900)
 
-await strictStep(rec, 'card 5: intel.decoy-reveal', () => buyAndVerify(gB, 'intel.decoy-reveal'))
-await strictStep(rec, 'card 6: intel.hot-cold', () =>
+await strictStep(rec, 'card 5: intel.hot-cold', () =>
   buyAndVerify(gB, 'intel.hot-cold', { playerPos: EAST_HOME }),
 )
-await strictStep(rec, 'card 7: intel.surroundings', () => buyAndVerify(gB, 'intel.surroundings'))
-await strictStep(rec, 'card 8: intel.direction', () => buyAndVerify(gB, 'intel.direction'))
+await strictStep(rec, 'card 6: intel.surroundings', () => buyAndVerify(gB, 'intel.surroundings'))
+await strictStep(rec, 'card 7: intel.direction', () => buyAndVerify(gB, 'intel.direction'))
 
 await strictStep(rec, 'catalogue fully covered', async () => {
   const bought = [
@@ -596,9 +606,6 @@ async function measureAltLayout(gameTag, refs) {
       case 'intel.north-south':
         truthOk = a.direction === (real.lat > a.pivot_lat ? 'north' : 'south')
         break
-      case 'intel.east-west':
-        truthOk = a.direction === (real.lng > a.pivot_lng ? 'east' : 'west')
-        break
       case 'intel.eliminate-one':
         truthOk = nonReal.has(a.not_real.ref)
         break
@@ -630,34 +637,33 @@ async function measureAltLayout(gameTag, refs) {
   return g
 }
 
-await strictStep(rec, 'alt layout part 1 (N/S, E/W, eliminate-one, eliminate-two)', () =>
+await strictStep(rec, 'alt layout part 1 (N/S, eliminate-one, eliminate-two, decoy-reveal)', () =>
   measureAltLayout(`intelAltA-${seed}`, [
     'intel.north-south',
-    'intel.east-west',
     'intel.eliminate-one',
     'intel.eliminate-two',
+    'intel.decoy-reveal',
   ]),
 )
-await strictStep(rec, 'alt layout part 2 (decoy-reveal, hot-cold, surroundings, direction)', () =>
+await strictStep(rec, 'alt layout part 2 (hot-cold, surroundings, direction)', () =>
   measureAltLayout(`intelAltB-${seed}`, [
-    'intel.decoy-reveal',
     'intel.hot-cold',
     'intel.surroundings',
     'intel.direction',
   ]),
 )
 
-await strictStep(rec, 'layout sensitivity of the two pivot-based cards', async () => {
+await strictStep(rec, 'layout sensitivity of the surviving pivot-based card', async () => {
   const byRef = (arr, ref) => arr.find((t) => t.ref === ref)
-  const ewHome = byRef(table, 'intel.east-west')
-  const ewAlt = byRef(altTable, 'intel.east-west')
-  rec.note(
-    `intel.east-west narrows ${ewHome?.narrowed}/5 when the real flag IS the defender's home, ${ewAlt?.narrowed}/5 when it is not — same 30 coins. The clue's value is set by where the DEFENDER hid, not by what the attacker paid.`,
-  )
   rec.check(
-    'intel.east-west narrowing is layout-dependent (measured both ways)',
-    typeof ewHome?.narrowed === 'number' && typeof ewAlt?.narrowed === 'number',
-    `onHome=${ewHome?.narrowed} offHome=${ewAlt?.narrowed}`,
+    'SIM_EVALUATION P3a: intel.east-west is gone from the catalogue, so no clue is set by where the defender hid',
+    !ALL_REFS.includes('intel.east-west') &&
+      !table.some((t) => t.ref === 'intel.east-west') &&
+      !altTable.some((t) => t.ref === 'intel.east-west'),
+    `ALL_REFS=${ALL_REFS.length} refs, neither measured table contains it`,
+  )
+  rec.note(
+    'intel.east-west used to narrow 4/5 when the real flag WAS the defender home and 1/5 when it was not, for the same 30 coins. Removed rather than repivoted: on the real pools the defender-home pivot splits 6/1 and 1/6 (so 6 times in 7 it eliminated exactly ONE candidate, which eliminate-one does outright for 50), and the buyer-home alternative measures 0/7 and 6/1, i.e. near-constant. north-south remains the clean half-the-map clue; east-west added only one extra partition on top of it (2 groups -> 3).',
   )
   const nsHome = byRef(table, 'intel.north-south')
   const nsAlt = byRef(altTable, 'intel.north-south')
@@ -804,7 +810,7 @@ await strictStep(rec, 'purchase guards: precedence, respawn, unknown ref, wrong 
 
   // Precedence: at the cap AND duplicating a ref, the CAP error wins
   // (route.ts:225 precedes :228; 0015:247 precedes :251).
-  for (const ref of ['intel.east-west', 'intel.eliminate-one', 'intel.eliminate-two']) {
+  for (const ref of ['intel.eliminate-one', 'intel.eliminate-two', 'intel.decoy-reveal']) {
     await post(`/api/games/${gg.gid}/buy-intel`, {
       device_id: east.device,
       player_id: east.player,
@@ -947,22 +953,22 @@ await strictStep(rec, 'decoy attempt expires ALL in-hand intel', async () => {
   const r5 = await post(`/api/games/${gD.gid}/buy-intel`, {
     device_id: east.device,
     player_id: east.player,
-    intel_ref: 'intel.east-west',
+    intel_ref: 'intel.surroundings',
   })
   const final = intelCards(gD.gid, gD.eTeam)
   const finalInHand = final.filter((c) => c.state === 'in_hand').length
   rec.check(
-    '5th purchase after a wipe -> 409 intel_cap_reached even though only 2 cards are usable',
-    r5.status === 409 && r5.body.error === 'intel_cap_reached',
+    'P1 FIXED (0054): a 5th purchase after a decoy wipe is allowed — the wiped cards freed their slots',
+    r5.status === 200 && r5.body.error === undefined,
     `status=${r5.status} error=${r5.body.error} total=${final.length} in_hand=${finalInHand}`,
   )
-  rec.note(
-    `HEADLINE: one decoy raid cost 2 of 4 lifetime slots. Team ends the game with total=${final.length} purchased, in_hand=${finalInHand}, further purchases=0. A team that raids a decoy while holding 4 cards is permanently locked out of intel for the rest of the game.`,
-  )
   rec.check(
-    'a wiped team can end up with fewer than 4 usable cards and zero purchases left',
-    final.length === 4 && finalInHand === 2,
-    `total=${final.length} in_hand=${finalInHand} purchasesLeft=0`,
+    'a wiped team can rebuild a usable hand rather than being locked out for the game',
+    finalInHand >= 3,
+    `total=${final.length} purchased over the game, in_hand=${finalInHand} usable now`,
+  )
+  rec.note(
+    `P1 (fixed, migration 0054): before the fix, one decoy raid while holding 4 cards permanently locked a team out of intel — 0 usable, 0 purchases, any balance. Now the wipe costs the cards but not the slots: the team purchased ${final.length} over the game and holds ${finalInHand}. The decoy raid is still expensive (every card lost, coins spent again to rebuild) but it is no longer terminal. Re-buying a destroyed ref is still refused, so the rebuild must be new information.`,
   )
 })
 
@@ -978,9 +984,9 @@ await strictStep(rec, 'a real tag burns a purchase slot permanently', async () =
   setCoins(gt.gid, gt.eTeam, 900)
   for (const ref of [
     'intel.north-south',
-    'intel.east-west',
     'intel.eliminate-one',
     'intel.eliminate-two',
+    'intel.decoy-reveal',
   ]) {
     await post(`/api/games/${gt.gid}/buy-intel`, {
       device_id: east.device,
@@ -1031,12 +1037,12 @@ await strictStep(rec, 'a real tag burns a purchase slot permanently', async () =
     intel_ref: 'intel.direction',
   })
   rec.check(
-    'tagged team cannot replace the lost card -> 409 intel_cap_reached with only 3 in hand',
-    rebuy.status === 409 && rebuy.body.error === 'intel_cap_reached',
+    'P1 FIXED (0054): via the production tag path, the tagged team CAN replace the lost card',
+    rebuy.status === 200 && rebuy.body.error === undefined,
     `status=${rebuy.status} error=${rebuy.body.error} in_hand=${inHand.length} coins=${coinsOf(gt.eTeam)}`,
   )
   rec.note(
-    `CONFIRMED via the production tag path: after one tag East has ${inHand.length} usable cards, ${coinsOf(gt.eTeam)} coins to spend, and 0 purchases left. RULEBOOK §11 says "a team may not buy more than 4 intel cards total", so the code matches the letter of the rule — but §8.3's "tagged: loses 1 card" then reads as a double penalty: the card AND the slot.`,
+    `CONFIRMED via the production tag path (not a hand-written UPDATE): the tag expires exactly 1 card (0039:155-164), and post-0054 East can spend its ${coinsOf(gt.eTeam)} coins to replace it. §8.3's "tagged: loses 1 card" now costs exactly that — one card — instead of the card AND a permanent purchase slot.`,
   )
 })
 
@@ -1141,20 +1147,10 @@ await strictStep(rec, 'information-per-coin readout', async () => {
     )
   }
 
-  // intel.east-west pivots on the DEFENDER'S HOME. When a team hides the real
-  // flag on its own home base the answer is always 'west' of itself.
-  const ewCard = intelCards(gA.gid, gA.eTeam).find((c) => c.ref === 'intel.east-west')
-  if (ewCard) {
-    const n = narrowedByCard(ewCard.payload, cands)
-    rec.note(
-      `PLAYER-EXPERIENCE: intel.east-west costs only ${COST.get('intel.east-west')} coins yet narrows ${n.size}/5 here, because West's real flag IS West's home base (pivot == target, and eastWestOf uses a strict '>', so the answer is 'west' and every candidate east of home is dimmed).`,
-    )
-    rec.check(
-      'intel.east-west narrowing is recorded',
-      n.size >= 0,
-      `narrowed=${n.size} refs=[${[...n].join(', ')}]`,
-    )
-  }
+  // The intel.east-west measurement that used to live here is gone with the
+  // card (SIM_EVALUATION P3a): hiding on the defender's own home made its pivot
+  // equal its target, so the cheapest card in the deck narrowed 4/5. No hand can
+  // contain it any more; the removal is asserted in the layout-sensitivity step.
 
   // Cheapest-first ranking, so the report can call out mispricing.
   const ranked = table

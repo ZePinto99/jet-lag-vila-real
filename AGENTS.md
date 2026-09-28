@@ -21,7 +21,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | `data/landmarks.json` | Seed landmark catalog (GPS coords, team pool, kind) |
 | `data/challenges.json` | 15 challenges with coin rewards, proof requirements, and location refs |
 | `data/curses.json` | 16 curses with enforcement category [A/B/C/L] and params |
-| `data/intel.json` | 8 intel card types with costs and reveal descriptions |
+| `data/intel.json` | 7 intel card types with costs and reveal descriptions (I9 Landmark Type and I2 East/West were removed — see RULEBOOK §11) |
 
 ---
 

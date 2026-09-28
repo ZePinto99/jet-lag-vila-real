@@ -5,7 +5,7 @@ import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { getGameplayActionBlock } from '@/lib/server/actionLock'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { PLAY_AREA_CENTRE } from '@/lib/geo/playArea'
-import { compass4FromPoint, eastWestOf } from '@/lib/intel/direction'
+import { compass4FromPoint } from '@/lib/intel/direction'
 import { buildHotColdAnswer } from '@/lib/intel/answers'
 import { northSouthPivotForDefendingSide } from '@/lib/intel/northSouth'
 import intelCatalog from '@/data/intel.json'
@@ -195,16 +195,23 @@ export async function POST(
   }
   const cost = intelDef.cost_coins
 
-  // 5. Intel-cap and duplicate-purchase checks. Both look at any state — once
-  // a card has ever existed for this team, it counts.
+  // 5. Intel-cap and duplicate-purchase checks. They scope differently on
+  // purpose:
+  //   - the CAP counts only `in_hand` cards, so a card destroyed by an enemy
+  //     action (tag / intel-loss curse / decoy wipe) frees its slot. See
+  //     INTEL_CAP in lib/gameConstants.ts for why, and note that intel is never
+  //     self-consumed, so `in_hand` is exactly "not lost to an enemy action".
+  //   - the DUPLICATE guard stays state-agnostic: once a team has bought a ref
+  //     it may never buy that ref again, in any state. This is what keeps the
+  //     cap from becoming farmable now that expiry frees a slot.
   //
   // Ordered BEFORE the coin check to match the authoritative RPC, which tests
   // the cap at 0015_atomic_game_mutations.sql:245-250 and only then the balance
   // at :259. The route used to check coins first, so a team that was both at
   // the cap and short of coins was told `insufficient_coins` — sending it off
-  // to earn coins that can never unblock the purchase, because the cap is
-  // permanent for the rest of the game. Both layers refuse either way and
-  // nothing is ever charged; this only fixes which reason the player is shown.
+  // to earn coins that can never unblock the purchase. Both layers refuse
+  // either way and nothing is ever charged; this only fixes which reason the
+  // player is shown.
   const { data: teamCardsData, error: teamCardsError } = await supabase
     .from('cards')
     .select('*')
@@ -219,7 +226,8 @@ export async function POST(
     )
   }
   const teamIntelCards = (teamCardsData ?? []) as Card[]
-  if (teamIntelCards.length >= INTEL_CAP) {
+  const heldIntelCards = teamIntelCards.filter((c) => c.state === 'in_hand')
+  if (heldIntelCards.length >= INTEL_CAP) {
     return NextResponse.json({ error: 'intel_cap_reached' }, { status: 409 })
   }
   if (teamIntelCards.some((c) => c.ref === intel_ref)) {
@@ -302,30 +310,17 @@ export async function POST(
       }
       break
     }
-    case 'intel.east-west': {
-      // I2 describes the enemy assignment relative to the defending team's
-      // own home. Using the buyer's home made the clue nearly constant because
-      // the two candidate pools are geographically separated.
-      if (!enemyTeam.home_landmark_id) {
-        return NextResponse.json(
-          { error: 'home_base_missing' },
-          { status: 409 },
-        )
-      }
-      const homeBase = getSeedLandmarkByRef(enemyTeam.home_landmark_id)
-      if (!homeBase) {
-        return NextResponse.json(
-          { error: 'home_base_missing' },
-          { status: 409 },
-        )
-      }
-      answer = {
-        intel_ref: 'intel.east-west',
-        direction: eastWestOf(homeBase.lng, realFlag.lng),
-        pivot_lng: homeBase.lng,
-      }
-      break
-    }
+    // NOTE: 'intel.east-west' (the former I2) used to live here. It was removed
+    // from data/intel.json, so it can no longer reach this switch — an unknown
+    // ref is rejected at step 4 with `invalid_intel_ref`. It answered E/W of the
+    // DEFENDER's home longitude, which measured 6/1 and 1/6 across the two seed
+    // pools: 6 times in 7 it eliminated exactly one candidate for 30 coins,
+    // which intel.eliminate-one already does for 50 with no geometry to reason
+    // about. Worse, a defender hiding the real flag ON its own home made pivot
+    // == target and the card narrowed 4 of 5 (SIM_EVALUATION P3a). Pivoting on
+    // the BUYER's home was the original design and was already reverted: it
+    // measures 0/7 and 6/1, i.e. effectively constant. No good pivot exists.
+    // Historical cards are still decoded — see lib/intel/narrowing.ts.
     case 'intel.eliminate-one': {
       const nonReal = enemyLandmarks.filter(
         (l) => l.kind === 'flag_decoy' || l.kind === 'flag_empty',

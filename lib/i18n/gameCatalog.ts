@@ -17,9 +17,12 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
     name: 'Norte/Sul',
     reveals: 'Indica se a bandeira verdadeira fica a norte ou a sul da linha média fixa do conjunto completo de candidatos adversários',
   },
+  // HISTORICAL ONLY — 'intel.east-west' was retired from data/intel.json and is
+  // no longer purchasable, so `reveals` (purchase-panel copy) is gone. `name` is
+  // kept so a card held by a pre-removal game still renders a PT title instead
+  // of the raw ref. See RETIRED_INTEL_NAMES in components/game/IntelCardDisplay.
   'intel.east-west': {
     name: 'Este/Oeste',
-    reveals: 'Indica se a bandeira verdadeira fica a este ou a oeste da base da equipa adversária',
   },
   'intel.eliminate-one': {
     name: 'Eliminar Uma',

@@ -57,6 +57,11 @@ describe('IntelCardDisplay', () => {
       />,
     )
 
+    // `intel.east-west` is retired from data/intel.json, so its title comes
+    // from RETIRED_INTEL_NAMES rather than the catalogue. Assert the NAME too:
+    // without that fallback an old card renders the raw ref "intel.east-west".
+    expect(screen.getByText('East/West')).toBeVisible()
+    expect(screen.queryByText('intel.east-west')).not.toBeInTheDocument()
     expect(screen.getByText('east')).toBeVisible()
     expect(screen.getAllByText('A').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Decoy Place')).toBeVisible()

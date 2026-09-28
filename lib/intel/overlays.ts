@@ -8,9 +8,13 @@
 //   - intel.north-south: half-plane on the wrong side of the persisted
 //                         defending candidate-pool pivot (legacy fallback only
 //                         uses the fixed city latitude)
-//   - intel.east-west:   half-plane on the wrong side of caller's home lng
 //   - intel.hot-cold:    annulus complement (outer ring + inner disk)
 //   - intel.direction:   a soft highlight over the matching 90-degree sector
+//   - intel.east-west:   HISTORICAL ONLY — half-plane on the wrong side of the
+//                         card's persisted pivot, falling back to the caller's
+//                         home lng for pre-6d96e2e cards. The card was removed
+//                         from data/intel.json and cannot be bought any more,
+//                         but old hands must still render. Keep this branch.
 //
 // Intel that doesn't (eliminate-one/-two, decoy-reveal, surroundings,
 // landmark-type) is handled by marker dimming in GameMap. Direction is kept as
@@ -187,6 +191,8 @@ export function getIntelOverlays(
         })
         break
       }
+      // Historical only — see the header note. Not purchasable since the card
+      // was removed from data/intel.json.
       case 'intel.east-west': {
         const lng = payload.pivot_lng ?? myTeamHomeLng
         if (lng == null) break

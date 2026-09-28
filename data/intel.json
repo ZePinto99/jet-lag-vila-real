@@ -6,12 +6,6 @@
     "cost_coins": 30
   },
   {
-    "id": "intel.east-west",
-    "name": "East/West",
-    "reveals": "Whether the real flag is E or W of the enemy team's home base",
-    "cost_coins": 30
-  },
-  {
     "id": "intel.eliminate-one",
     "name": "Eliminate One",
     "reveals": "Names one of the 5 candidate landmarks that is not the real flag",
@@ -27,7 +21,7 @@
     "id": "intel.decoy-reveal",
     "name": "Decoy Reveal",
     "reveals": "Names one of the two decoys (does not reveal real)",
-    "cost_coins": 100
+    "cost_coins": 45
   },
   {
     "id": "intel.hot-cold",
@@ -45,6 +39,6 @@
     "id": "intel.direction",
     "name": "Direction",
     "reveals": "Broad compass direction from city center to real flag (N / E / S / W)",
-    "cost_coins": 80
+    "cost_coins": 50
   }
 ]

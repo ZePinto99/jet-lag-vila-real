@@ -43,6 +43,7 @@ Every player can buy intel and cast curses in the app at any time — there is n
 - Defender must be in their **own defense zone**. The target must be outside theirs, unless they are within 50 m of one of the defender's candidates; the app verifies both fresh GPS fixes.
 - Your phone lights the button at **5 m**, but the server accepts up to **10 m** — two phones in a narrow street rarely agree. The server's number is the one that counts.
 - One Tag tap discards at most **1 random intel card from the raiding team in total**, even when several raiders are caught.
+- **Tagging the flag carrier strips the flag** and ends their run. The photo still scores, but their team has to find and photograph the real flag again to win. *(Rule agreed; not yet enforced by the app — see RULEBOOK §6.)*
 - A tagged raider:
   - Must walk to the specifically assigned **nearest neutral landmark**
   - Remains immune/respawning until they confirm arrival and then walk at least **45 m away**
@@ -54,6 +55,8 @@ Defenders **cannot stand within 50 m of any of their own candidate landmarks** f
 - App warns at **90 s**
 - Tag button **disabled at 120 s**
 - Must leave the radius for **60 s** to reset
+
+Both counters live on the server, so they survive a reload — but they only tick while your phone is reporting its position, and the warning can only reach an app that is open. Keep it open while you defend, or the first thing you notice will be a dead Tag button.
 
 ---
 
@@ -76,7 +79,7 @@ Defenders **cannot stand within 50 m of any of their own candidate landmarks** f
 
 | Spend | Cost |
 |---|---|
-| Intel card | 30–100 |
+| Intel card | 30–80 |
 | Curse die (roll 1–3 dice) | 50 each |
 | Harden own flag challenge (once) | 150 |
 

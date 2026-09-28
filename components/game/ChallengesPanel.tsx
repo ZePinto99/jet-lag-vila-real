@@ -15,6 +15,7 @@ import { getDeviceId } from '@/lib/device'
 import { createClient } from '@/lib/supabase/client'
 import { useI18n } from '@/lib/i18n/context'
 import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
+import { CHALLENGE_GEOFENCE_M } from '@/lib/gameConstants'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import type {
@@ -28,8 +29,16 @@ import type {
   SubmitChallengeResponse,
 } from '@/lib/types'
 
-// Loose client-side pre-check; the server is authoritative at 100 m.
-const CLIENT_PROXIMITY_LIMIT_M = 150
+// Client-side pre-check, derived from the server's authoritative radius so the
+// two can never drift again. P10 tightened the server to 60 m while this was
+// still a hardcoded 150, which meant a player 100 m away saw an ENABLED Submit
+// button and then got a server rejection — the "action that silently does
+// nothing" failure mode.
+//
+// The client stays deliberately looser than the server (the same 1.5x buffer the
+// tag button uses at 5 m client / 10 m server) so ordinary urban GPS drift does
+// not grey out a button for someone who is genuinely standing at the landmark.
+const CLIENT_PROXIMITY_LIMIT_M = Math.round(CHALLENGE_GEOFENCE_M * 1.5)
 
 async function uploadChallengePhoto(gameId: string, playerId: string, file: File): Promise<string> {
   const supabase = createClient()

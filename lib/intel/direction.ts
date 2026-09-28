@@ -46,10 +46,3 @@ export function compass4FromPoint(
 ): ReturnType<typeof snapToCompass4> {
   return snapToCompass4(initialBearingDegrees(origin, target))
 }
-
-export function eastWestOf(
-  pivotLng: number,
-  targetLng: number,
-): 'east' | 'west' {
-  return targetLng > pivotLng ? 'east' : 'west'
-}

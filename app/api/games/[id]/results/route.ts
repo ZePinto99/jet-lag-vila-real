@@ -109,19 +109,34 @@ export async function GET(
     ? 'flag_returned'
     : 'timeout_points'
 
-  const { data: pageData, error: pageError, count } = await supabase
-    .from('events')
-    .select('*', { count: 'exact' })
-    .eq('game_id', game.id)
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .range(offset, offset + limit - 1)
-  if (pageError) {
-    return NextResponse.json(
-      { error: 'events_lookup_failed', details: pageError.message },
-      { status: 500 },
-    )
+  // An offset past the last row is a valid request for an empty page, not a
+  // server fault. PostgREST answers `.range()` beyond the row count with
+  // "Requested range not satisfiable", which funnelled into the generic 500
+  // below — so with 28 events, offset=28 returned 200 while offset=29 returned
+  // HTTP 500. Off by exactly one from the page immediately before it, and
+  // trivially reachable by a client that keeps paging.
+  //
+  // `allEvents` is already loaded above for the terminal-event lookup, so the
+  // count is free. Short-circuit rather than letting PostgREST decide.
+  const totalEvents = allEvents.length
+  let pageData: typeof allEvents = []
+  if (offset < totalEvents) {
+    const { data, error: pageError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('game_id', game.id)
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (pageError) {
+      return NextResponse.json(
+        { error: 'events_lookup_failed', details: pageError.message },
+        { status: 500 },
+      )
+    }
+    pageData = data ?? []
   }
+  const count = totalEvents
   const total = count ?? allEvents.length
   const timeoutEvent = [...allEvents]
     .reverse()

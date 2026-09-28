@@ -195,4 +195,77 @@ describe('ActiveCursesBanner', () => {
     expect(screen.getByText('✓ Proof photo submitted')).toBeVisible()
     expect(screen.queryByRole('button', { name: 'Submit proof' })).not.toBeInTheDocument()
   })
+
+  // P14: a photo slot that is missed cannot be reopened, so the banner has to
+  // announce the window before it opens and escalate as it closes.
+  describe('proof window warnings (P14)', () => {
+    const nowMs = Date.parse('2026-06-18T12:01:00.000Z')
+
+    function renderWithEntry(
+      entry: Record<string, unknown>,
+      language?: 'en' | 'pt',
+    ) {
+      renderWithProviders(
+        <ActiveCursesBanner
+          activeCurses={[makeCurse({ id: 'curse-photo', curse_ref: 'curse.photo-tax' })]}
+          nowMs={nowMs}
+          byCurseId={{ 'curse-photo': entry }}
+        />,
+        language ? { language } : undefined,
+      )
+    }
+
+    it('counts down in seconds before the window opens', () => {
+      renderWithEntry({ proofUpcomingSeconds: 25 })
+      expect(screen.getByText('Photo needed in 25s — get ready.')).toBeVisible()
+    })
+
+    it('uses a minutes-and-seconds form for a longer lead', () => {
+      renderWithEntry({ proofUpcomingSeconds: 95 })
+      expect(screen.getByText('Photo needed in 1m 35s — get ready.')).toBeVisible()
+    })
+
+    it('localises the pre-warning in PT-PT', () => {
+      renderWithEntry({ proofUpcomingSeconds: 25 }, 'pt')
+      expect(screen.getByText('Foto necessária dentro de 25s — prepara-te.')).toBeVisible()
+    })
+
+    it('shows no pre-warning when the hook reports none', () => {
+      renderWithEntry({ readout: { text: 'Speed 1.0 km/h', ok: true } })
+      expect(screen.queryByText(/Photo needed in/)).not.toBeInTheDocument()
+    })
+
+    it('escalates to a last-chance alert in the closing seconds', () => {
+      renderWithEntry({
+        prompt: {
+          label: 'Selfie at any sign',
+          secondsLeft: 8,
+          proofRequired: true,
+          promptIndex: 0,
+        },
+      })
+      expect(
+        screen.getByText('Last 8s to submit this photo — it cannot be reopened.'),
+      ).toBeVisible()
+      expect(
+        screen.getByText('This is the only slot for this photo. Miss it and it stays missed.'),
+      ).toBeVisible()
+    })
+
+    it('does NOT show the last-chance alert with plenty of time left', () => {
+      renderWithEntry({
+        prompt: {
+          label: 'Selfie at any sign',
+          secondsLeft: 28,
+          proofRequired: true,
+          promptIndex: 0,
+        },
+      })
+      expect(screen.queryByText(/Last \d+s to submit/)).not.toBeInTheDocument()
+      // The permanence hint still shows for the whole open window.
+      expect(
+        screen.getByText('This is the only slot for this photo. Miss it and it stays missed.'),
+      ).toBeVisible()
+    })
+  })
 })

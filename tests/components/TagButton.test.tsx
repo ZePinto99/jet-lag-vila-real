@@ -85,4 +85,103 @@ describe('TagButton', () => {
     expect(screen.getByRole('button', { name: 'Tag button disabled' })).toBeDisabled()
     expect(screen.getByText('Actions locked — Full Stop in effect')).toBeVisible()
   })
+
+  // P12: an aborted bulk tag used to render as a bare "No tags landed." with no
+  // cause at all, while a teammate tagging the same raider succeeded.
+  describe('rejection reasons (P12)', () => {
+    function tagResponse(rejected: Array<{ player_id: string; reason: string }>) {
+      global.fetch = jest.fn().mockResolvedValue(
+        new Response(JSON.stringify({ tagged_player_ids: [], rejected }), { status: 200 }),
+      )
+    }
+
+    async function tapWith(
+      rejected: Array<{ player_id: string; reason: string }>,
+      targets = enabledState.targets,
+      language?: 'en' | 'pt',
+    ) {
+      tagResponse(rejected)
+      renderWithProviders(
+        <TagButton
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGpsPos={gps}
+          meState={{ ...enabledState, targets }}
+        />,
+        language ? { language } : undefined,
+      )
+      await userEvent.click(
+        screen.getByRole('button', { name: /(Tag|Apanhar) \d+ (player|jogador)/ }),
+      )
+    }
+
+    it('explains a multi-target abort as someone else having tagged first', async () => {
+      await tapWith(
+        [
+          { player_id: 'enemy-1', reason: 'already_respawning' },
+          { player_id: 'enemy-2', reason: 'batch_aborted' },
+        ],
+        [
+          { player_id: 'enemy-1', pos: gps },
+          { player_id: 'enemy-2', pos: gps },
+        ],
+      )
+
+      expect(
+        await screen.findByText(
+          /Someone else tagged one of them first, so nothing was applied/,
+        ),
+      ).toBeVisible()
+      // The headline still reports the outcome and the rejected count.
+      expect(screen.getByText(/No tags landed\./)).toBeVisible()
+      expect(screen.getByText(/\(2 rejected\)/)).toBeVisible()
+    })
+
+    it('says plainly that a single target was already down', async () => {
+      await tapWith([{ player_id: 'enemy-1', reason: 'already_respawning' }])
+
+      expect(
+        await screen.findByText('They had already been tagged and are respawning — nothing to apply.'),
+      ).toBeVisible()
+      // The batch explanation must NOT appear for a single stale target: there
+      // was no batch and nothing to retry.
+      expect(screen.queryByText(/Someone else tagged one of them first/)).not.toBeInTheDocument()
+    })
+
+    it('localises the abort explanation in PT-PT', async () => {
+      await tapWith(
+        [{ player_id: 'enemy-1', reason: 'batch_aborted' }],
+        enabledState.targets,
+        'pt',
+      )
+
+      expect(
+        await screen.findByText(/Outra pessoa apanhou um deles primeiro/),
+      ).toBeVisible()
+    })
+
+    it('falls back to a named generic message for an unmapped reason', async () => {
+      await tapWith([{ player_id: 'enemy-1', reason: 'some_new_server_reason' }])
+
+      expect(
+        await screen.findByText('One tag was rejected (some_new_server_reason).'),
+      ).toBeVisible()
+    })
+
+    it('shows no rejection line when every tag landed', async () => {
+      global.fetch = jest.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ tagged_player_ids: ['enemy-1'], rejected: [] }),
+          { status: 200 },
+        ),
+      )
+      renderWithProviders(
+        <TagButton gameId="game-1" myPlayerId="player-1" myGpsPos={gps} meState={enabledState} />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: /Tag 1 player/ }))
+
+      expect(await screen.findByText('Tagged 1 player.')).toBeVisible()
+      expect(screen.queryByText(/rejected/)).not.toBeInTheDocument()
+    })
+  })
 })

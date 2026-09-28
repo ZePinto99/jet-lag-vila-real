@@ -335,7 +335,7 @@ async function reloadDeadlineAndResultsScenario() {
   const [lateAction, finish] = await Promise.all([
     request(`/api/games/${g.gid}/buy-intel`, {
       device_id: g.west[0].device, player_id: g.west[0].player,
-      intel_ref: 'intel.east-west',
+      intel_ref: 'intel.eliminate-one',
     }),
     request(`/api/games/${g.gid}/end-by-timeout`, { device_id: g.east[0].device }),
   ])
@@ -394,7 +394,7 @@ async function pauseActionRaceScenario() {
   assert.equal(cardsAfterRace, action.status === 200 ? 1 : 0)
   const retry = await request(`/api/games/${g.gid}/buy-intel`, {
     device_id: g.east[0].device, player_id: g.east[0].player,
-    intel_ref: action.status === 200 ? 'intel.east-west' : 'intel.north-south',
+    intel_ref: action.status === 200 ? 'intel.eliminate-one' : 'intel.north-south',
   })
   assert.equal(retry.status, 409)
   assert.equal(number(`select count(*) from cards where game_id='${g.gid}' and team_id='${g.eTeam}' and kind='intel';`), cardsAfterRace)
@@ -432,7 +432,7 @@ async function actionLockRaceScenario() {
   assert.equal(cardsAfterRace, action.status === 200 ? 1 : 0)
   const retry = await request(`/api/games/${g.gid}/buy-intel`, {
     device_id: g.west[0].device, player_id: g.west[0].player,
-    intel_ref: action.status === 200 ? 'intel.east-west' : 'intel.north-south',
+    intel_ref: action.status === 200 ? 'intel.eliminate-one' : 'intel.north-south',
   })
   assert.equal(retry.status, 409)
   assert.equal(retry.json.error, 'actions_locked')
@@ -682,7 +682,16 @@ async function respawnAndTerminalScenario(g) {
 }
 
 async function intelCatalogScenario() {
-  const groups = [intel.slice(0, 4), intel.slice(4, 8)]
+  // The cap is 4 in_hand cards per team per game, so the catalogue tour is split
+  // across as many games as it takes. Derived from the catalogue length rather
+  // than hardcoded, so removing a card (I9, then I2 East/West) cannot silently
+  // drop the tail of the deck from the sweep — the deepEqual below would then
+  // fail, but only after the sweep had already stopped testing those refs.
+  const CAP = 4
+  const groups = []
+  for (let start = 0; start < intel.length; start += CAP) {
+    groups.push(intel.slice(start, start + CAP))
+  }
   const seen = new Set()
   for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
     const g = await makeGameN(2, 2, `intel-${groupIndex}-${Date.now()}`)
@@ -698,9 +707,6 @@ async function intelCatalogScenario() {
       const bought = await apiPost(`/api/games/${g.gid}/buy-intel`, body)
       assert.equal(bought.answer.intel_ref, definition.id)
       seen.add(definition.id)
-      if (definition.id === 'intel.east-west') {
-        assert.equal(bought.answer.pivot_lng, point('landmark.biblioteca-municipal').lng)
-      }
       if (definition.id === 'intel.north-south') {
         assert.equal(bought.answer.pivot_lat, 41.29820795)
       }
@@ -724,7 +730,7 @@ async function intelCatalogScenario() {
     }
   }
   assert.deepEqual([...seen].sort(), intel.map((definition) => definition.id).sort())
-  pass('all eight intel refs purchase with valid payloads; I1/I2/I6/I7/I8 use current secure geometry contracts')
+  pass('all seven intel refs purchase with valid payloads; I1/I5/I6/I7 use current secure geometry contracts')
 }
 
 async function curseEligibilityRaceScenario() {
@@ -834,9 +840,20 @@ async function curseEligibilityRaceScenario() {
     })
     if (result.status === 409 && result.json.error === 'no_available_curse') {
       unavailable = result
-      assert.equal(result.json.details.tier, 'major')
+      const rollsBefore = number(`select count(*) from events where game_id='${g.gid}' and type='curse_roll_failed';`)
+      // Finding P6: the refund stays (RULEBOOK §10) but the response must no
+      // longer echo the rolled tier, which told a free prober which bucket of
+      // hidden enemy state had been exhausted.
+      assert.equal(result.json.details, undefined, 'no_available_curse must not echo the rolled tier')
       assert.equal(number(`select coins from teams where id='${g.wTeam}';`), coinsBefore)
       assert.equal(number(`select count(*) from events where game_id='${g.gid}' and type='coins_deducted' and payload->>'reason'='buy_curse';`), spendsBefore)
+      // ...and the probe is no longer invisible: it leaves an attributable
+      // event carrying only the buyer's own team and dice, never enemy state.
+      assert.ok(rollsBefore >= 1, 'failed roll must append a curse_roll_failed event')
+      const logged = db(`select payload::text from events where game_id='${g.gid}' and type='curse_roll_failed' order by created_at desc limit 1;`)
+      const payload = JSON.parse(String(logged[0] ?? logged))
+      assert.equal(payload.team_id, g.wTeam)
+      assert.equal(payload.tier, undefined, 'the logged probe must not record the rolled tier')
     } else {
       assert.equal(result.status, 200)
       db(`delete from active_curses where game_id='${g.gid}' and curse_ref not in ('curse.frozen','curse.pilgrimage','curse.solo-quarantine','curse.full-stop'); update teams set coins=500 where id='${g.wTeam}';`)

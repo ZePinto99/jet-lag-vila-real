@@ -117,6 +117,36 @@ export function useGameToasts({
     // NOTE: flag_found, tag and placed_curse_triggered are handled by
     // useGameMoments (the animated big-moment overlay), not here.
 
+    // A tag stripped the flag from a carrier (finding P2, migration 0053).
+    //
+    // 0053's own rationale was that the event exists "so the client can tell the
+    // player their run ended, rather than silently discovering it at the home
+    // base" — but nothing consumed it, so that was exactly what happened: the
+    // carrier walked all the way home and simply found that nothing happened.
+    //
+    // Handled here rather than in useGameMoments because the `tag` event already
+    // drives the big-moment overlay; this adds the one fact the tag alone does
+    // not convey — that the flag went with it. Both teams are told, because it
+    // changes what each of them should do next.
+    if (e.type === 'flag_carrier_stripped') {
+      const strippedTeam = typeof p.team_id === 'string' ? p.team_id : null
+      const victim =
+        players.find((pl) => pl.id === p.player_id)?.display_name ?? 'Teammate'
+      if (strippedTeam === myTeamId) {
+        // The losing side: the run is over and someone must photograph it again.
+        pushRef.current(
+          p.player_id === myPlayerId
+            ? t('toast.you_lost_the_flag')
+            : t('toast.teammate_lost_the_flag', { player: victim }),
+          'alert',
+        )
+      } else {
+        // The defending side: the interception worked.
+        pushRef.current(t('toast.we_stripped_the_flag'), 'alert')
+      }
+      return
+    }
+
     // A challenge photo submitted by the enemy needs MY team to review it (D14).
     if (e.type === 'challenge_submitted') {
       const reviewing =

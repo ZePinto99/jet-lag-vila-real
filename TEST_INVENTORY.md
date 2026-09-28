@@ -52,7 +52,7 @@ What it does: derives enemy landmark refs known not to be the real flag from in-
 Test cases:
 - Ignore non-intel and non-`in_hand` cards.
 - `intel.north-south`: wrong city-centre half is ruled out.
-- `intel.east-west`: wrong home-base side is ruled out; missing home longitude yields no narrowing.
+- `intel.east-west` (HISTORICAL, card removed from the catalogue): wrong home-base side is still ruled out for pre-removal cards; a persisted `pivot_lng` wins over the caller-home fallback; missing home longitude yields no narrowing.
 - `intel.eliminate-one`, `intel.eliminate-two`, `intel.decoy-reveal`: named refs are ruled out.
 - `intel.hot-cold`: landmarks outside distance bucket are ruled out.
 - `intel.surroundings`: no mechanical narrowing.
@@ -71,7 +71,7 @@ What it does: builds map overlay polygons for out-of-bounds area and geographic 
 Test cases:
 - Out-of-bounds overlay returns world ring plus play-area disk hole.
 - `north-south` overlay covers wrong half-plane.
-- `east-west` overlay skipped without home longitude.
+- `east-west` overlay (HISTORICAL, card removed) still draws for pre-removal cards, skipped without home longitude.
 - `hot-cold` bounded buckets create outer complement and inner disk overlays.
 - Non-geographic intel creates no overlay.
 

@@ -48,6 +48,8 @@ node tools/sim/scenario-hidden-reconcile.mjs # harden + placed-curse hidden-stat
 node tools/sim/scenario-tag-raider.mjs     # defense-zone tag, stale GPS, multi-target respawn
 node tools/sim/scenario-weather-pause.mjs  # two-team pause/resume + timer/observer freeze
 node tools/sim/scenario-push.mjs           # explicit opt-in + subscription/server persistence boundary
+node tools/sim/scenario-curse-stacking.mjs # two curses at once: both action locks, Frozen+Pilgrimage, placed-curse block/refire, ledger boundaries, curses at game end
+node tools/sim/scenario-endgame-edges.mjs  # empty game, 0-0 coin flip, /results pagination, stripped-carrier scoring, observer-state redaction
 ```
 
 Run the complete release matrix (all strict scenarios plus 1v1, 2v2, 3v3, and 4v4 walkthroughs):

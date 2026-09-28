@@ -551,6 +551,12 @@ export type IntelAnswer =
       /** Fixed latitude pivot for the defending side's full candidate pool. */
       pivot_lat?: number
     }
+  // HISTORICAL ONLY. `intel.east-west` was removed from data/intel.json (it
+  // eliminated exactly one candidate 6 times in 7 for 30 coins, and narrowed
+  // 4 of 5 when a defender hid on its own home base — SIM_EVALUATION P3a). It
+  // is no longer purchasable, but `cards` rows from earlier games persist, so
+  // this variant stays in the union to keep those payloads type-safe to decode
+  // in narrowing.ts / overlays.ts / IntelCardDisplay.tsx. Do not remove.
   | {
       intel_ref: 'intel.east-west'
       direction: 'east' | 'west'
@@ -711,8 +717,9 @@ export interface PendingChallenge {
 //  - Game.status in ('live', 'flag_found')
 //  - Player not respawning (challenges are field work)
 //  - Challenge is currently `available` for the calling team
-//  - If challenge has a landmark_ref: position required, must be within 100 m
-//    of that landmark's seed coords. Else geofence is skipped.
+//  - If challenge has a landmark_ref: position required, must be within
+//    CHALLENGE_GEOFENCE_M (lib/gameConstants.ts) of that landmark's seed
+//    coords. Else geofence is skipped.
 export interface SubmitChallengeRequest {
   device_id: string
   player_id: string

@@ -6,10 +6,26 @@
 //
 // We call fetch directly here because 409 responses carry the exact required
 // target/distance details that apiPost intentionally collapses to an error.
+//
+// P7: walking to the assigned target and confirming is the PRIMARY exit, and
+// the player is action-locked until it happens (lib/server/actionLock.ts
+// short-circuits before every other check). Migration 0055 added two fallbacks
+// for the player whose GPS will not confirm: a 10-minute grace sweep
+// (sweep_stuck_respawns, on the 30 s pg_cron job) and a host override
+// (/host-clear-respawn). Migration 0056 shifts respawning_since on a weather
+// pause so paused time is not charged against that grace.
+//
+// This banner must state the lock, show the live distance to the exact required
+// landmark, AND name the fallbacks — an earlier version told the player "this
+// does not time out… nothing else clears it", which was true when written and
+// became a lie the moment 0055 shipped. Keep this copy in step with the
+// migrations.
 
 import { useState } from 'react'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
+import { NEUTRAL_LEAVE_RADIUS_M } from '@/lib/gameConstants'
+import { haversineMeters } from '@/lib/geo/haversine'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import { useT } from '@/lib/i18n/context'
 import type {
@@ -57,6 +73,18 @@ export function RespawnBanner({
   const [error, setError] = useState<string | null>(null)
   const target = respawnTargetRef ? getSeedLandmarkByRef(respawnTargetRef) : null
   const targetName = target?.name ?? respawnTargetRef ?? t('respawn.assigned_neutral')
+
+  // Live distance to the exact assigned landmark. Derived, never stored: this is
+  // guidance, so it must not wait on a server round-trip. Null when GPS is off
+  // or the assigned ref is not in the seed catalog.
+  const distanceM =
+    myGps && target
+      ? haversineMeters({ lat: myGps.lat, lng: myGps.lng }, { lat: target.lat, lng: target.lng })
+      : null
+  const rounded = distanceM == null ? null : Math.round(distanceM)
+  // Stage 2 inverts the goal: the player must now get AWAY from the landmark.
+  const metresStillNeeded =
+    rounded == null ? null : Math.max(0, NEUTRAL_LEAVE_RADIUS_M - rounded)
 
   if (!respawning) return null
 
@@ -133,6 +161,26 @@ export function RespawnBanner({
           ? t('respawn.arrived_hint', { target: targetName })
           : t('respawn.target_hint', { target: targetName })}
       </p>
+      {/* The action lock is the single most surprising part of being tagged:
+          every other button in the app goes dead. Say so explicitly. */}
+      <p className="mt-1 rounded bg-amber-950/50 px-2 py-1 text-[11px] font-semibold text-amber-100">
+        {t('respawn.locked_notice')}
+      </p>
+      {/* Live distance to the exact required landmark — stage 1 counts down to
+          it, stage 2 counts away from it. */}
+      <p className="mt-1 font-mono text-[11px] tabular-nums text-amber-200">
+        {rounded == null
+          ? t('respawn.distance_unknown')
+          : respawnArrived
+            ? metresStillNeeded === 0
+              ? t('respawn.leave_ready', { target: targetName })
+              : t('respawn.leave_progress', {
+                  distance: rounded,
+                  target: targetName,
+                  needed: metresStillNeeded ?? NEUTRAL_LEAVE_RADIUS_M,
+                })
+            : t('respawn.distance_to_target', { distance: rounded, target: targetName })}
+      </p>
       <div className="mt-2 flex flex-col items-stretch gap-1 sm:flex-row sm:items-center sm:justify-between">
         <button
           type="button"
@@ -159,10 +207,18 @@ export function RespawnBanner({
         {lockedLabel && <span className="text-[11px] text-amber-200/80">{lockedLabel}</span>}
       </div>
       {error && (
-        <p role="alert" className="mt-2 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
-          {error}
-        </p>
+        <>
+          <p role="alert" className="mt-2 rounded bg-red-950/60 px-2 py-1 text-[11px] text-red-200">
+            {error}
+          </p>
+          {/* Only after a failed confirm: the player has now actually hit the
+              stuck case, so the recovery advice is relevant rather than noise. */}
+          <p className="mt-1 text-[11px] text-amber-200/80">
+            {t('respawn.gps_stuck_hint', { target: targetName })}
+          </p>
+        </>
       )}
+      <p className="mt-1 text-[11px] text-amber-200/70">{t('respawn.timeout_hint')}</p>
     </div>
   )
 }

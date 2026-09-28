@@ -58,6 +58,50 @@ export interface CurseEnforcementEntry {
    * so the countdown reflects "time served" rather than raw wall-clock (E15).
    */
   remainingMsOverride?: number
+  /**
+   * [B] photo curses only (P14): seconds until the next proof window OPENS,
+   * present only inside the pre-warning lead time. Photo windows are narrow
+   * (Outfit Swap's second slot is 60 s opening 19 min after the cast) and a
+   * missed slot returns 409 proof_window_closed permanently — so the player
+   * needs warning *before* it opens, not only once it is already counting down.
+   */
+  proofUpcomingSeconds?: number
+}
+
+/**
+ * How long before a proof window opens the player starts being warned. Long
+ * enough to stop what you are doing and get the camera out; short enough that
+ * it is not background noise for the whole curse.
+ */
+export const PROOF_PREWARN_LEAD_S = 60
+
+/**
+ * Seconds remaining in an open window at or below which the prompt escalates to
+ * a "last chance" alert.
+ */
+export const PROOF_CLOSING_ALERT_S = 15
+
+/**
+ * Seconds until this curse's next proof window opens, or null if none opens
+ * within PROOF_PREWARN_LEAD_S.
+ *
+ * getCurseProofWindow is a pure function of nowMs, so rather than duplicate its
+ * (per-curse-shape) arithmetic we probe it forward one second at a time. Bounded
+ * at PROOF_PREWARN_LEAD_S iterations per photo curse per recompute, and only
+ * reached while a photo curse is live.
+ */
+export function secondsUntilProofWindow(
+  curse: ActiveCurse,
+  nowMs: number,
+  leadSeconds: number = PROOF_PREWARN_LEAD_S,
+): number | null {
+  if (!PHOTO_VERIFIED_CURSE_REFS.has(curse.curse_ref)) return null
+  // Already open: that is the prompt's job, not the pre-warning's.
+  if (getCurseProofWindow(curse, nowMs)) return null
+  for (let s = 1; s <= leadSeconds; s++) {
+    if (getCurseProofWindow(curse, nowMs + s * 1000)) return s
+  }
+  return null
 }
 
 export interface UseCurseEnforcementResult {
@@ -517,6 +561,12 @@ export function useCurseEnforcement(params: UseCurseEnforcementParams): UseCurse
               proofRequired: true,
               promptIndex: proofWindow.promptIndex,
             }
+          } else {
+            // P14: warn before the slot opens. Without this the only signal is
+            // the prompt appearing inside an already-running window — easy to
+            // miss on a 60 s slot, and a miss is permanent.
+            const upcoming = secondsUntilProofWindow(c, nowMs)
+            if (upcoming != null) entry.proofUpcomingSeconds = upcoming
           }
         } else {
           const intervalS =
@@ -560,7 +610,12 @@ export function useCurseEnforcement(params: UseCurseEnforcementParams): UseCurse
         }
       }
 
-      if (entry.readout || entry.prompt || entry.remainingMsOverride != null) {
+      if (
+        entry.readout ||
+        entry.prompt ||
+        entry.remainingMsOverride != null ||
+        entry.proofUpcomingSeconds != null
+      ) {
         byCurseId[c.id] = entry
       }
     }

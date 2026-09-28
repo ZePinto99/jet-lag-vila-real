@@ -55,6 +55,7 @@ import { useDiscoveredEnemyKinds } from '@/lib/hooks/useDiscoveredEnemyKinds'
 import { useEnemyLandmarkLocks } from '@/lib/hooks/useEnemyLandmarkLocks'
 import { useActiveChallenges } from '@/lib/hooks/useActiveChallenges'
 import { TagButton } from '@/components/game/TagButton'
+import { HostRespawnOverride } from '@/components/game/HostRespawnOverride'
 import { RespawnBanner } from '@/components/game/RespawnBanner'
 import { FlagAttemptButton } from '@/components/game/FlagAttemptButton'
 import { FlagCarrierBanner } from '@/components/game/FlagCarrierBanner'
@@ -656,6 +657,31 @@ export function Live() {
         onProofSubmitted={addCurseProof}
       />
 
+      {/* Camping banner (P8). Both the 90 s warning and the 120 s lock are
+          counted server-side, so the countdowns here are correct immediately
+          after a reload rather than restarting from zero. It used to live inside
+          the map tab only, which meant a defender sitting on the actions or
+          status tab got no warning at all and then found Tag dead. */}
+      {!isGameOver && camping.status !== 'idle' && (
+        <div
+          role="alert"
+          className={cn(
+            'border-b px-4 py-2 text-xs font-medium',
+            camping.status === 'locked'
+              ? 'border-red-700 bg-red-900/50 text-red-100'
+              : 'border-amber-700 bg-amber-900/40 text-amber-100',
+          )}
+        >
+          {camping.status === 'locked'
+            ? camping.secondsUntilUnlock == null || camping.secondsUntilUnlock <= 0
+              ? t('camping.locked', { s: camping.cooldownThresholdSeconds })
+              : t('camping.locked_progress', { s: camping.secondsUntilUnlock })
+            : camping.secondsUntilLock <= 0
+              ? t('camping.warning_imminent')
+              : t('camping.warning', { s: camping.secondsUntilLock })}
+        </div>
+      )}
+
       {/* Respawn banner — shows above tabs whenever the local player is
           respawning. Visible from any tab so the player can't miss it. */}
       <RespawnBanner
@@ -692,16 +718,6 @@ export function Live() {
               nowMs={clockNowMs}
               challenges={challengeMarkers}
             />
-            {/* Camping warning rides at the top of the map; the Tag button at
-                the bottom-center. Both pointer-events-none on the wrapper so
-                taps fall through to the map outside the button itself. */}
-            {camping.status !== 'idle' && (
-              <div className="pointer-events-none absolute left-1/2 top-3 z-[1000] -translate-x-1/2 rounded-md bg-amber-900/80 px-3 py-1 text-[11px] font-medium text-amber-100 shadow">
-                {camping.status === 'locked'
-                  ? 'Camping locked — leave own landmark for 60 s to reset'
-                  : `Camping warning — ${camping.lockThresholdSeconds - camping.secondsInZone}s until tag disabled`}
-              </div>
-            )}
             {/* Bottom-anchored action stack: Tag at the top of the stack
                 (most reflex-driven), Flag Attempt below. The pointer-events
                 wrapper is set on each child so map taps still register
@@ -1328,6 +1344,16 @@ function StatusTab({
         actionsLocked={actionsLocked}
       />
 
+      {/* P7 second exit: the host can release a player whose GPS will not
+          confirm. Self-hiding — renders nothing unless the viewer is the host
+          and someone is actually respawning. */}
+      <HostRespawnOverride
+        gameId={gameId}
+        myPlayerId={myPlayerId}
+        isHost={players.find((p) => p.id === myPlayerId)?.is_host ?? false}
+        players={players}
+      />
+
       <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
         <h2 className="text-sm font-medium text-neutral-100">{t('status.curses_on_us')}</h2>
         {activeCurses.length === 0 ? (
@@ -1467,12 +1493,23 @@ function eventTypeLabel(type: string, locale: Locale): string {
     player_respawning_set: 'Respawn iniciado',
     player_respawn_arrived: 'Ponto de respawn alcançado',
     player_respawning_cleared: 'Respawn concluído',
+    // Migrations 0053/0055 emit these three; without a label here PT fell
+    // through to raw English and EN read as title-cased snake_case.
+    player_respawn_timed_out: 'Respawn expirou (10 min)',
+    player_respawn_host_cleared: 'Respawn libertado pelo anfitrião',
+    flag_carrier_stripped: 'Bandeira perdida na captura',
     placed_curse_armed: 'Armadilha preparada',
     placed_curse_triggered: 'Armadilha ativada',
     flag_hardened: 'Bandeira reforçada',
     time_bonus_awarded: 'Bónus de tempo atribuído',
   }
+  const labelsEn: Record<string, string> = {
+    player_respawn_timed_out: 'Respawn timed out (10 min)',
+    player_respawn_host_cleared: 'Respawn released by host',
+    flag_carrier_stripped: 'Flag dropped on tag',
+  }
   if (locale === 'pt' && labelsPt[type]) return labelsPt[type]
+  if (labelsEn[type]) return labelsEn[type]
   return type
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

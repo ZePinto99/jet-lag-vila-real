@@ -45,8 +45,32 @@ export const HARDEN_COST = 150
 // ---------------------------------------------------------------------------
 
 /**
- * Anti-spam cap: a team may not buy more than this many intel cards in total
- * across the whole game, in any state.
+ * Anti-spam cap on how much intel a team may hold. Counted over cards the team
+ * has NOT lost to an enemy action — i.e. `in_hand` intel.
+ *
+ * Why not "any state": the cap used to count intel rows in every state, which
+ * made it a lifetime purchase budget rather than a hand size. That
+ * double-penalised a single enemy action, because every intel expiry in the
+ * codebase is an enemy action:
+ *   - a tag (0039:155-164, one card per Tag action)
+ *   - `curse.intel-loss` (0046:112-124, one card)
+ *   - a decoy flag attempt (0026:130-133, ALL in_hand intel, no `limit 1`)
+ * A team holding 4 cards that raided a decoy was then locked out of intel for
+ * the rest of the game: 0 usable cards, 0 purchases, at any balance. Worse, the
+ * map ignores non-`in_hand` cards (lib/intel/narrowing.ts:58), so an expired
+ * card contributed nothing while fully consuming a slot. It also made
+ * `curse.intel-loss` exceed its catalogue text ("discard 1 random intel card")
+ * by silently burning a purchase slot too (SIM_EVALUATION P1 / P16).
+ *
+ * Intel is never consumed by its owner — no code path writes `consumed` for
+ * `kind = 'intel'` (0015:110, the only writer, filters `kind = 'challenge'`).
+ * So for intel, `state = 'in_hand'` is exactly "not lost to an enemy action",
+ * and a tag now costs a card rather than a card AND a slot.
+ *
+ * Anti-farm is preserved by the SEPARATE duplicate guard, which is deliberately
+ * state-agnostic: `intel_already_purchased` rejects a ref the team has ever
+ * bought, in any state. A team therefore cannot churn a lost card by rebuying
+ * it, and with 8 catalogue refs the lifetime ceiling stays bounded.
  */
 export const INTEL_CAP = 4
 
@@ -127,6 +151,29 @@ export const TAG_RANGE_M = 10
  * client-side in lib/hooks/useCamping.ts.
  */
 export const CAMPING_RADIUS_M = 50
+
+// ---------------------------------------------------------------------------
+// Challenges (RULEBOOK §8.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Server-side geofence for a challenge submission: how close the submitting
+ * player must be to the challenge's landmark.
+ *
+ * Looser than a flag attempt (20 m client / 28 m server) because a challenge is
+ * performed at the surrounding location rather than exactly on a marker, but
+ * tighter than the 100 m this used to be. In Vila Real's historic core a 100 m
+ * circle reached well past its own landmark — Largo do Pelourinho's circle
+ * covered Avenida Carvalho Araújo (~82 m away) — so a team could claim a
+ * landmark from a block away without visiting it. 60 m still absorbs urban GPS
+ * drift, which the rest of the app budgets at 5–10 m (SIM_EVALUATION P10).
+ *
+ * Verified against data/challenges.json: the closest pair of distinct challenge
+ * landmarks is Sé Catedral ↔ Largo do Pelourinho at 60.6 m, so at 60 m no two
+ * challenges are ever mutually claimable from one spot. That 0.6 m headroom is
+ * the binding constraint — do not raise this value without re-measuring.
+ */
+export const CHALLENGE_GEOFENCE_M = 60
 
 // ---------------------------------------------------------------------------
 // Scoring on timeout (RULEBOOK §13)

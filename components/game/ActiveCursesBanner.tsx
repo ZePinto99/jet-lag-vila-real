@@ -16,7 +16,10 @@ import cursesSeed from '@/data/curses.json'
 import { getDeviceId } from '@/lib/device'
 import { useI18n, useT } from '@/lib/i18n/context'
 import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
-import type { CurseEnforcementEntry } from '@/lib/hooks/useCurseEnforcement'
+import {
+  PROOF_CLOSING_ALERT_S,
+  type CurseEnforcementEntry,
+} from '@/lib/hooks/useCurseEnforcement'
 import type {
   ActiveCurse,
   CurseEnforcement,
@@ -235,6 +238,22 @@ function ActiveCurseRow({
               : enforcement.prompt.label}
           </p>
         ))}
+      {/* P14: the proof window is about to open. Photo slots are narrow and a
+          miss is permanent (409 proof_window_closed, no reopen), so the player
+          gets a countdown before it opens rather than only once it is running. */}
+      {enforcement?.proofUpcomingSeconds != null && !timerExpired && (
+        <p
+          role="alert"
+          className="mt-1 rounded bg-amber-400/20 px-2 py-0.5 text-[11px] font-semibold text-amber-100"
+        >
+          {enforcement.proofUpcomingSeconds >= 60
+            ? t('curse.proof_upcoming_min', {
+                m: Math.floor(enforcement.proofUpcomingSeconds / 60),
+                s: enforcement.proofUpcomingSeconds % 60,
+              })
+            : t('curse.proof_upcoming', { s: enforcement.proofUpcomingSeconds })}
+        </p>
+      )}
       {enforcement?.readout && !timerExpired && (
         <p
           className={
@@ -312,11 +331,25 @@ function CurseProofControl({
     )
   }
 
+  const closing = secondsLeft > 0 && secondsLeft <= PROOF_CLOSING_ALERT_S
+
   return (
-    <div className="mt-1 rounded bg-amber-400/20 p-2 text-[11px] text-amber-50">
+    <div
+      className={
+        'mt-1 rounded p-2 text-[11px] text-amber-50 ' +
+        (closing ? 'bg-red-500/30' : 'bg-amber-400/20')
+      }
+    >
       <p className="font-semibold">
         {t('curse.prompt_window', { label: promptLabel, s: secondsLeft })}
       </p>
+      {/* Escalate in the last seconds: this slot cannot be reopened. */}
+      {closing && (
+        <p role="alert" className="mt-0.5 font-semibold text-red-100">
+          {t('curse.proof_closing', { s: secondsLeft })}
+        </p>
+      )}
+      <p className="mt-0.5 text-amber-200">{t('curse.proof_window_hint')}</p>
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <input
           id={inputId}

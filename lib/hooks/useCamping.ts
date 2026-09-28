@@ -45,6 +45,15 @@ export interface UseCampingResult {
   campingLocked: boolean
   warningThresholdSeconds: typeof CAMPING_WARNING_S
   lockThresholdSeconds: typeof CAMPING_LOCK_S
+  cooldownThresholdSeconds: typeof CAMPING_COOLDOWN_S
+  /** Whole seconds until the Tag button locks; 0 once locked. */
+  secondsUntilLock: number
+  /**
+   * Whole seconds of time-away still required before a lock clears, or null when
+   * not locked. Null rather than 0 so callers can tell "not locked" from
+   * "locked, cooldown complete on the next heartbeat".
+   */
+  secondsUntilUnlock: number | null
   lastHeartbeatAt: string | null
   syncError: string | null
 }
@@ -148,6 +157,9 @@ export function useCamping(params: UseCampingParams): UseCampingResult {
       campingLocked: false,
       warningThresholdSeconds: CAMPING_WARNING_S,
       lockThresholdSeconds: CAMPING_LOCK_S,
+      cooldownThresholdSeconds: CAMPING_COOLDOWN_S,
+      secondsUntilLock: CAMPING_LOCK_S,
+      secondsUntilUnlock: null,
       lastHeartbeatAt: null,
       syncError,
     }
@@ -191,6 +203,15 @@ export function useCamping(params: UseCampingParams): UseCampingResult {
     campingLocked,
     warningThresholdSeconds: CAMPING_WARNING_S,
     lockThresholdSeconds: CAMPING_LOCK_S,
+    cooldownThresholdSeconds: CAMPING_COOLDOWN_S,
+    // Both countdowns are derived from the SERVER's accumulated seconds, so they
+    // are correct immediately after a reload rather than restarting from zero.
+    secondsUntilLock: campingLocked
+      ? 0
+      : Math.max(0, CAMPING_LOCK_S - secondsInZone),
+    secondsUntilUnlock: campingLocked
+      ? Math.max(0, CAMPING_COOLDOWN_S - secondsOutside)
+      : null,
     lastHeartbeatAt: authoritative.last_heartbeat_at,
     syncError,
   }

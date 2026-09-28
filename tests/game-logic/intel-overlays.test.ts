@@ -35,7 +35,9 @@ describe('intel overlays', () => {
     expect(overlays[0].rings[0]).toContainEqual([41.2982, 180])
   })
 
-  it('skips east/west overlays until home longitude is known', () => {
+  // HISTORICAL PATH — `intel.east-west` is retired from data/intel.json and no
+  // longer purchasable, but pre-removal cards must still draw their half-plane.
+  it('still draws retired east/west cards, skipping until home longitude is known', () => {
     const card = makeCard({
       payload: { intel_ref: 'intel.east-west', direction: 'west' },
     })

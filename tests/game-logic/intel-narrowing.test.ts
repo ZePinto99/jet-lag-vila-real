@@ -60,17 +60,44 @@ describe('computeNarrowedRefs', () => {
     ).toEqual(new Set(['enemy.south', 'enemy.east']))
   })
 
-  it('uses home longitude for east/west intel and skips when missing', () => {
-    const card = makeCard({
-      payload: { intel_ref: 'intel.east-west', direction: 'east' },
+  // HISTORICAL PATH. `intel.east-west` was removed from data/intel.json and can
+  // no longer be bought, but `cards` rows from games played before the removal
+  // persist. This pins the decode-only branch in narrowing.ts so an old hand
+  // still narrows instead of silently dropping a clue the team paid for.
+  describe('retired intel.east-west cards still decode', () => {
+    it('uses home longitude for east/west intel and skips when missing', () => {
+      const card = makeCard({
+        payload: { intel_ref: 'intel.east-west', direction: 'east' },
+      })
+
+      expect(
+        computeNarrowedRefs({ intelCards: [card], enemyLandmarks, myTeamHomeLng: null, seedLookup }),
+      ).toEqual(new Set())
+      expect(
+        computeNarrowedRefs({ intelCards: [card], enemyLandmarks, myTeamHomeLng: -7.746, seedLookup }),
+      ).toEqual(new Set(['enemy.south']))
     })
 
-    expect(
-      computeNarrowedRefs({ intelCards: [card], enemyLandmarks, myTeamHomeLng: null, seedLookup }),
-    ).toEqual(new Set())
-    expect(
-      computeNarrowedRefs({ intelCards: [card], enemyLandmarks, myTeamHomeLng: -7.746, seedLookup }),
-    ).toEqual(new Set(['enemy.south']))
+    it('prefers a persisted pivot_lng over the caller home fallback', () => {
+      // Post-6d96e2e cards carry the DEFENDER's home longitude; pre-6d96e2e
+      // ones carry none and pivoted on the BUYER's home (myTeamHomeLng).
+      //
+      // Fixture longitudes: north -7.74, south -7.75, east -7.72.
+      // Pivot -7.73 puts ONLY enemy.east to the east, so an 'east' answer rules
+      // out north and south. The -7.746 fallback would instead have ruled out
+      // only enemy.south, so this distinguishes the two code paths.
+      const persisted = makeCard({
+        payload: { intel_ref: 'intel.east-west', direction: 'east', pivot_lng: -7.73 },
+      })
+      expect(
+        computeNarrowedRefs({
+          intelCards: [persisted],
+          enemyLandmarks,
+          myTeamHomeLng: -7.746,
+          seedLookup,
+        }),
+      ).toEqual(new Set(['enemy.north', 'enemy.south']))
+    })
   })
 
   it('combines eliminate-one, eliminate-two, and decoy reveal answers', () => {

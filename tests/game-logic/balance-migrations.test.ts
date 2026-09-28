@@ -84,4 +84,63 @@ describe('balance migration contracts', () => {
     expect(sql).toContain("v_card.payload->>'submitted_at'")
     expect(sql).toContain('coalesce(v_submitted_at, v_card.updated_at)')
   })
+
+  // P11: a weather pause used to consume the whole 120 s challenge-review
+  // window, because resume shifted games.started_at and active_curses but not
+  // the review deadline that 0048 reads off cards.payload.submitted_at.
+  it('shifts the pending challenge review deadline across a weather pause', () => {
+    const sql = migration('0050_pause_shifts_challenge_review_window.sql')
+    // Both timestamps 0048 can read must move by the paused duration.
+    expect(sql).toContain("jsonb_set(\n              payload,\n              '{submitted_at}'")
+    expect(sql).toContain('set updated_at = updated_at + make_interval(secs => v_pause_seconds)')
+    // Only still-pending challenge cards in this game.
+    expect(sql).toContain("and kind = 'challenge'")
+    expect(sql).toContain("and state = 'pending'")
+    // A malformed payload must not abort the resume; it keeps the fallback.
+    expect(sql).toContain("pg_input_is_valid(payload->>'submitted_at', 'timestamptz')")
+    // The shift belongs to the resume branch, after the active_curses shift and
+    // before the games row is restored — otherwise a pause could still award.
+    const cursesShift = sql.indexOf('update public.active_curses')
+    const cardsShift = sql.indexOf("'{submitted_at}'")
+    const gamesRestore = sql.indexOf('update public.games set status = v_prior_status')
+    expect(cursesShift).toBeGreaterThan(-1)
+    expect(cursesShift).toBeLessThan(cardsShift)
+    expect(cardsShift).toBeLessThan(gamesRestore)
+  })
+
+  // P5: Frozen's self-reported violations stretched an 8-min curse to 32 min,
+  // so a player who closed the app served 8 and an honest one served up to 32.
+  it('clamps the Frozen extension ceiling to 1.5x inside the RPC', () => {
+    const sql = migration('0051_frozen_extension_ceiling.sql')
+    expect(sql).toContain('v_max_factor constant numeric := 1.5')
+    // Clamped from the caller's value, so no route can reinstate 4x.
+    expect(sql).toContain('v_factor := least(p_max_extension_factor::numeric, v_max_factor)')
+    // The ceiling term must use the clamped factor, not the raw parameter.
+    expect(sql).toContain('p_nominal_duration_seconds*v_factor')
+    expect(sql).not.toContain('p_nominal_duration_seconds*p_max_extension_factor')
+    // The clamp has to happen before the expiry is recomputed.
+    expect(sql.indexOf('v_factor := least(')).toBeLessThan(sql.indexOf('v_expires_at:=least('))
+    // Mechanisms P5 explicitly keeps: per-second dedupe + first-write-wins anchor.
+    expect(sql).toContain('on conflict do nothing')
+    expect(sql).toContain("raise exception 'frozen_anchor_required'")
+  })
+
+  // P13: with every client offline nothing polled /expire-curses, so timed
+  // curses read as permanent while being inert.
+  it('sweeps expired curses server-side, skipping paused games', () => {
+    const sql = migration('0052_pg_cron_curse_expiry.sql')
+    expect(sql).toContain('create extension if not exists pg_cron')
+    expect(sql).toContain("cron.schedule(\n      'expire-curses-sweep',\n      '30 seconds'")
+    // Only in-play games: expiring mid-pause would steal time that resume owes
+    // back (0027/0050 shift every expires_at forward by the paused duration).
+    expect(sql).toContain("where g.status in ('live', 'flag_found')")
+    // Reuses the audited atomic path rather than deleting rows itself.
+    expect(sql).toContain('public.expire_curses_atomic(v_game_id, null)')
+    expect(sql).not.toMatch(/delete\s+from\s+public\.active_curses/i)
+    // One stuck game must not abort the sweep for every other game.
+    expect(sql).toContain("set local lock_timeout = '2s'")
+    expect(sql).toContain('exception when others then')
+    // Housekeeping stays service-role only.
+    expect(sql).toContain('revoke all on function public.sweep_expired_curses() from public, anon, authenticated')
+  })
 })

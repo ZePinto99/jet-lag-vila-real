@@ -7,6 +7,7 @@ import { awardChallenge } from '@/lib/server/challengeAward'
 import { isTeamActionLocked } from '@/lib/server/actionLock'
 import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { validatePublicProofPhoto } from '@/lib/server/storageProof'
+import { CHALLENGE_GEOFENCE_M } from '@/lib/gameConstants'
 import challengesCatalog from '@/data/challenges.json'
 import type {
   Card,
@@ -16,15 +17,6 @@ import type {
   SubmitChallengeResponse,
   Team,
 } from '@/lib/types'
-
-// ---------------------------------------------------------------------------
-// Constants (RULEBOOK §7.2 — first-blood bonus, §8.1 — challenges)
-// ---------------------------------------------------------------------------
-
-// Geofence radius for a challenge submission. Looser than flag-attempt (20 m)
-// since challenges happen at the surrounding location, not strictly at the
-// marker. 100 m generously covers "I'm at the landmark" for walking play.
-const CHALLENGE_GEOFENCE_M = 100
 
 // ---------------------------------------------------------------------------
 // Challenge catalog

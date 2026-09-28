@@ -91,7 +91,7 @@ The three UTAD locations were removed when the West home base moved into Vila Ve
 
 ### 3.4 Walking budget reality check
 
-From city center (Sé), approximate one-way walking times:
+From the city centre, approximate one-way walking times. Measured from the Sé; the §4.1 assembly point (Largo do Pelourinho) is 61 m away, so every figure below holds for either:
 
 | Landmark | Time |
 |---|---|
@@ -109,9 +109,9 @@ Vila Velha ↔ Biblioteca (the two home bases) is ~680 m in a straight line and 
 
 ### 4.1 Setup (30 min)
 
-1. Players assemble at the city-center landmark (Sé).
+1. Players assemble at **Largo do Pelourinho** — the city-centre neutral landmark, 61 m from the Sé.
 
-> ⚠️ **Open design question — do not treat as settled.** §3.3 lists the Sé Catedral in the **East candidate pool**, and `data/landmarks.json` confirms `team_pool: "east"` — so East may hide its real flag there, and this step gathers both teams at a possible flag site. Three ways out, each with different gameplay consequences: (a) move the assembly point to a true neutral (Largo do Pelourinho is 61 m away), (b) remove Sé from the East pool, or (c) accept the leak as flavour. Pick one before the next game.
+> ℹ️ **Why Pelourinho and not the Sé.** Earlier editions assembled at the Sé Catedral, but §3.3 lists the Sé in the **East candidate pool** (`data/landmarks.json` confirms `team_pool: "east"`), so East could hide its real flag exactly where both teams spent 30 minutes standing — and the Sé has a purpose-written flag mini-challenge a West player could answer in advance. Largo do Pelourinho is `team_pool: "neutral"`, so it can never hold a flag, and at 61 m away the walk and the meeting spot are unchanged in practice. Neither team's hiding options are affected.
 2. Teams form, app accounts are created, and players join the game. The creator is the lobby host; there is no gameplay captain role.
 3. Teams walk to their home bases. Timer does not start yet.
 4. At home base, the team collectively selects 5 candidate landmarks and secretly assigns: 1 real flag, 2 decoys, 2 empty. Any team member can do this in the app.
@@ -130,7 +130,7 @@ Game ends when **either**:
 
 ### 4.4 Wrap (30 min)
 
-Teams return to Sé. App shows full event log, winner, and stats.
+Teams return to Largo do Pelourinho (the same neutral assembly point as §4.1). App shows full event log, winner, and stats.
 
 ---
 
@@ -164,6 +164,8 @@ Each candidate's mini-challenge is a Vila Real–specific photo task (see `data/
 
 Defenders can spend **150 coins** to **harden** their own flag once per game. Hardening is implemented as a **tighter attempt geofence** (~12 m instead of ~28 m), *not* a visible change to the challenge text — otherwise a raider seeing a different/harder task would learn which enemy candidate is the real flag (only the real flag can be hardened). Cannot be hardened twice.
 
+Hardening is available **from the moment your team has placed its flags** — during the setup phase as well as live play — so you can harden the flag you are deciding where to hide. Nobody starts with enough coins for it (teams start with 100), so in practice it is still something you buy once income arrives.
+
 ---
 
 ## 6. Tag rules
@@ -174,13 +176,17 @@ Vila Real's compact ridge-and-valley geography makes a strict east/west midline 
 - A **defender** is any player currently inside their own defense zone.
 - A **raider** is any player currently outside their own defense zone. An enemy within **50 m of one of your candidates** also counts as a raider for your team, even if overlapping 200 m zones place them inside their own union; attackers cannot gain immunity while standing on your objective.
 - When a defender comes within **5 m** of any enemy raider, a **Tag button activates automatically** in the app. Tapping it tags **every adversary currently within that 5 m radius** simultaneously — a single tap catches an entire raiding party if they're bunched together. The app enables the button only when GPS confirms (a) the defender is inside their own defense zone and (b) the proximity threshold is met. The tag is recorded server-side against both players' coordinates at that timestamp.
-- **Camping rule:** defenders cannot stand within 50 m of any of their own candidate landmarks for more than 2 consecutive minutes. The app warns at 90 s and disables the Tag button at 120 s. They must leave the radius for at least 60 s to reset. (The 50 m no-stand zone sits inside the 200 m defense zone — you can patrol the donut between them freely.)
+- **Camping rule:** defenders cannot stand within 50 m of any of their own candidate landmarks for more than 2 consecutive minutes. The app warns at 90 s and disables the Tag button at 120 s. They must leave the radius for at least 60 s to reset. (The 50 m no-stand zone sits inside the 200 m defense zone — you can patrol the donut between them freely.) Both the 90 s warning and the 120 s lock are counted by the server, so they survive a reload — but the timer only advances while the app is sending your position, and the warning can only be *shown* to an app that is open. Keep it open while you defend: if you close it, the warning is the part you lose, and the lock is still waiting when you come back.
 - A Tag action:
   - Discards at most **1 random intel card from the raiding team in total**, whether it catches one raider or a whole bunched party
 - Each tagged raider:
   - Is assigned the nearest **neutral landmark** from the verified tag position
   - Must confirm arrival at that exact geofence, then walk at least **45 m away** before respawn clears; they remain immune and action-locked during both stages
   - Cannot be tagged again until they leave the neutral landmark
+  - **Cannot be stuck there forever.** If GPS will not confirm arrival, the respawn clears automatically after **10 minutes**. The lobby host can also release a player immediately from the app — but **only someone on the opposing team, never themselves or a teammate.** 10 minutes is longer than any real walk to a neutral landmark in the play area, so waiting is always worse than walking: the escape hatch exists for a broken phone, not as a shortcut. (The own-team restriction is not politeness — without it the host, who is just whoever created the game, could cancel every tag against their own side and be effectively immune to the only physical mechanic in the game.)
+- **Tagging the flag carrier strips the flag.** A raider who has photographed the real flag (§5.2) and is carrying it home loses that status the moment they are tagged. The photo still stands as a scored discovery (§13, +10 pts), but the run is over: the carrier respawns like any other tagged raider and nobody is carrying the flag afterwards. To win, their team must photograph the real flag again and carry it home on a fresh run. Every legal tag is made by a defender standing inside their own defense zone, so any successful interception counts — there is no separate "only at home" condition.
+
+> ℹ️ **App-enforced.** `apply_tag_atomic_unchecked` (migration `0053`) clears `players.flag_carrier` on every tag — single or bulk — and emits a `flag_carrier_stripped` event so the app can tell both teams the run ended. The game's `flag_found` status is deliberately *not* reverted: the enemy flag stays discovered and the photo keeps its points; what the tag removes is that player's ability to finish the run.
 
 ---
 
@@ -200,7 +206,7 @@ Vila Real's compact ridge-and-valley geography makes a strict east/west midline 
 
 | Action | Cost |
 |---|---|
-| Buy 1 intel card | 30–100 (varies by intel type) |
+| Buy 1 intel card | 30–80 (varies by intel type) |
 | Buy 1 curse die | 50 |
 | Roll up to 3 dice combined | 50 × number of dice |
 | Harden own flag challenge (one-time) | 150 |
@@ -216,6 +222,7 @@ Three decks live in the app. Drawing/buying from a deck is a server action that 
 - Open the Challenges tab in the app.
 - See up to 3 active challenges at any time, refreshed when completed.
 - Each challenge has: location, task, photo proof requirement, coin reward.
+- Challenges tied to a landmark must be submitted **within ~60 m** of it, so you have to actually go there. (The two closest challenge landmarks are ~61 m apart, so you can never claim two from one spot.) The handful of challenges with no fixed location skip this check.
 - In 1v1 games, challenges that explicitly require a teammate are omitted from the draw.
 - Submit photo → the other team may accept or reject it. If nobody rejects within **120 seconds**, the app accepts it automatically, credits the coins exactly once, and draws the replacement.
 
@@ -300,6 +307,8 @@ Each curse is tagged with its **enforcement category**:
 - **[A] Team Quarantine** — 15 min, all team members must stay within 10 m of each other (not available in 1v1)
 - **[L] Full Stop** — 10 min, no app actions allowed (no purchases, no tags, no challenge submissions)
 
+> ⚠️ **The major tier is deliberately a lottery, and Full Stop is its jackpot.** Because "no tags" means a defender **cannot defend their own flag for 10 minutes** — and cannot counter-curse either, since buying a curse is itself an action — a well-timed Full Stop can decide the game outright. Meanwhile Frozen, Pilgrimage and Team Quarantine in the *same* tier at the *same* price carry no automated penalty at all: they show a live readout and rely on honour. So 150 coins on three dice buys either a game-deciding shutdown or a spread readout, depending on the roll. That spread is intended — a major roll should feel like a gamble — but go in knowing it, and expect a Full Stop to change the shape of the game rather than merely inconvenience someone.
+
 > New rolls exclude disabled entries, identical active effects, Coin Drain when the target has zero coins, and Intel Loss when it has no in-hand intel. If the rolled tier has no eligible result, no coins are spent.
 
 > **Note on Slow Walk:** earlier drafts included a "heel-to-toe" gait requirement. Dropped — GPS can prove slow speed but not gait, and heel-to-toe in public is uncomfortable for most players. Slow Walk by speed alone is the right tradeoff.
@@ -313,19 +322,22 @@ Each card reveals one piece of information about the *enemy team's* flag assignm
 | # | Card | Reveals | Cost |
 |---|---|---|---|
 | I1 | North/South | Whether the real flag is N or S of the fixed midline for the enemy team's full candidate pool | 30 |
-| I2 | East/West | Whether the real flag is E or W of the enemy team's home base | 30 |
-| I3 | Eliminate One | Names one of the 5 candidate landmarks that is *not* the real flag | 50 |
-| I4 | Eliminate Two | Names two candidate landmarks that are *not* the real flag | 80 |
-| I5 | Decoy Reveal | Names one of the two decoys (does not reveal real) | 100 |
-| I6 | Hot/Cold | Immutable distance bracket from your GPS **at purchase time** to the real flag (<200 m / <500 m / <1 km / further) | 60 |
-| I7 | Surroundings | One photo of the surroundings within 30 m of the real flag, no marker visible | 80 |
-| I8 | Direction | Broad compass direction from city center to real flag (N / E / S / W); the map highlights a 90° quadrant without eliminating candidates | 80 |
+| I2 | Eliminate One | Names one of the 5 candidate landmarks that is *not* the real flag | 50 |
+| I3 | Eliminate Two | Names two candidate landmarks that are *not* the real flag | 80 |
+| I4 | Decoy Reveal | Names one of the two decoys (does not reveal real) | 45 |
+| I5 | Hot/Cold | Immutable distance bracket from your GPS **at purchase time** to the real flag (<200 m / <500 m / <1 km / further) | 60 |
+| I6 | Surroundings | One photo of the surroundings within 30 m of the real flag, no marker visible | 80 |
+| I7 | Direction | Broad compass direction from city center to real flag (N / E / S / W); the map highlights a 90° quadrant without eliminating candidates | 50 |
 
 I1 uses fixed full-pool pivots so both sides have the same exhaustive clue distribution: West **41.2954885**, East **41.29820795**. The persisted card payload carries the chosen pivot; legacy cards fall back to the former city latitude.
 
 *(The former I9 "Landmark Type" intel was removed: with only ~7 candidates of mixed kinds, revealing the category near-uniquely identified the flag.)*
 
-> **Anti-spam:** a team may not buy more than 4 intel cards total. Forces commitment and prevents the rich-get-richer spiral.
+*(The former I2 "East/West" intel was also removed. It answered whether the real flag lay E or W of the defending team's own home longitude. Measured against the real candidate pools that pivot splits **6 east / 1 west** for West and **1 east / 6 west** for East, so **6 times in 7 the card eliminated exactly one candidate for 30 coins** — what I2 Eliminate One already does for 50, with no geometry to reason about. The 1-in-7 case eliminated 6, making it a lottery card wearing a deduction card's clothes. Its one genuinely strong case was also broken: a team hiding its real flag **on** its own home base set pivot = flag longitude, and the cheapest card in the deck suddenly narrowed **4 of 5** — strength decided entirely by where the defender hid. Pivoting on the buyer's home instead was the original design and had already been reverted, because the two pools are geographically separated and it measures 0/7 and 6/1, i.e. a near-constant answer. With no good pivot available, and the card near-redundant with I1 — measured, it added only **one extra partition** on top of I1's clean 3N/4S split, taking 2 groups to 3 — it was deleted rather than patched.)*
+
+> **Anti-spam:** a team may **hold at most 4 intel cards**, and may never buy the same card twice. Forces commitment and prevents the rich-get-richer spiral.
+>
+> A card destroyed by an **enemy action** — a tag, an Intel Loss curse, or photographing a decoy — frees its slot, so the team may buy a *different* card to replace it. Losing a card costs you the card, not the slot. Because a card can never be re-bought, the whole catalogue is still only 7 cards deep, so no team can churn intel by deliberately losing it.
 
 ---
 
@@ -337,7 +349,7 @@ The app is the single source of truth. It must:
 2. **Maintain coin ledger** as an append-only event log; UI shows derived balance.
 3. **Adjudicate flag attempts:** validate current GPS plus a real image object stored under the submitting player/game path, then return the hidden real/decoy/empty result. The other team can inspect the proof.
 4. **Enforce curses:** push notifications, run timers, prompt for compliance photos when required.
-5. **Enforce camping limits:** detect a defender within 50 m of own landmark, warn at 90 s, lock tag at 120 s.
+5. **Enforce camping limits:** detect a defender within 50 m of own landmark, warn at 90 s, lock tag at 120 s. Both thresholds are counted server-side from position heartbeats, so they survive a reload; the clock only advances while a phone is reporting, and the warning is only *displayed* to an open app.
 6. **Prevent retries on intel:** once bought, cannot refund; tagged player loses 1 random intel.
 7. **Hide secret state:** real flag assignments are omitted from enemy-facing API snapshots; the owning team can see its setup.
 8. **Log every action** so the wrap-up can show a full timeline.
@@ -372,7 +384,7 @@ If still tied: most challenges completed wins. Then most coins. Then coin flip.
 - **Candidate landmark:** one of 5 places where a team's flag *could* be.
 - **Decoy:** a marker placed at a candidate landmark that is not the real flag.
 - **Flag challenge / Challenge gate:** task required to claim a flag photo at a candidate landmark.
-- **Flag carrier:** the player who submitted the validated flag photo; must reach home base geofence to trigger the win.
+- **Flag carrier:** the player who submitted the validated flag photo; must reach home base geofence to trigger the win. Being tagged strips the flag and ends the run (§6).
 - **Intel:** information cards about the enemy flag.
 - **Tag:** physical interception of a raider by a defender in their own territory.
 - **Raider:** a player outside their own defense zone, or an enemy within 50 m of one of your candidates for your team's tag eligibility.

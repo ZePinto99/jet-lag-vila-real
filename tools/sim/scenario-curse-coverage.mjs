@@ -28,7 +28,8 @@
 //                           solo-quarantine → row + params only
 //   6.     frozen extend    /extend-curse max reachable duration
 //   7.     eligibility      0 coins / 0 intel / min_team_size in 1v1,
-//                           and the no_available_curse oracle
+//                           and the no_available_curse oracle (P6: tier echo removed,
+//                           failed rolls now logged as curse_roll_failed)
 //   8.     no-stack + expiry lifecycle
 
 import { makeGameN, coord, apiGet, db, dbScript, sleep, BASE } from './harness.mjs'
@@ -242,6 +243,23 @@ function clearBlockers(gid, enemyTeamId) {
 }
 
 /**
+ * Recover the tier of the most recent refused roll from the server's own
+ * `curse_roll_failed` event (finding P6 removed the tier from the HTTP body).
+ * The event deliberately stores only the buyer's team and their own dice, so we
+ * re-derive the tier from dice_total exactly as buy-curse/route.ts does.
+ */
+function lastRefusedTier(gid, buyerTeamId) {
+  const rows = db(
+    `select payload->>'dice_total' from events where game_id='${gid}' and type='curse_roll_failed' and payload->>'team_id'='${buyerTeamId}' order by created_at desc limit 1;`,
+  )
+  const total = Number(String(rows[0] ?? rows))
+  if (!Number.isFinite(total)) return undefined
+  if (total <= 3) return 'minor'
+  if (total <= 8) return 'medium'
+  return 'major'
+}
+
+/**
  * Roll buy-curse until the dice land in `tier`, refunding the buyer and
  * discarding any wrong-tier cast so the eligibility state stays pinned.
  * Returns the successful response body, or the terminal 409 for `tier`.
@@ -256,8 +274,14 @@ async function rollForTier(gid, buyer, buyerTeamId, enemyTeamId, tier, numDice, 
       num_dice: numDice,
     })
     if (r.status === 409 && r.body.error === 'no_available_curse') {
-      observed.push(`409:${r.body.details?.tier}`)
-      if (r.body.details?.tier === tier) return { ok: false, r, observed }
+      // Finding P6: the 409 no longer echoes the rolled tier back to the buyer,
+      // because that told a free prober which bucket of hidden enemy state had
+      // been exhausted. The tier is still recoverable HERE only because the sim
+      // reads the server's own `curse_roll_failed` event with admin DB access —
+      // a player cannot do this from the response.
+      const refusedTier = lastRefusedTier(gid, buyerTeamId)
+      observed.push(`409:${refusedTier}`)
+      if (refusedTier === tier) return { ok: false, r, observed }
       continue
     }
     if (r.status >= 400) return { ok: false, r, observed, hardError: true }
@@ -283,7 +307,36 @@ async function castExactly(gid, buyer, buyerTeamId, enemyTeamId, ref, teamSize, 
   if (!def) throw new Error(`unknown curse ${ref}`)
   const numDice = def.tier === 'major' ? 3 : def.tier === 'minor' ? 1 : 2
   blockTierExcept(gid, enemyTeamId, def.tier, ref, teamSize)
-  if (def.tier === 'major') {
+
+  // A MEDIUM cast rolls 2 dice, which reach 9-12 (27.8% per roll) and therefore
+  // land on the MAJOR tier. That matters because rollForTier can only undo a
+  // wrong-tier cast by deleting its active_curses row — and coin-drain /
+  // intel-loss are one-shot LEDGER effects with no row, so a stray major roll
+  // permanently debits 50 enemy coins or expires an enemy intel card. That
+  // corrupted the "enemy coins/intel untouched by the cast" assertions in
+  // group 4 non-deterministically, depending purely on the dice.
+  //
+  // So for any non-major cast, also pin the major tier: install row blockers
+  // for the four majors that have rows, and starve the two ledger one-shots by
+  // zeroing the predicates their eligibility reads. Both are restored below, so
+  // the caller still observes the enemy's real pre-cast coins and intel.
+  const restore = []
+  if (def.tier !== 'major') {
+    blockTierExcept(gid, enemyTeamId, 'major', '__none__', teamSize)
+    const coins = Number(db(`select coins from teams where id='${enemyTeamId}';`)[0])
+    if (coins > 0) {
+      db(`update teams set coins = 0 where id='${enemyTeamId}';`)
+      restore.push(`update teams set coins = ${coins} where id='${enemyTeamId}';`)
+    }
+    const heldIds = db(
+      `select id from cards where game_id='${gid}' and team_id='${enemyTeamId}' and kind='intel' and state='in_hand';`,
+    ).filter(Boolean)
+    if (heldIds.length > 0) {
+      const list = heldIds.map((id) => `'${String(id)}'`).join(',')
+      db(`update cards set state='consumed' where id in (${list});`)
+      restore.push(`update cards set state='in_hand' where id in (${list});`)
+    }
+  } else {
     // coin-drain / intel-loss have no row to block: starve their predicates.
     if (ref !== 'curse.coin-drain' && opts.keepEnemyCoins !== true) {
       db(`update teams set coins = 0 where id='${enemyTeamId}';`)
@@ -294,7 +347,9 @@ async function castExactly(gid, buyer, buyerTeamId, enemyTeamId, ref, teamSize, 
       )
     }
   }
+
   const out = await rollForTier(gid, buyer, buyerTeamId, enemyTeamId, def.tier, numDice)
+  for (const statement of restore) db(statement)
   if (opts.keepBlockers !== true) clearBlockers(gid, enemyTeamId)
   return out
 }
@@ -538,7 +593,7 @@ await strictStep(rec, 'group 2: action locks', async () => {
   const afterExpiry = await post(`/api/games/${g.gid}/buy-intel`, {
     device_id: g.east[0].device,
     player_id: g.east[0].player,
-    intel_ref: 'intel.east-west',
+    intel_ref: 'intel.eliminate-one',
   })
   rec.check(
     'full-stop: actions work again once expired',
@@ -622,10 +677,15 @@ await strictStep(rec, 'group 2: action locks', async () => {
       player_id: g.east[0].player,
       intel_ref: 'intel.eliminate-one',
     })
+    // What is under test is ONLY that `actions_locked` is gone. The purchase
+    // itself may legitimately still be refused for an unrelated reason — this
+    // team has bought intel earlier in the scenario, so a duplicate ref or a
+    // full hand is an expected, different 409. Asserting `status < 400` used to
+    // pass by accident and would silently break on any deck change.
     rec.check(
       'pilgrimage: arriving clears the action lock',
-      unlocked.status < 400,
-      `status=${unlocked.status} ${unlocked.body.error ?? 'ok'}`,
+      unlocked.body.error !== 'actions_locked',
+      `status=${unlocked.status} error=${unlocked.body.error ?? 'ok'} (any error except actions_locked proves the lock lifted)`,
     )
     const retry = await post(`/api/games/${g.gid}/complete-pilgrimage`, {
       device_id: g.east[0].device,
@@ -718,7 +778,7 @@ await strictStep(rec, 'group 3: [L] ledger effects', async () => {
   db(`update teams set coins = 9000 where id='${g.wTeam}';`)
   db(`update teams set coins = 900 where id='${g.eTeam}';`)
   db(`delete from active_curses where game_id='${g.gid}' and target_team_id='${g.eTeam}';`)
-  for (const ref of ['intel.north-south', 'intel.east-west', 'intel.eliminate-one']) {
+  for (const ref of ['intel.north-south', 'intel.eliminate-one', 'intel.eliminate-two']) {
     await post(`/api/games/${g.gid}/buy-intel`, {
       device_id: g.east[0].device,
       player_id: g.east[0].player,
@@ -769,7 +829,7 @@ await strictStep(rec, 'group 3: [L] ledger effects', async () => {
       `refs=${JSON.stringify(activeRefs(g.gid, g.eTeam))}`,
     )
     rec.note(
-      `NOTE: intel-loss expires the card but the intel CAP counts any state (buy-intel/route.ts:225) — the slot is burned, not refunded`,
+      `NOTE (P1/P16 fixed in the route, still blocked in the RPC): intel-loss expires one card, and buy-intel/route.ts now counts only in_hand cards against the cap, so the slot is freed and the curse costs exactly the card its catalogue text promises. The authoritative RPC (purchase_intel_atomic_unchecked, 0015:246) still counts ANY state and hardcodes 4, so it OVERRIDES the route until a migration aligns it — a team at 4 held cards that loses one to this curse is still refused intel_cap_reached by the RPC.`,
     )
   }
 })
@@ -820,7 +880,7 @@ await strictStep(rec, 'group 4: honour-only curses (check-in, mute)', async () =
     const act = await post(`/api/games/${g.gid}/buy-intel`, {
       device_id: g.east[0].device,
       player_id: g.east[0].player,
-      intel_ref: ref === 'curse.check-in' ? 'intel.north-south' : 'intel.east-west',
+      intel_ref: ref === 'curse.check-in' ? 'intel.north-south' : 'intel.eliminate-one',
     })
     rec.check(
       `${ref}: does NOT lock actions — cursed team can still spend`,
@@ -1063,14 +1123,22 @@ await strictStep(rec, 'group 6: Frozen extension ceiling', async () => {
   )
 
   // --- Phase B: the ceiling ------------------------------------------------
-  // Reaching 4x needs 3 x 480 = 1440 distinct violation seconds. Walking there
-  // through the HTTP route would take 1440 real seconds, because a report can
-  // only ever cover wall time that has actually elapsed. The RPC reads those
-  // buckets as `count(*)` alone (0027:143) — their instants are never compared
-  // to anything — so seeding distinct buckets in the far past is faithful input,
-  // and the CEILING ITSELF is then computed by the production RPC via a real
-  // /extend-curse call. That call is what we measure.
-  const seedTo = nominalS * 3 + 120 // comfortably past the 4x cap
+  // P5 fix (migration 0051): the ceiling is now nominal x 1.5, clamped INSIDE
+  // report_frozen_state, so the 240 extra seconds it allows cannot be raised by
+  // any caller. The route still passes MAX_EXTENSION_FACTOR = 4; the RPC narrows
+  // it. Saturating it needs > 240 distinct violation seconds; we seed far past
+  // that (and past the old 4x ceiling) so the same staging proves both that the
+  // clamp binds and that the old 1920 s is now unreachable.
+  //
+  // Walking there through the HTTP route would take as many real seconds,
+  // because a report can only ever cover wall time that has actually elapsed.
+  // The RPC reads those buckets as `count(*)` alone (0027:143, 0051) — their
+  // instants are never compared to anything — so seeding distinct buckets in the
+  // far past is faithful input, and the CEILING ITSELF is then computed by the
+  // production RPC via a real /extend-curse call. That call is what we measure.
+  const MAX_EXTENSION_FACTOR = 1.5 // 0051
+  const cappedDurS = Math.floor(nominalS * MAX_EXTENSION_FACTOR)
+  const seedTo = nominalS * 3 + 120 // past BOTH the 1.5x cap and the old 4x one
   dbScript(`
 insert into frozen_violation_seconds (curse_id, second_at)
 select '${cid}', timestamptz '2020-01-01 00:00:00+00' + (i * interval '1 second')
@@ -1079,7 +1147,7 @@ on conflict do nothing;
 `)
   const seeded = frozenBucketCount(cid)
   rec.check(
-    `frozen: ${seeded} violation seconds staged (> ${nominalS * 3} needed to reach the 4x cap)`,
+    `frozen: ${seeded} violation seconds staged (only ${cappedDurS - nominalS} needed to saturate the 1.5x cap; also past the old 4x ceiling of ${nominalS * 4}s)`,
     seeded > nominalS * 3,
     `buckets=${seeded}`,
   )
@@ -1096,9 +1164,9 @@ on conflict do nothing;
     `status=${capped.status} total_violation=${capped.body.total_violation_seconds}s`,
   )
   rec.check(
-    `frozen: duration CEILING is exactly nominal x MAX_EXTENSION_FACTOR = ${nominalS * 4}s (32 min)`,
-    maxDur === nominalS * 4,
-    `stored duration=${maxDur}s (${(maxDur / 60).toFixed(1)} min) with ${capped.body.total_violation_seconds}s of violations reported — uncapped arithmetic would give ${nominalS + (capped.body.total_violation_seconds ?? 0)}s`,
+    `frozen: duration CEILING is exactly nominal x ${MAX_EXTENSION_FACTOR} = ${cappedDurS}s (${(cappedDurS / 60).toFixed(0)} min) — 0051 clamps the 4x the route still passes`,
+    maxDur === cappedDurS,
+    `stored duration=${maxDur}s (${(maxDur / 60).toFixed(1)} min) with ${capped.body.total_violation_seconds}s of violations reported — uncapped arithmetic would give ${nominalS + (capped.body.total_violation_seconds ?? 0)}s, and the pre-0051 4x ceiling would have given ${nominalS * 4}s`,
   )
   rec.check(
     'frozen: further violations past the cap do NOT extend it further',
@@ -1117,7 +1185,7 @@ on conflict do nothing;
   total = capped.body.total_violation_seconds ?? total
   results.frozen = { nominalS, maxDurationS: maxDur, totalViolationS: total, ladder }
   results.mechanism['curse.frozen'] =
-    'active_curses row + client drift readout; SELF-REPORTED violations extend expiry 1:1 up to 4x nominal'
+    `active_curses row + client drift readout; SELF-REPORTED violations extend expiry 1:1 up to ${MAX_EXTENSION_FACTOR}x nominal (0051 clamp)`
 
   // The asymmetry: a client that never reports serves only the nominal 8 min.
   db(`delete from active_curses where game_id='${g.gid}' and target_team_id='${g.eTeam}';`)
@@ -1135,7 +1203,7 @@ on conflict do nothing;
       `stored=${sDur}s expired=${JSON.stringify(exp.body.expired_curse_ids ?? [])}`,
     )
     results.findings.push(
-      `FROZEN ASYMMETRY (measured): honest self-reporting extends the curse 1:1 to a ceiling of ${maxDur}s (${(maxDur / 60).toFixed(0)} min) — 4x the ${nominalS}s (${nominalS / 60} min) nominal. A client that closes the app and reports nothing serves exactly ${sDur}s. The extension channel (/extend-curse) is driven solely by the CURSED team's own client (useCurseEnforcement.ts:181-330); nothing else can add a violation second. Cheating is therefore strictly dominant by up to ${maxDur - sDur}s (${((maxDur - sDur) / 60).toFixed(0)} min).`,
+      `FROZEN ASYMMETRY after the P5 fix (measured): honest self-reporting extends the curse 1:1 to a ceiling of ${maxDur}s (${(maxDur / 60).toFixed(0)} min) — ${MAX_EXTENSION_FACTOR}x the ${nominalS}s (${nominalS / 60} min) nominal, clamped inside report_frozen_state by migration 0051. A client that closes the app and reports nothing still serves exactly ${sDur}s, so the extension channel (/extend-curse) remains driven solely by the CURSED team's own client (useCurseEnforcement.ts:181-330) and nothing else can add a violation second. The asymmetry is therefore NOT closed — it is BOUNDED: dishonesty saves at most ${maxDur - sDur}s (${((maxDur - sDur) / 60).toFixed(0)} min), down from the pre-0051 ${nominalS * 4 - nominalS}s (${((nominalS * 4 - nominalS) / 60).toFixed(0)} min). Frozen stays non-free-to-ignore while the cost of honesty drops ~6x.`,
     )
   }
 })
@@ -1236,12 +1304,38 @@ await strictStep(rec, 'group 7: eligibility filters', async () => {
       `buy_curse charge events ${oracle.chargesBefore} → ${oracle.chargesAfter} across the failing call`,
     )
     rec.check(
-      'no_available_curse: the 409 body leaks the rolled tier back to the buyer',
-      oracle.r.body.details?.tier === 'major',
+      'no_available_curse: the 409 body no longer echoes the rolled tier (P6 leak closed)',
+      oracle.r.body.details === undefined,
       `details=${JSON.stringify(oracle.r.body.details)}`,
     )
+    const probeEvents = Number(
+      db(
+        `select count(*) from events where game_id='${g.gid}' and type='curse_roll_failed' and payload->>'team_id'='${g.wTeam}';`,
+      )[0],
+    )
+    rec.check(
+      'no_available_curse: the failed roll IS logged, so the probe is attributable (P6)',
+      probeEvents >= 1,
+      `curse_roll_failed events for the buyer=${probeEvents}`,
+    )
+    const probePayload = JSON.parse(
+      String(
+        db(
+          `select payload::text from events where game_id='${g.gid}' and type='curse_roll_failed' and payload->>'team_id'='${g.wTeam}' order by created_at desc limit 1;`,
+        )[0],
+      ),
+    )
+    rec.check(
+      'no_available_curse: the logged probe carries no enemy state and no tier',
+      probePayload.tier === undefined &&
+        probePayload.team_id === g.wTeam &&
+        Object.keys(probePayload).every((key) =>
+          ['team_id', 'num_dice', 'dice_total', 'dice_rolls'].includes(key),
+        ),
+      `payload keys=${Object.keys(probePayload).join(',')}`,
+    )
     results.findings.push(
-      'FREE ORACLE (confirmed): a roll whose tier has no eligible curse returns 409 no_available_curse (buy-curse/route.ts:282-287) BEFORE buy_curse_atomic runs, so no coins move and no event is written. Because eligibility depends on enemy state (coins > 0, in_hand intel > 0, which refs are already active), the buyer can probe that hidden state for free by rolling repeatedly: a major-tier 409 means "enemy has 0 coins AND 0 intel AND the other three majors are already on them". Rolls are unmetered and unlogged, so the probe is also invisible to the victim.',
+      'FREE ORACLE (bounded after the P6 fix): a roll whose tier has no eligible curse still returns 409 no_available_curse BEFORE buy_curse_atomic runs and still moves no coins — RULEBOOK §10 explicitly says a tier with no eligible result costs nothing, so the refund is intended and was kept. Two of the three teeth are pulled: the response no longer echoes the rolled tier (so the prober is not told WHICH bucket of hidden enemy state was exhausted), and each failed roll now appends a `curse_roll_failed` event carrying only the buyer\'s own team and dice, so repeated probing is visible and attributable to the victim instead of silent. What remains is that probing is still free and still weakly informative in aggregate: a buyer who rolls enough can infer that some tier is empty. Charging for it would contradict the rulebook, so metering (a per-team roll budget) is the remaining lever if the field test shows it matters.',
     )
   }
 

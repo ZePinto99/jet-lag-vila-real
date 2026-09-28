@@ -21,8 +21,19 @@ interface IntelSeed {
 
 const INTEL_CATALOG: IntelSeed[] = intelSeed as IntelSeed[]
 
+// Display names for intel refs that have been RETIRED from data/intel.json but
+// may still sit in `cards` rows from earlier games. Without this the catalogue
+// lookup falls through to the raw ref and an old hand renders the title
+// "intel.east-west". PT copy still comes from lib/i18n/gameCatalog.ts.
+const RETIRED_INTEL_NAMES: Record<string, string> = {
+  'intel.east-west': 'East/West',
+}
+
 function intelName(ref: string, locale: Locale): string {
-  const fallback = INTEL_CATALOG.find((i) => i.id === ref)?.name ?? ref
+  const fallback =
+    INTEL_CATALOG.find((i) => i.id === ref)?.name ??
+    RETIRED_INTEL_NAMES[ref] ??
+    ref
   return localizeCatalogField(ref, 'name', fallback, locale)
 }
 
@@ -113,6 +124,8 @@ function IntelAnswerLine({ card }: { card: Card }) {
         <>Real flag is to the <strong>{a.direction}</strong> of the fixed enemy candidate-pool midline.</>
       )
     }
+    // Historical only: retired from data/intel.json and not purchasable. Kept
+    // so a card an old game already paid for still reads back its answer.
     case 'intel.east-west': {
       const a = answerFor(card, 'intel.east-west')
       return locale === 'pt' ? (

@@ -148,4 +148,153 @@ describe('RespawnBanner', () => {
     expect(screen.getByText(/ponto de respawn obrigatório é Largo do Pelourinho/)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Cheguei a Largo do Pelourinho' })).toBeEnabled()
   })
+
+  // P7: nothing clears the respawn state except walking there and confirming —
+  // no respawning_since, no timeout, no override. A player whose GPS will not
+  // confirm is stuck for the rest of the game AND action-locked throughout, so
+  // the banner has to state the lock, the live distance, and the only exit.
+  describe('stuck-player clarity (P7)', () => {
+    // Largo do Pelourinho, from data/landmarks.json.
+    const pelourinho = { lat: 41.29624, lng: -7.7458 }
+
+    it('states the action lock and names both timeout fallbacks', () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={gps}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+        />,
+      )
+
+      expect(
+        screen.getByText('You cannot tag, buy, or complete anything until this is done.'),
+      ).toBeVisible()
+      // Must name BOTH 0055 fallbacks. The previous assertion pinned the old
+      // copy ("This does not time out… nothing else clears it"), which 0055 made
+      // false — a test enforcing a lie to the player.
+      expect(
+        screen.getByText(/clears on its own after 10 minutes, or the host can release you/),
+      ).toBeVisible()
+    })
+
+    it('shows the live distance to the exact assigned landmark', () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={{ ...pelourinho, accuracy: 5, updated_at: 1000 }}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+        />,
+      )
+
+      expect(screen.getByText('0 m to Largo do Pelourinho')).toBeVisible()
+    })
+
+    it('reports distance as unavailable without GPS instead of showing a wrong number', () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={null}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+        />,
+      )
+
+      expect(screen.getByText('Distance unavailable — waiting for a GPS fix.')).toBeVisible()
+      expect(screen.queryByText(/m to Largo do Pelourinho/)).not.toBeInTheDocument()
+    })
+
+    it('inverts the distance goal after arrival, counting the metres still needed', () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={{ ...pelourinho, accuracy: 5, updated_at: 1000 }}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+          respawnArrived
+        />,
+      )
+
+      // Standing on the landmark: all 45 m of the leave radius still to walk.
+      expect(
+        screen.getByText('0 m from Largo do Pelourinho — 45 m needed.'),
+      ).toBeVisible()
+    })
+
+    it('confirms readiness once far enough away in the leave stage', () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={gps}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+          respawnArrived
+        />,
+      )
+
+      expect(
+        screen.getByText('Far enough from Largo do Pelourinho — confirm to rejoin.'),
+      ).toBeVisible()
+    })
+
+    it('only offers GPS recovery advice after a confirm actually fails', async () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={gps}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+        />,
+      )
+      // Not shown while nothing has failed yet — it would just be noise.
+      expect(screen.queryByText(/If GPS will not confirm you/)).not.toBeInTheDocument()
+
+      global.fetch = jest.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: 'not_at_respawn_landmark',
+            details: {
+              required_name: 'Largo do Pelourinho',
+              distance_m: 120,
+            },
+          }),
+          { status: 409 },
+        ),
+      )
+      await userEvent.click(screen.getByRole('button', { name: "I've reached Largo do Pelourinho" }))
+
+      expect(
+        await screen.findByText(
+          'If GPS will not confirm you at Largo do Pelourinho, walk a few steps and try again, or agree it with the other team.',
+        ),
+      ).toBeVisible()
+    })
+
+    it('localises the lock and timeout-fallback copy in PT-PT', () => {
+      renderWithProviders(
+        <RespawnBanner
+          gameId="game-1"
+          myPlayerId="player-1"
+          myGps={gps}
+          respawning
+          respawnTargetRef="landmark.largo-do-pelourinho"
+        />,
+        { language: 'pt' },
+      )
+
+      expect(
+        screen.getByText('Não podes apanhar, comprar nem concluir nada até isto estar feito.'),
+      ).toBeVisible()
+      expect(
+        screen.getByText(/resolve-se sozinho após 10 minutos, ou o anfitrião pode libertar-te/),
+      ).toBeVisible()
+    })
+  })
 })

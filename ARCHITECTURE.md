@@ -269,13 +269,19 @@ Validates:
 
 Computes answer server-side (reads own landmarks table with service role):
   I1 (North/South): compare real flag latitude to the fixed defending-side pool pivot (West 41.2954885 / East 41.29820795); persist it for overlays
-  I2 (East/West): compare real flag landmark lng to the enemy team's home longitude; include that pivot for the map overlay
-  I3 (Eliminate One): pick random non-real, non-already-revealed candidate
-  I4 (Eliminate Two): same, pick two
-  I5 (Decoy Reveal): reveal a decoy landmark ref
-  I6 (Hot/Cold): compute and persist an immutable purchase-time bracket + buy position; never persist or return the target coordinates
-  I7 (Surroundings): sign the private setup photo for a short-lived display URL
-  I8 (Direction): compute bearing from the canonical play-area centre
+  I2 (Eliminate One): pick random non-real, non-already-revealed candidate
+  I3 (Eliminate Two): same, pick two
+  I4 (Decoy Reveal): reveal a decoy landmark ref
+  I5 (Hot/Cold): compute and persist an immutable purchase-time bracket + buy position; never persist or return the target coordinates
+  I6 (Surroundings): sign the private setup photo for a short-lived display URL
+  I7 (Direction): compute bearing from the canonical play-area centre
+
+  The former I2 (East/West) is REMOVED from data/intel.json, so it has no
+  compute path and the ref is rejected as `invalid_intel_ref`. It eliminated
+  exactly one candidate 6 times in 7 for 30 coins and narrowed 4 of 5 when a
+  defender hid on its own home base; neither available pivot was sound — see
+  RULEBOOK §11 and SIM_EVALUATION P3a. Cards held by pre-removal games are
+  still decoded by narrowing.ts / overlays.ts / IntelCardDisplay.tsx.
 
 Writes:
   - deduct coins (events + teams.coins)
@@ -420,7 +426,7 @@ components/
 
 - **`haversine.ts`** — distance in metres between two {lat, lng} pairs.
 - **`zones.ts`** — defense-zone membership for the union of 200 m candidate circles.
-- **`playArea.ts`** — canonical 1.5 km play disk, the legacy I1 fallback latitude, and I8 bearing origin. New I1 cards persist the fixed defending-side pool pivot in their payload.
+- **`playArea.ts`** — canonical 1.5 km play disk, the legacy I1 fallback latitude, and I7 Direction bearing origin. New I1 cards persist the fixed defending-side pool pivot in their payload.
 - **`nearestNeutral.ts`** — server-assigned nearest respawn target.
 - **`polyline.ts`** — point-to-route distance for Detour streets.
 

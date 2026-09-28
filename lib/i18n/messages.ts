@@ -188,19 +188,113 @@ export const MESSAGES: MessageDict = {
   'map.confirmed': { en: 'Confirmed: {kind}', pt: 'Confirmado: {kind}' },
 
   // ---------- tag + respawn ----------
-  'tag.button_enabled': { en: 'TAG ({n} within 5 m)', pt: 'APANHAR ({n} a menos de 5 m)' },
+  'tag.button_enabled': { en: 'TAG ({n} within {m} m)', pt: 'APANHAR ({n} a menos de {m} m)' },
   'tag.button_disabled': { en: 'TAG', pt: 'APANHAR' },
+  // Plural forms are spelled out rather than "player(s)": this is the button's
+  // accessible name, so a screen reader speaks it verbatim and "player open
+  // paren s close paren" is not acceptable output.
+  'tag.aria_enabled_one': {
+    en: 'Tag 1 player within {m} metres',
+    pt: 'Apanhar 1 jogador a menos de {m} metros',
+  },
+  'tag.aria_enabled_many': {
+    en: 'Tag {n} players within {m} metres',
+    pt: 'Apanhar {n} jogadores a menos de {m} metros',
+  },
+  'tag.aria_disabled': { en: 'Tag button disabled', pt: 'Botão de captura desativado' },
   'tag.reason_no_gps': { en: 'Enable GPS to tag', pt: 'Ativa o GPS para apanhar' },
   'tag.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
-  'tag.reason_out_of_zone': { en: 'Not in defense zone', pt: 'Fora da zona de defesa' },
+  'tag.reason_out_of_zone': { en: 'Not in your defense zone', pt: 'Fora da tua zona de defesa' },
   'tag.reason_no_enemies': { en: 'No enemies within 5 m', pt: 'Sem adversários a menos de 5 m' },
-  'tag.reason_camping': { en: 'Camping locked', pt: 'Bloqueado por camping' },
-  'tag.confirm': { en: 'Tag {n} player(s)?', pt: 'Apanhar {n} jogador(es)?' },
-  'tag.success': { en: 'Tagged {n} player(s)', pt: 'Apanhaste {n} jogador(es)' },
+  'tag.reason_camping': {
+    en: 'Camping locked — leave own landmark to reset',
+    pt: 'Bloqueado por camping — afasta-te do teu marco para reiniciar',
+  },
+
+  // Camping banner (P8). Both thresholds are counted server-side from position
+  // heartbeats, so the warning survives a reload — but it can only be SHOWN to
+  // an app that is open, which the copy has to be honest about.
+  'camping.warning': {
+    en: 'Camping warning — {s}s until your Tag button switches off',
+    pt: 'Aviso de camping — {s}s até o teu botão de captura desligar',
+  },
+  'camping.warning_imminent': {
+    en: 'Camping — Tag switches off now. Leave your own landmark.',
+    pt: 'Camping — a captura desliga agora. Afasta-te do teu marco.',
+  },
+  'camping.locked': {
+    en: 'Camping locked — leave your own landmark for {s}s to reset',
+    pt: 'Bloqueado por camping — afasta-te do teu marco {s}s para reiniciar',
+  },
+  'camping.locked_progress': {
+    en: 'Camping locked — {s}s more away from your own landmark',
+    pt: 'Bloqueado por camping — faltam {s}s longe do teu marco',
+  },
+  // Singular and plural spelled out rather than "player(s)" — this copy is read
+  // by a player mid-walk and spoken by screen readers.
+  'tag.confirm_one': { en: 'Tag 1 player?', pt: 'Apanhar 1 jogador?' },
+  'tag.confirm_many': { en: 'Tag {n} players?', pt: 'Apanhar {n} jogadores?' },
+  'tag.success_one': { en: 'Tagged 1 player', pt: 'Apanhaste 1 jogador' },
+  'tag.success_many': { en: 'Tagged {n} players', pt: 'Apanhaste {n} jogadores' },
+
+  // Tag outcome copy (P12). A tap that lands nothing must always say why:
+  // "no tags landed" with no cause reads as a broken button.
+  'tag.result_tagged_one': { en: 'Tagged 1 player.', pt: 'Apanhaste 1 jogador.' },
+  'tag.result_tagged_many': { en: 'Tagged {n} players.', pt: 'Apanhaste {n} jogadores.' },
+  'tag.result_none': { en: 'No tags landed.', pt: 'Nenhuma captura foi aplicada.' },
+  'tag.result_rejected_count': { en: '({n} rejected)', pt: '({n} rejeitadas)' },
+  // Single target that was already down by the time the tap reached the server.
+  'tag.reject_already_respawning': {
+    en: 'They had already been tagged and are respawning — nothing to apply.',
+    pt: 'Já tinham sido apanhados e estão a reaparecer — não há nada para aplicar.',
+  },
+  // Multi-target batch: someone else's tag landed first, so the whole batch was
+  // rolled back. Nothing was applied, so retrying is the right move.
+  'tag.reject_batch_aborted': {
+    en: 'Someone else tagged one of them first, so nothing was applied. Tap again to catch the rest.',
+    pt: 'Outra pessoa apanhou um deles primeiro, por isso nada foi aplicado. Toca outra vez para apanhar os restantes.',
+  },
+  'tag.reject_out_of_range': {
+    en: 'They moved out of range before the tag landed.',
+    pt: 'Afastaram-se do alcance antes de a captura ser aplicada.',
+  },
+  'tag.reject_stale_position': {
+    en: 'Their position was too old to trust — wait for a fresh GPS fix.',
+    pt: 'A posição deles estava demasiado antiga — espera por um sinal de GPS novo.',
+  },
+  'tag.reject_target_not_raider': {
+    en: 'They count as a defender right now, not a raider.',
+    pt: 'Neste momento contam como defensores, não como invasores.',
+  },
+  'tag.reject_wrong_team_or_missing': {
+    en: 'That player is no longer a valid target.',
+    pt: 'Esse jogador já não é um alvo válido.',
+  },
+  'tag.reject_generic': {
+    en: 'One tag was rejected ({reason}).',
+    pt: 'Uma captura foi rejeitada ({reason}).',
+  },
+
+  // Flag carrier stripped by a tag (P2, RULEBOOK §6). Pending implementation —
+  // these are the strings the stripped carrier and the defender will see.
+  'tag.carrier_stripped': {
+    en: 'You tagged the flag carrier — their run is over and nobody is carrying the flag.',
+    pt: 'Apanhaste quem levava a bandeira — a corrida deles acabou e ninguém está a levar a bandeira.',
+  },
+  'respawn.flag_lost': {
+    en: 'You were carrying the flag and lost it. The photo still counts, but your team has to photograph the real flag again to win.',
+    pt: 'Estavas a levar a bandeira e perdeste-a. A foto continua a contar, mas a tua equipa tem de fotografar outra vez a bandeira verdadeira para ganhar.',
+  },
+
   'respawn.title': { en: 'You were tagged.', pt: 'Foste apanhado.' },
+  // The examples must be real `team_pool: "neutral"` landmarks from
+  // data/landmarks.json. This string previously offered "Sé" — which is an EAST
+  // candidate, not a neutral — so a tagged player could walk there in good faith
+  // and be refused by the geofence. The app assigns the specific landmark anyway;
+  // these are only illustrations of the kind of place to look for.
   'respawn.body': {
-    en: 'Walk to a NEUTRAL landmark (Sé, Pelourinho, Teatro, Rodoviária) and tap below when you arrive.',
-    pt: 'Caminha até um marco NEUTRO (Sé, Pelourinho, Teatro, Rodoviária) e toca abaixo quando lá chegares.',
+    en: 'Walk to a NEUTRAL landmark (Pelourinho, Capela Nova, Teatro, Rodoviária) and tap below when you arrive.',
+    pt: 'Caminha até um marco NEUTRO (Pelourinho, Capela Nova, Teatro, Rodoviária) e toca abaixo quando lá chegares.',
   },
   'respawn.button': { en: "I'm at a neutral landmark", pt: 'Estou num marco neutro' },
   'respawn.need_gps': { en: 'Enable GPS to confirm position', pt: 'Ativa o GPS para confirmar a posição' },
@@ -374,7 +468,6 @@ export const MESSAGES: MessageDict = {
   'status.intel_cards_title': { en: 'My intel cards', pt: 'As minhas cartas de intel' },
   'status.intel_cards_empty': { en: 'No intel purchased yet. Buy intel from the Actions tab.', pt: 'Ainda não compraste intel. Compra-a no separador Ações.' },
   'status.real_flag_north_south': { en: 'Real flag is to the {direction} of the city centre.', pt: 'A bandeira verdadeira fica a {direction} do centro da cidade.' },
-  'status.real_flag_east_west': { en: 'Real flag is to the {direction} of the enemy home base.', pt: 'A bandeira verdadeira fica a {direction} da base adversária.' },
   'status.not_real': { en: '{name} is NOT the real flag.', pt: '{name} NÃO tem a bandeira verdadeira.' },
   'status.not_real_two': { en: '{first} and {second} are NOT the real flag.', pt: '{first} e {second} NÃO têm a bandeira verdadeira.' },
   'status.is_decoy': { en: '{name} is a decoy.', pt: '{name} é um engano.' },
@@ -461,6 +554,27 @@ export const MESSAGES: MessageDict = {
   'curse.proof_error': {
     en: 'Could not submit proof ({error}).',
     pt: 'Não foi possível submeter a prova ({error}).',
+  },
+
+  // Proof-window pre-warning + closing alert (P14). Photo curses open narrow
+  // slots (Outfit Swap's second slot is 60 s, 19 min after the cast) and a
+  // missed slot cannot be reopened, so the window must be impossible to miss by
+  // accident. Copy only — no penalty is attached to a miss.
+  'curse.proof_upcoming': {
+    en: 'Photo needed in {s}s — get ready.',
+    pt: 'Foto necessária dentro de {s}s — prepara-te.',
+  },
+  'curse.proof_upcoming_min': {
+    en: 'Photo needed in {m}m {s}s — get ready.',
+    pt: 'Foto necessária dentro de {m}m {s}s — prepara-te.',
+  },
+  'curse.proof_closing': {
+    en: 'Last {s}s to submit this photo — it cannot be reopened.',
+    pt: 'Últimos {s}s para submeter esta foto — não pode ser reaberta.',
+  },
+  'curse.proof_window_hint': {
+    en: 'This is the only slot for this photo. Miss it and it stays missed.',
+    pt: 'Esta é a única janela para esta foto. Se a perderes, fica perdida.',
   },
 
   // ---------- flag attempt window / lockout (P2-1 / P2-3 / P2-4) ----------
@@ -743,6 +857,75 @@ export const MESSAGES: MessageDict = {
   'respawn.must_leave': {
     en: 'Arrival confirmed. Walk at least {distance} m away from {target} to rejoin.',
     pt: 'Chegada confirmada. Afasta-te pelo menos {distance} m de {target} para voltares ao jogo.',
+  },
+
+  // Stuck-respawn clarity (P7). There is no respawn timeout: nothing clears this
+  // state except the player walking to the target and confirming. So the banner
+  // has to state the lock, the live distance, and the exact way out.
+  'respawn.locked_notice': {
+    en: 'You cannot tag, buy, or complete anything until this is done.',
+    pt: 'Não podes apanhar, comprar nem concluir nada até isto estar feito.',
+  },
+  'respawn.distance_to_target': {
+    en: '{distance} m to {target}',
+    pt: '{distance} m até {target}',
+  },
+  'respawn.distance_unknown': {
+    en: 'Distance unavailable — waiting for a GPS fix.',
+    pt: 'Distância indisponível — à espera de sinal de GPS.',
+  },
+  'respawn.leave_progress': {
+    en: '{distance} m from {target} — {needed} m needed.',
+    pt: '{distance} m de {target} — faltam {needed} m.',
+  },
+  'respawn.leave_ready': {
+    en: 'Far enough from {target} — confirm to rejoin.',
+    pt: 'Já estás longe de {target} — confirma para voltares ao jogo.',
+  },
+  // Migration 0055 added a 10-minute grace sweep and a host override, which
+  // replaced the previous 'respawn.no_timeout_hint' string ("This does not time
+  // out… nothing else clears it"). That string had become false: it told a player
+  // whose GPS would not confirm that their evening was over, 30 seconds before the
+  // sweep would have released them — the exact failure 0055 exists to prevent.
+  // Walking is still strictly better than waiting (10 min is longer than any real
+  // walk to a neutral landmark), so the copy leads with walking.
+  // Host override for a stuck respawn (finding P7, migration 0055). Only shown
+  // to the host, and only while someone is actually respawning.
+  // Flag-carrier strip (finding P2, migration 0053). Both teams are told: it
+  // changes what each should do next — the losers must photograph the flag again,
+  // the defenders know their interception actually worked.
+  'toast.you_lost_the_flag': {
+    en: 'Tagged — you dropped the flag. Someone must photograph it again.',
+    pt: 'Apanhado — perdeste a bandeira. Alguém tem de a fotografar outra vez.',
+  },
+  'toast.teammate_lost_the_flag': {
+    en: '{player} was tagged and dropped the flag. It must be photographed again.',
+    pt: '{player} foi apanhado e perdeu a bandeira. Tem de ser fotografada outra vez.',
+  },
+  'toast.we_stripped_the_flag': {
+    en: 'Tag landed — the carrier dropped your flag. Their run is over.',
+    pt: 'Captura feita — o portador largou a vossa bandeira. A corrida dele acabou.',
+  },
+
+  'host_respawn.title': { en: 'Release a stuck player', pt: 'Libertar um jogador preso' },
+  'host_respawn.hint': {
+    en: 'Only if their GPS will not confirm. Walking to the neutral landmark is the normal way out, and this clears on its own after 10 minutes.',
+    pt: 'Apenas se o GPS não confirmar. Ir a pé até ao marco neutro é a saída normal, e isto resolve-se sozinho após 10 minutos.',
+  },
+  'host_respawn.arrived': { en: 'arrived, walking clear', pt: 'chegou, a afastar-se' },
+  'host_respawn.release': { en: 'Release', pt: 'Libertar' },
+  'host_respawn.confirm': { en: 'Confirm release', pt: 'Confirmar' },
+  'host_respawn.cancel': { en: 'Cancel', pt: 'Cancelar' },
+  'host_respawn.releasing': { en: 'Releasing…', pt: 'A libertar…' },
+  'host_respawn.failed': { en: 'Could not release ({reason})', pt: 'Não foi possível libertar ({reason})' },
+
+  'respawn.timeout_hint': {
+    en: 'Walking there is the fastest way out. If GPS will not confirm, this clears on its own after 10 minutes, or the host can release you.',
+    pt: 'Ir a pé até lá é a saída mais rápida. Se o GPS não confirmar, isto resolve-se sozinho após 10 minutos, ou o anfitrião pode libertar-te.',
+  },
+  'respawn.gps_stuck_hint': {
+    en: 'If GPS will not confirm you at {target}, walk a few steps and try again, or agree it with the other team.',
+    pt: 'Se o GPS não te confirmar em {target}, dá alguns passos e tenta outra vez, ou combina com a outra equipa.',
   },
 
   // ---------- challenge peer-verification (D14) ----------

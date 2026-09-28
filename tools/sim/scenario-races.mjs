@@ -16,7 +16,10 @@
 //   0046:12-62   expire_active_curse_ref_locked (shared by cast + bulk expiry)
 //   0049:23      bulk expiry now takes games FOR UPDATE first (deadlock fix)
 //   0048:45      review auto-accept deadline vs WALL clock
-//   0025/0027    weather pause: resume shifts started_at + curses only
+//   0025/0027    weather pause: resume shifts started_at + curses
+//   0050         ...and now pending challenge submitted_at too (P11 fix)
+//   0052         pg_cron sweep_expired_curses every 30 s (P13 fix), which
+//                skips paused games — curse expiry is no longer client-only
 
 import {
   makeGameN,
@@ -496,23 +499,39 @@ await strictStep(rec, 'flag carrier tagged then completes the run', async () => 
     `tagged=${JSON.stringify(tagged.body?.tagged_player_ids)} rejected=${JSON.stringify(tagged.body?.rejected)}`,
   )
   rec.check(
-    'HEADLINE: the tag does NOT clear players.flag_carrier',
-    afterTag.carrier === true,
+    'P2 FIXED (0053): the tag CLEARS players.flag_carrier',
+    afterTag.carrier === false,
     `flag_carrier=${afterTag.carrier} respawning=${afterTag.respawning} respawn_target_ref=${afterTag.target}`,
+  )
+  const stripEvents = db(
+    `select count(*) from events where game_id='${g.gid}' and type='flag_carrier_stripped';`,
+  )
+  rec.check(
+    'the strip emits exactly one flag_carrier_stripped event (so the UI can say the run ended)',
+    Number(stripEvents[0]) === 1,
+    `flag_carrier_stripped events=${stripEvents[0]}`,
+  )
+  rec.check(
+    'the flag stays DISCOVERED — games.status is not reverted, so the photo keeps its +10',
+    gameStatus(g.gid) === 'flag_found',
+    `games.status=${gameStatus(g.gid)}`,
   )
   rec.note(
     `DB after tag: flag_carrier=${afterTag.carrier}, respawning=${afterTag.respawning}, respawn_arrived=${afterTag.arrived}, respawn_target_ref=${afterTag.target}, games.status=${gameStatus(g.gid)}`,
   )
 
-  // While respawning the run is refused (complete-run/route.ts:123).
+  // While respawning the run is refused. Post-0053 the carrier flag is already
+  // gone, so the route's not_flag_carrier check (403) fires before the
+  // respawning check (409) — both are correct refusals of the same run.
   const tooEarly = await post(`/api/games/${g.gid}/complete-run`, {
     device_id: carrier.device,
     player_id: carrier.player,
     pos: fresh(EAST_REAL),
   })
   rec.check(
-    'a respawning carrier cannot complete the run (409 player_respawning)',
-    tooEarly.status === 409 && tooEarly.body?.error === 'player_respawning',
+    'a tagged, respawning ex-carrier cannot complete the run',
+    tooEarly.status >= 400 &&
+      ['not_flag_carrier', 'player_respawning'].includes(tooEarly.body?.error),
     `status=${tooEarly.status} error=${tooEarly.body?.error}`,
   )
 
@@ -536,8 +555,8 @@ await strictStep(rec, 'flag carrier tagged then completes the run', async () => 
   )
   const afterClear = playerState(carrier.player)
   rec.check(
-    'flag_carrier survives the whole respawn cycle',
-    afterClear.carrier === true && afterClear.respawning === false,
+    'the strip persists through the whole respawn cycle (not restored on clear)',
+    afterClear.carrier === false && afterClear.respawning === false,
     `flag_carrier=${afterClear.carrier} respawning=${afterClear.respawning}`,
   )
 
@@ -547,12 +566,14 @@ await strictStep(rec, 'flag carrier tagged then completes the run', async () => 
     pos: fresh(EAST_REAL),
   })
   rec.check(
-    'HEADLINE: the tagged carrier STILL WINS after respawning',
-    win.status < 400 && win.body?.winner_team_id === g.eTeam && gameStatus(g.gid) === 'finished',
-    `status=${win.status} winner=${win.body?.winner_team_id === g.eTeam ? 'East' : win.body?.winner_team_id ?? win.body?.error} game=${gameStatus(g.gid)}`,
+    'P2 FIXED (0053): the tagged carrier CANNOT win — the run is over, not merely delayed',
+    win.status >= 400 &&
+      win.body?.error === 'not_flag_carrier' &&
+      gameStatus(g.gid) !== 'finished',
+    `status=${win.status} error=${win.body?.error} game=${gameStatus(g.gid)}`,
   )
   rec.note(
-    'MEASURED, not changed: a tag costs the carrier one intel card plus the walk to a neutral and 45 m back out. It does not drop the flag, does not reset the flag_found phase, and does not return the flag to its landmark. Defenders cannot recover a stolen flag by tagging — only by out-walking the carrier to their home base.',
+    'P2 (fixed, migration 0053): a tag now ends the run. flag_carrier is cleared in apply_tag_atomic_unchecked — the shared per-raider body, so single and bulk tags both strip — and a flag_carrier_stripped event is emitted so both teams can be told. games.status stays flag_found on purpose: the enemy flag remains discovered and the photo keeps its +10 (§13), but the team must photograph it again and carry it home on a fresh run. Every legal tag already requires the defender to stand inside their own defense zone (tag/route.ts:185), so there is no separate "only at home" condition to check.',
   )
 })
 
@@ -1051,23 +1072,44 @@ await strictStep(rec, 'pause vs review auto-accept (wall clock vs game clock)', 
     device_id: g.east[0].device,
   })
   const autoAccepted = (immediately.body?.resolved_card_ids ?? []).includes(cardId)
+  // P11 FIXED by migration 0050: resume now shifts payload.submitted_at (and the
+  // updated_at fallback 0048 reads for legacy rows) forward by the paused
+  // duration, exactly as it already shifted games.started_at and the curse
+  // endpoints. The review window is frozen for the pause, not consumed by it.
   rec.check(
-    'FINDING: the review window does not survive the pause — the proof auto-accepts the instant play resumes, with 0 s of post-resume review time',
-    autoAccepted,
-    `submitted_at is ${ageAfterResume}s old in wall clock at resume; sweep resolved=${JSON.stringify(immediately.body?.resolved_card_ids ?? [])} coins ${before} -> ${coins(g.wTeam)}`,
+    'P11 FIXED (0050): the review window SURVIVES the pause — the proof is still pending after resume, with its remaining review time intact',
+    !autoAccepted &&
+      one(`select state from cards where id='${cardId}';`) === 'pending' &&
+      coins(g.wTeam) === before,
+    `submitted_at is only ${ageAfterResume}s old after a ${pauseSeconds}s pause (pre-0050 it would have been ~${ageAfterResume + pauseSeconds}s and inside the 120 s deadline); sweep resolved=${JSON.stringify(immediately.body?.resolved_card_ids ?? [])} state=${one(`select state from cards where id='${cardId}';`)} coins still ${coins(g.wTeam)}`,
+  )
+  // Time preserved, not reset: the remainder must still run out on its own.
+  advanceClock(g.gid, 130)
+  rec.clockJump({ seconds: 130, game: g.code, reason: 'spend the preserved review remainder' })
+  const afterRemainder = await post(`/api/games/${g.gid}/resolve-challenge-reviews`, {
+    device_id: g.east[0].device,
+  })
+  rec.check(
+    'the preserved remainder is finite — once genuinely spent, the review auto-accepts as normal',
+    (afterRemainder.body?.resolved_card_ids ?? []).includes(cardId) &&
+      one(`select state from cards where id='${cardId}';`) === 'consumed',
+    `resolved=${JSON.stringify(afterRemainder.body?.resolved_card_ids ?? [])} coins ${before} -> ${coins(g.wTeam)}`,
   )
   rec.note(
-    `PAUSE FINDING: 0027:69-82 shifts games.started_at and every active_curses endpoint forward by ${pauseSeconds}s on resume, but nothing shifts cards.payload.submitted_at or cards.updated_at. 0048:45 compares submitted_at against wall-clock now() - 120s, so a pause longer than two minutes consumes the entire review window. The reviewing team never saw the photo and cannot reject it — the resume itself awards the coins.`,
+    `PAUSE/REVIEW (P11, fixed): 0027:69-82 shifted games.started_at and every active_curses endpoint forward by the paused duration on resume but left cards.payload.submitted_at alone, while 0048:45 compares it against wall-clock now() - 120s — so any pause over two minutes consumed the whole review window and the resume itself awarded the coins. Migration 0050 adds the matching shift for still-pending challenge cards (payload.submitted_at plus the updated_at fallback, moved by the same ${pauseSeconds}s, deliberately NOT reset to now()), so the reviewing team resumes with exactly the review time it had left and can still reject. Semantics: the review timer does not run during a pause.`,
   )
 })
 
 // ---------------------------------------------------------------------------
 // 10. ALL CLIENTS OFFLINE
 // ---------------------------------------------------------------------------
-// Nothing in this app is scheduled server-side: /expire-curses is a 20 s client
-// poll (useCurseExpiryPoll), /time-tick a 30 s poll, camping a 5 s heartbeat.
-// With every phone closed, none of the three runs.
-await strictStep(rec, 'all clients offline: nothing sweeps, nothing ticks', async () => {
+// /time-tick is a 30 s client poll and camping a 5 s heartbeat, so with every
+// phone closed neither runs. CURSE EXPIRY IS NO LONGER IN THAT LIST: migration
+// 0052 (finding P13) schedules sweep_expired_curses via pg_cron every 30 s, so a
+// timed curse now expires server-side whether or not anyone has the app open.
+// The assertions below are updated accordingly — the curse is expected to be
+// GONE after an offline hour, with no client call responsible for it.
+await strictStep(rec, 'all clients offline: cron expires curses, time bonus back-credits, camping cannot accrue', async () => {
   const g = await openGame(2, 2, 'race-offline')
   rec.note(`case 10 game ${g.code}`)
   await warmRoutes(g.gid)
@@ -1083,23 +1125,36 @@ await strictStep(rec, 'all clients offline: nothing sweeps, nothing ticks', asyn
   const remaining = num(
     `select round(extract(epoch from (now() - expires_at))/60) from active_curses where game_id='${g.gid}' and curse_ref='curse.full-stop';`,
   )
+  // P13 FIXED by migration 0052: pg_cron runs sweep_expired_curses every 30 s,
+  // so the row is reaped without any client. Wait up to two cadences before
+  // asserting — the schedule is wall-clock, not request-driven.
+  const cronDeadline = Date.now() + 75_000
+  while (
+    Date.now() < cronDeadline &&
+    num(`select count(*) from active_curses where game_id='${g.gid}';`) > 0
+  ) {
+    await new Promise((r) => setTimeout(r, 2_000))
+  }
   rec.check(
-    'a 10-min Full Stop is STILL in active_curses 50 min after it expired',
-    num(`select count(*) from active_curses where game_id='${g.gid}';`) === 1,
-    `row present, ${remaining} min past expiry; curse_expired events=${eventCount(g.gid, 'curse_expired')}`,
+    'P13 FIXED (0052): the expired Full Stop is GONE after the offline hour, swept by pg_cron with no client call',
+    num(`select count(*) from active_curses where game_id='${g.gid}';`) === 0 &&
+      eventCount(g.gid, 'curse_expired') === 1,
+    `rows=${num(`select count(*) from active_curses where game_id='${g.gid}';`)} curse_expired events=${eventCount(g.gid, 'curse_expired')} (was ${remaining} min past expiry)`,
   )
   rec.check(
-    'no curse_expired event exists until a client calls the route',
-    eventCount(g.gid, 'curse_expired') === 0,
-    'nothing server-scheduled swept it',
+    'the housekeeping curse_expired event has no actor (it was nobody\'s action) and names the curse',
+    one(
+      `select coalesce(actor_player_id::text,'null')||'|'||(payload->>'curse_ref') from events where game_id='${g.gid}' and type='curse_expired';`,
+    ) === 'null|curse.full-stop',
+    `event=${one(`select coalesce(actor_player_id::text,'null')||'|'||(payload->>'curse_ref') from events where game_id='${g.gid}' and type='curse_expired';`)}`,
   )
-  // It is inert for gameplay, but it is what live-state reports to the team.
+  // The victim's UI no longer shows a permanent-looking curse that does nothing.
   const stillActive = await apiGet(
     `/api/games/${g.gid}/live-state?device_id=${g.east[0].device}`,
   )
   rec.check(
-    'live-state still reports the stale curse to the cursed team',
-    (stillActive.active_curses ?? []).some((c) => c.curse_ref === 'curse.full-stop'),
+    'live-state no longer reports the stale curse to the cursed team (the P13 bluff is closed)',
+    !(stillActive.active_curses ?? []).some((c) => c.curse_ref === 'curse.full-stop'),
     `active_curses=${JSON.stringify((stillActive.active_curses ?? []).map((c) => c.curse_ref))}`,
   )
   const proof = await uploadFlagAttemptProof(g.gid, g.east[0].player, 'offline-empty')
@@ -1111,17 +1166,19 @@ await strictStep(rec, 'all clients offline: nothing sweeps, nothing ticks', asyn
     photo_url: proof,
   })
   rec.check(
-    'the stale Full Stop does not actually lock actions (expires_at filter)',
+    'actions are unlocked, as they already were under the expires_at filter',
     notLocked.status < 400,
     `attempt=${notLocked.status} ${notLocked.body?.result ?? notLocked.body?.error}`,
   )
+  // The client poll is kept as the low-latency path; it must be a harmless no-op
+  // once cron has already reaped the row (both enter the same atomic RPC).
   const sweepNow = await post(`/api/games/${g.gid}/expire-curses`, {
     device_id: g.west[0].device,
   })
   rec.check(
-    'the first client back online sweeps it (and emits the event 50 min late)',
-    (sweepNow.body?.expired_curse_ids ?? []).length === 1 &&
-      num(`select count(*) from active_curses where game_id='${g.gid}';`) === 0,
+    'the client poll is now a no-op after the cron sweep (no double event, idempotent)',
+    (sweepNow.body?.expired_curse_ids ?? []).length === 0 &&
+      eventCount(g.gid, 'curse_expired') === 1,
     `swept=${JSON.stringify(sweepNow.body?.expired_curse_ids ?? [])} curse_expired=${eventCount(g.gid, 'curse_expired')}`,
   )
 
@@ -1166,7 +1223,7 @@ await strictStep(rec, 'all clients offline: nothing sweeps, nothing ticks', asyn
     `inside_seconds ${campBefore} -> ${campAfter} after a 60-min gap`,
   )
   rec.note(
-    `OFFLINE COST, quantified for one hour with every app closed (measured on ${g.code}): TIME BONUS — 0 coins lost. One late /time-tick back-credited all ${dueIntervals} due intervals (${expectedCoins} coins to EACH team) in a single call, and a second call credited nothing; the whole-game cap is floor(180/30) = 6 intervals = 120 coins per team, so no interval can ever be forfeited by being offline. CURSES — 0 coins, but a 10-min Full Stop stayed in active_curses for the full 60 min and live-state kept reporting it to the cursed team, so it reads as permanent in ActiveCursesBanner while being functionally inert past expires_at (the enemy that paid 150 coins for it gets 10 min of effect and an indefinite scare). CAMPING — the 2-min lock cannot accrue at all: 0031:82 credits at most 15 s per heartbeat, so the hour added 0 s and an offline defender is un-lockable. NET: no coin loss; curse durations and the camping rule are effectively suspended, both in the cursed/camping team’s favour.`,
+    `OFFLINE COST, quantified for one hour with every app closed (measured on ${g.code}): TIME BONUS — 0 coins lost. One late /time-tick back-credited all ${dueIntervals} due intervals (${expectedCoins} coins to EACH team) in a single call, and a second call credited nothing; the whole-game cap is floor(180/30) = 6 intervals = 120 coins per team, so no interval can ever be forfeited by being offline. CURSES — FIXED by migration 0052 (P13). Previously a 10-min Full Stop stayed in active_curses for the full 60 min with zero curse_expired events and live-state kept reporting it, so it read as permanent in ActiveCursesBanner while being functionally inert past expires_at. pg_cron now runs sweep_expired_curses every 30 s, so the row was reaped and the event emitted with NO client call and no actor; live-state no longer shows it, and the client poll is a harmless idempotent no-op afterwards. Curse durations are therefore no longer suspended by everyone being offline. CAMPING — still the one accumulator that cannot advance: 0031:82 credits at most 15 s per heartbeat, so the hour added 0 s and an offline defender remains un-lockable (client-driven by design; not addressed by 0052). NET: no coin loss, curse timers now authoritative server-side, camping rule still suspended in the camping team's favour.`,
   )
 })
 

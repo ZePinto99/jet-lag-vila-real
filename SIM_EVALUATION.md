@@ -42,7 +42,7 @@ evidence warrants:
 | Verified | Evidence |
 |---|---|
 | **Concurrency is safe under adversarial interleaving** | 65/65 across 10 race families (`races-991337.json`): no double-tag, no double-credit, no negative balance, no half-applied state, and **exactly one terminal decision in every race** — including both teams photographing a real flag simultaneously and carrier-versus-timeout. This is the atomic-RPC design (migrations 0015–0049) being vindicated, and it is the strongest single signal that the engine is launch-worthy. |
-| **All 8 intel cards tell the truth** | Every revealed answer checked against a service-role read of the hidden `landmarks.kind`; no card ever rules out the real flag. 111/111 across 4 seeds. |
+| **Every intel card tells the truth** | Every revealed answer checked against a service-role read of the hidden `landmarks.kind`; no card ever rules out the real flag. 111/111 across 4 seeds on the 8-card deck, re-verified at 104/104 after `intel.east-west` was removed (P3a). |
 | **No secret leaks** | Migration 0038 keeps real-flag coords out of the Hot/Cold payload; the Surroundings signed URL is never persisted to `cards.payload`; hardening tightens a radius instead of changing visible text. All three asserted. |
 | **Coin ledger is exact** | Every debit equals the catalogue cost; every refusal charges nothing; coins never go negative; double-accept and double-resolve never double-credit. |
 | **The candidate pools structurally prevent a degenerate layout** | No pool member has any other within 200 m, so one defender can never cover the whole objective set. Now pinned by a test. |
@@ -123,22 +123,23 @@ committed state. Two things matter for re-deriving them:
 | F8 | ~40 doc/code divergences: counts, paths, cross-references, stale status claims | Correctness (doc) | minor | **FIXED** (most) |
 | F10 | `complete-run` returned HTTP **500** for the legitimate `game_expired` guard — a carrier reaching home one second late saw a server crash | Correctness + PX | major | **FIXED** |
 | F11 | Dev server silently served stale code: Next 16 defaults to Turbopack, which ignores `WATCHPACK_POLLING`; `dev` and `build` used different bundlers | Environment + doc | major | **FIXED** |
-| P11 | A weather pause silently consumes the whole 120 s challenge-review window; resuming awards the coins | Correctness (bug) | major | **PROPOSED** (needs a migration) |
-| P12 | An aborted bulk tag reports `batch_aborted`, which has no player-facing copy, and fires on single-target taps | PX | minor | **PROPOSED** |
-| P13 | Offline failure modes are **asymmetric**: curses read as permanent while inert, and an offline defender is un-lockable — both favour the cursed/camping team | Balance | minor | **PROPOSED** |
-| P14 | Photo-curse windows are thin (10–25% open) AND a miss costs nothing anywhere | PX | minor | **PROPOSED** |
-| P15 | Full Stop's tag lock stops a defender defending for 10 min; major-tier variance is enormous | Balance | major | **PROPOSED** |
-| P16 | `curse.intel-loss` consumes a purchase slot, not just a card — effect exceeds catalogue text | Correctness (doc) | minor | **PROPOSED** (coupled to P1) |
-| P1 | Intel cap counts expired cards → one decoy attempt can permanently end a team's intel | Balance | major | **PROPOSED** |
-| P2 | Tagged flag carrier keeps the flag; a tag is a speed bump, not a turnover | Balance | major | **PROPOSED** |
-| P3 | Structurally special hiding places: home-base hides distort `intel.east-west`, and Sé is both assembly point and East candidate | Balance | major | **PROPOSED** |
-| P4 | `intel.decoy-reveal` costs 100 for 1 ref — strictly dominated by `eliminate-one` at 50 | Balance | major | **PROPOSED** |
-| P5 | Frozen's self-reported violations extend it to 32 min; closing the app serves 8 | Balance + PX | major | **PROPOSED** |
-| P6 | `no_available_curse` spends no coins, revealing enemy state for free | Balance | minor | **PROPOSED** |
-| P7 | No respawn timeout — a tagged player who never walks is neutralised but untaggable | Balance | minor | **PROPOSED** |
-| P8 | Camping's 90 s warning is client-only while §12.5 promises app enforcement | Correctness vs PX | minor | **PROPOSED** |
-| P9 | Harden costs 150 but teams start with 100 — unreachable until income arrives | Balance | minor | **PROPOSED** |
-| P10 | Challenge geofence is 100 m; central landmarks' circles overlap | Balance | minor | **PROPOSED** |
+| P11 | A weather pause silently consumed the whole 120 s challenge-review window; resuming awarded the coins | Correctness (bug) | major | **FIXED** (0050) |
+| P12 | An aborted bulk tag reported `batch_aborted`, which had no player-facing copy, and fired on single-target taps | PX | minor | **FIXED** (reason-specific copy, EN + PT) |
+| P13 | Offline failure modes were **asymmetric**: curses read as permanent while inert, and an offline defender was un-lockable | Balance | minor | **FIXED** (0052 pg_cron; camping half inherent to heartbeats) |
+| P14 | Photo-curse windows are thin (10–25% open) and a miss costs nothing | PX | minor | **FIXED** (pre-open countdown + last-chance alert; no penalty added) |
+| P15 | Full Stop's tag lock stops a defender defending for 10 min; major-tier variance is enormous | Balance | major | **DECIDED — accepted as intended variance; documented in RULEBOOK §10** |
+| P16 | `curse.intel-loss` consumed a purchase slot, not just a card — effect exceeded catalogue text | Correctness (doc) | minor | **FIXED** (resolved by P1/0054) |
+| P1 | Intel cap counted expired cards → one decoy attempt could permanently end a team's intel | Balance | major | **FIXED** (0054: cap counts `in_hand` only) |
+| P2 | Tagged flag carrier kept the flag; a tag was a speed bump, not a turnover | Balance | major | **FIXED** (migration 0053 + RULEBOOK §6) |
+| P3a | Home-base hides distorted `intel.east-west`; no pivot made the card sound | Balance | major | **FIXED** — card removed from `data/intel.json` (decode-only paths kept) |
+| P3b | Sé Catedral was both the assembly point and an East candidate | Balance | major | **FIXED** — assembly moved to Largo do Pelourinho (neutral, 61 m away) |
+| P4 | `intel.decoy-reveal` cost 100 for 1 ref — strictly dominated by `eliminate-one` at 50 | Balance | major | **FIXED** (decoy-reveal 100→45, direction 80→50) |
+| P5 | Frozen's self-reported violations extended it to 32 min; closing the app served 8 | Balance + PX | major | **FIXED** (0051: ceiling 4x→1.5x, 32→12 min) |
+| P6 | `no_available_curse` spent no coins, revealing enemy state for free and invisibly | Balance | minor | **FIXED** (tier echo removed, probe now logged) |
+| P7 | No respawn timeout — a GPS failure could action-lock a player for the whole game | Balance | minor | **FIXED** (0055: `respawning_since` + 10-min sweep + host override) |
+| P8 | Camping's 90 s warning rendered only on the map tab, so a defender elsewhere got none | Correctness vs PX | minor | **FIXED** (banner moved above tabs; server-derived) |
+| P9 | Harden cost 150, was live-only, and teams start with 100 — unreachable when it mattered | Balance | minor | **FIXED** (0054: setup phase allowed; cost unchanged) |
+| P10 | Challenge geofence was 100 m; central landmarks' circles overlapped | Balance | minor | **FIXED** (60 m, moved into gameConstants; client aligned) |
 | O1 | Pools structurally prevent the degenerate "one defender covers all" layout | — | — | **observation (good)** |
 | O2 | Intel answers are all truthful; the issues are pricing, not correctness | — | — | **observation (good)** |
 
@@ -153,6 +154,48 @@ These are **balance and design judgements, not bugs**. Per the brief, current
 values are left in place. Each states the trade-off rather than a
 recommendation, because each is a real choice with costs on both sides.
 
+### Group Z — found by the second testing pass (2026-09-28)
+
+A dedicated coverage audit plus three new scenarios (lobby/setup edges, curse
+stacking, endgame edges — 279 new checks) turned up five further defects. Four
+were introduced by the very migrations written earlier in this session, which is
+the argument for the audit: a fix that lands in the DB and never reaches the
+player is not a fix.
+
+| # | Finding | Axis | Severity | Status |
+|---|---|---|---|---|
+| Z1 | The host could clear their OWN respawn — instantly, repeatably, no walk. The host is whoever created the game, so in a 1v1/2v2 one ordinary raider was immune to the tag. | Correctness (exploit) | **blocker** | **FIXED** (0057, own *team* excluded) |
+| Z2 | `RespawnBanner` told players "This does not time out… nothing else clears it" AFTER 0055 shipped a 10-min sweep and a host override — and a test asserted that exact string, enforcing a lie to the player. | PX | major | **FIXED** (copy + comment + 3 assertions) |
+| Z3 | `/host-clear-respawn` had no caller anywhere. RULEBOOK §6 promised the host could release a player "from the app"; there was no button. | Correctness | major | **FIXED** (`HostRespawnOverride`, 10 tests) |
+| Z4 | `flag_carrier_stripped` reached no UI, so a stripped carrier walked all the way home to discover nothing happened — exactly what 0053's own comment said the event existed to prevent. | PX | major | **FIXED** (toast for both teams; `useGameToasts` had NO test file) |
+| Z5 | `/results` returned **HTTP 500** for any offset past the last event (28 events: offset 28 → 200, offset 29 → 500), reachable by any client that keeps paging. | Correctness | major | **FIXED** (empty page, `next_offset: null`) |
+| Z6 | A weather pause was charged against the respawn grace period — 0055 added the column, nothing shifted it on resume. | Correctness | major | **FIXED** (0056) |
+| Z7 | Migrations 0053–0057 were live in the DB but absent from `supabase_migrations.schema_migrations` (ledger said 52, disk had 57). A deploy would have silently skipped all five. | Deploy | **blocker** | **FIXED** (registered; verified by a full `db reset`) |
+
+Still open from that pass, not fixed:
+
+- **Frozen + Pilgrimage are mutually impossible to obey.** Both major-tier, no-stack
+  is per-*ref*, so two major rolls can produce them together. Measured: Frozen
+  anchored with a 10 m leash while Pilgrimage named a target **750 m away — 75×**.
+  Pilgrimage also holds the action lock, so the team cannot act until someone
+  walks, and every second of that walk extends Frozen 1:1 (capped 1.5× by 0051).
+  `buy-curse` excludes only already-active refs, never contradictory ones.
+  **Your call:** exclude the pair at roll time, or accept it as chaos.
+- **The client `/expire-curses` poll mutates a FINISHED game.** pg_cron correctly
+  declines; the route gates only on `paused`, so it appends `curse_expired` events
+  dated *after* the terminal event. Scoring is unaffected (verified) but the
+  newest-first timeline renders them above the game's end.
+- **`observer-state` 500s on a malformed game id**, leaking the raw Postgres
+  message on an endpoint with no auth at all. A well-formed unknown id correctly
+  404s.
+- **`pickTimeoutWinner` contradicts the RPC on an exact tie** — unreachable today
+  (the RPC's coin flip always wins) but a live trap if the terminal events are ever
+  absent.
+
+The observer redaction boundary **holds**: no `kind`/`hardened` leaked at lobby,
+setup, half-setup, live, live+hardened, live+curses or finished, while the DB held
+2 real flags, 4 decoys and a hardened row.
+
 ### Group A — the intel pricing cluster
 
 #### P4 — `intel.decoy-reveal` is strictly dominated
@@ -162,7 +205,7 @@ standard layout:
 
 | intel ref | cost | refs narrowed | coins per ref |
 |---|---|---|---|
-| `intel.east-west` | 30 | 4 (see P3) / 1 | **8** |
+| ~~`intel.east-west`~~ | ~~30~~ | ~~4 (see P3a) / 1~~ | ~~**8**~~ (card removed — see P3a) |
 | `intel.north-south` | 30 | 2–3 | 15 |
 | `intel.hot-cold` | 60 | 3–4 | 20 |
 | `intel.eliminate-two` | 80 | 2 | 40 |
@@ -224,17 +267,52 @@ not buy more than 4 intel cards total") and `INTEL_CAP`'s own doc comment says
 Three findings that look separate but are one pattern: the rules treat certain
 locations specially, and hiding the real flag there changes the game.
 
-#### P3a — Home-base hides distort `intel.east-west`
+#### P3a — Home-base hides distort `intel.east-west` — **FIXED (card removed)**
 
-`intel.east-west` answers whether the real flag is E or W of the **enemy team's
-home base**. If a team hides its real flag *on* its own home base, the pivot
-equals the target. Measured: the card narrows **4 of 5** candidates in that case
-versus **1 of 5** otherwise — for the same 30 coins. The cheapest card in the
-catalogue becomes the strongest, decided entirely by where the *defender* chose
-to hide.
+**Resolution: `intel.east-west` was deleted from `data/intel.json`.** The deck is
+now **7 cards**. This deletes P3a outright rather than patching a pivot that
+cannot be made sound. Full reasoning, all figures measured against the real seed
+pools:
 
-Home-base hiding is legal (§3.3 puts home bases in their own pools) and is an
-obvious choice, so this is reachable in ordinary play, not a corner case.
+- **The card was a lottery, not a deduction.** Pivoting on the defender's own
+  home, the West pool splits **6 east / 1 west** and the East pool **1 east /
+  6 west**. So **6 times in 7 it eliminated exactly ONE candidate for 30 coins** —
+  which `intel.eliminate-one` already does for 50, naming the landmark outright
+  with no geometry to reason about. The remaining 1-in-7 eliminated 6. A card
+  whose value swings between 1 and 6 refs on a roll the buyer cannot see is a
+  lottery card wearing a deduction card's clothes.
+- **Its only genuinely strong case was the bug.** Hiding the real flag *on* the
+  defender's own home base made pivot = flag longitude, and the card narrowed
+  **4 of 5** — the cheapest card in the deck became the strongest, decided
+  entirely by where the *defender* chose to hide. Home-base hiding is legal
+  (§3.3 puts home bases in their own pools) and is an obvious choice, so this was
+  reachable in ordinary play, not a corner case.
+- **There was no better pivot.** Pivoting on the *buyer's* home was the original
+  design and had already been reverted — see the comment in
+  `app/api/games/[id]/buy-intel/route.ts`: "Using the buyer's home made the clue
+  nearly constant because the two candidate pools are geographically separated."
+  Measured, that pivot splits **0 east / 7 west** and **6 east / 1 west**, i.e. a
+  effectively constant answer. Neither available pivot works.
+- **It was near-redundant with `intel.north-south`.** I1 uses a fixed per-pool
+  latitude tuned to split **3 N / 4 S** — a clean, reliable half-the-map clue.
+  Measured, east-west added only **one extra partition** on top of north-south
+  (2 groups → 3) in both pools, so removing it costs the deck very little
+  deductive depth.
+
+**Precedent:** I9 "Landmark Type" was removed the same way, so a shrinking deck
+is an established pattern the code tolerates. Post-removal the deck is
+north-south (clean half-split), hot-cold (distance rings), eliminate-one,
+eliminate-two and decoy-reveal (direct removal), plus surroundings and direction
+(soft hints, no mechanical narrowing).
+
+**Historical cards still work.** The card is unbuyable — the buy-intel route
+rejects any ref absent from `data/intel.json` with `invalid_intel_ref` before
+touching coins — but the *decode* branches in `lib/intel/narrowing.ts`,
+`lib/intel/overlays.ts` and `components/game/IntelCardDisplay.tsx` were
+deliberately kept, and the `IntelAnswer` variant stays in `lib/types.ts`. Games
+played before the removal still hold these cards and `cards` is append-only in
+spirit, so an old hand must still read back its answer and narrow correctly
+rather than blanking. No migration deletes historical rows.
 
 #### P3b — Sé Catedral is both the assembly point and an East candidate
 
@@ -272,9 +350,38 @@ matches the letter of the rules and the *rules* have the gap.
 **The trade-off.** Stripping the flag on a tag makes tagging decisive and gives
 defenders a real answer to a carrier — but it may be too swingy, since one lucky
 5 m interception erases a successful raid. Not stripping it makes the endgame
-hard to defend and the tag a speed bump. There is a middle option (strip only
-inside your own defense zone, so an interception at home counts but a chance
-encounter does not). **Your call.**
+hard to defend and the tag a speed bump.
+
+**FIXED — a tag now strips the flag** (migration `0053`, RULEBOOK §6 rewritten).
+
+The "middle option" of stripping only inside your own defense zone turned out to
+be no narrower than stripping always: tagging **already** requires the tagger to
+stand inside their own defense zone, enforced at `tag/route.ts:185`
+(409 `tagger_not_in_defense_zone`) and mirrored in `useTagButton.ts:76`. So every
+legal tag satisfies that condition, and writing the rule as a separate clause
+would have implied a restriction that does not exist.
+
+Implementation notes:
+- The clear lives in `apply_tag_atomic_unchecked`, the shared per-raider body, so
+  single-target and bulk (`apply_tags_atomic`) tags both strip with one code path.
+- `games.status` is deliberately **not** reverted from `flag_found`. The photo
+  genuinely validated and keeps its +10 (§13), and the enemy flag stays
+  discovered; what the tag removes is that player's ability to finish the run. The
+  team must photograph it again and carry it home fresh.
+- A `flag_carrier_stripped` event is emitted only on an actual strip, so clients
+  can tell the player their run ended instead of letting them discover it at the
+  home base.
+
+Verified (`scenario-races.mjs`, 67/67):
+
+```
+✅ the tag CLEARS players.flag_carrier — flag_carrier=false
+✅ exactly one flag_carrier_stripped event
+✅ the flag stays DISCOVERED — games.status=flag_found
+✅ a tagged, respawning ex-carrier cannot complete the run — 403 not_flag_carrier
+✅ the strip persists through the whole respawn cycle
+✅ the tagged carrier CANNOT win — the run is over, not merely delayed
+```
 
 ### Group C — enforcement asymmetries
 
@@ -972,7 +1079,7 @@ a ridge-and-valley town.
 |---|---|
 | **Terminal paths** | Both, and only two exist. Flag carried home (30 m of own home base) and the 180-min timeout, including the full tiebreak ladder (total → challenges → coins → mandatory coin flip). |
 | **Boundaries** | Just-inside / just-outside for tag 10 m server, defense zone 200 m, attempt 28 m, hardened 12 m, home base 30 m, challenge 100 m, presence freshness 30 s (and the 25 s accept case, proving it is a band not a wall), future-skew 10 s. |
-| **All 8 intel cards** | Purchase, exact debit, payload shape, narrowing count, and **answer truthfulness** against the hidden `landmarks.kind`. Plus cap behaviour, duplicate refs, exact-cost purchases, and both stale/missing-GPS rejections for Hot/Cold. |
+| **Every intel card** (8 at the time of the sweep; 7 after P3a removed `intel.east-west`) | Purchase, exact debit, payload shape, narrowing count, and **answer truthfulness** against the hidden `landmarks.kind`. Plus cap behaviour, duplicate refs, exact-cost purchases, and both stale/missing-GPS rejections for Hot/Cold. |
 | **Tag + two-stage respawn** | Tag at 8/12/40 m, defender outside own zone, stale/future tagger positions, wrong-neutral rejection, arrive-then-leave clearing, and the per-action single intel loss. |
 | **Challenge review** | pending → reject → resubmit → accept, first blood, double-accept, auto-accept inside/outside 120 s, idempotent re-resolve, concurrent sweeps. |
 | **Curse mechanics** | All 16 curses, 150/150 on two seeds. `no_available_curse` charges nothing and leaks the tier; `actions_locked`/409 scoped to the target team (caster unaffected, and the cursed team cannot counter-curse); all 4 photo-verified proof windows open/close correctly **across repeated clock rebases**, including outfit-swap's closing dispute window at 1160 s; coin-drain debits exactly 50 and clamps at 0 rather than going negative; intel-loss expires exactly 1 card; check-in and mute have no server effect; no-stack is enforced by a DB unique constraint (`0018:10`), not merely the route filter; `/expire-curses` is idempotent; `curse.backwards` is `enabled: false` and never castable. **No param drift** — every catalogue param appears verbatim in `active_curses.params`, durations exact to the second. |
@@ -1120,8 +1227,9 @@ artifact only.
   argument depends on the moment, not the code.
 - **P10 (100 m challenge geofence)** — the overlap is measured; whether anyone
   exploits it, or notices, is not.
-- **P3a (home-base hides)** — the 4/5 narrowing is measured, but how often teams
-  choose a home-base hide once they understand the trade-off is unknown.
+- ~~**P3a (home-base hides)**~~ — moot: the card was removed, so a home-base hide
+  no longer distorts any clue. What a playtest can still overturn is whether the
+  7-card deck feels deep enough without a second half-the-map clue.
 - **The "healthy" PX conclusions are the most fragile of all.** "The pools force a
   defender to commit" is a geometric fact; whether the resulting cat-and-mouse is
   *fun* across three hours is precisely what a field test is for.

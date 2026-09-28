@@ -148,7 +148,7 @@ await step('intel', async () => {
   await apiPost(`/api/games/${g.gid}/buy-intel`, {
     device_id: g.east[0].device,
     player_id: g.east[0].player,
-    intel_ref: 'intel.east-west',
+    intel_ref: 'intel.eliminate-one',
   })
   const n = Number(db(`select count(*) from cards where team_id='${g.eTeam}' and kind='intel';`)[0])
   n >= 2

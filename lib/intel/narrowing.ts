@@ -8,6 +8,12 @@
 // only), and my team's home-base longitude for legacy I2 payloads. The
 // seed lookup remains in the shared call contract for compatibility with map
 // consumers that predate the removal of I9.
+//
+// HISTORICAL REFS. `intel.east-west` is no longer in data/intel.json and can no
+// longer be bought, but games played before its removal still hold cards with
+// that ref, and `cards` is append-only in spirit. Its branch below is therefore
+// retained as a DECODE-ONLY path so an old hand still narrows correctly instead
+// of silently losing a clue the team paid for. Do not delete it as dead code.
 
 import { haversineMeters } from '@/lib/geo/haversine'
 import { CITY_MIDLINE_LAT } from '@/lib/geo/playArea'
@@ -69,6 +75,10 @@ export function computeNarrowedRefs(input: NarrowingInput): Set<string> {
         }
         break
       }
+      // Historical only — see the decode-only note at the top of this file.
+      // Cards bought after commit 6d96e2e carry `pivot_lng` (the DEFENDER's
+      // home); older ones carry none and pivoted on the BUYER's home, which is
+      // exactly what `myTeamHomeLng` supplies. Both decode correctly.
       case 'intel.east-west': {
         const pivotLng = payload.pivot_lng ?? myTeamHomeLng
         if (pivotLng == null) break

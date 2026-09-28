@@ -49,7 +49,21 @@ export async function POST(
 
   const supabase = createAdminClient()
 
-  // 1. Load game; must be 'live'.
+  // 1. Load game; must be 'setup' or 'live'.
+  //
+  // Setup is allowed because the defect was a sequencing bug, not a price: a
+  // team could not harden the very flag it was deciding where to hide. Teams
+  // still cannot afford HARDEN_COST at T+0 (they start with STARTING_COINS),
+  // so this does not make hardening free — it only stops the phase gate from
+  // blocking a team that has earned the coins (SIM_EVALUATION P9).
+  //
+  // No information leaks to the enemy by hardening earlier. Hardening only
+  // tightens the attempt geofence (HARDENED_RANGE_M) and sets
+  // `landmarks.hardened`, which /setup-state and /live-state never include in
+  // the enemy-facing landmark shape — /setup-state returns only the caller's
+  // own rows plus an opaque `other_team_done` count, and /live-state selects
+  // enemy landmarks as `id, ref, lat, lng, team_id`. The `flag_hardened` event
+  // 0030 appends carries only `team_id`, not `landmark_ref`.
   const { data: gameRow, error: gameError } = await supabase
     .from('games')
     .select('*')
@@ -67,7 +81,7 @@ export async function POST(
   }
   const game = gameRow as Game
 
-  if (game.status !== 'live') {
+  if (game.status !== 'setup' && game.status !== 'live') {
     return NextResponse.json({ error: 'game_not_in_live' }, { status: 409 })
   }
 

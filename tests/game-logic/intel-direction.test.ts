@@ -2,7 +2,6 @@ import { PLAY_AREA_CENTRE } from '@/lib/geo/playArea'
 import {
   compass4FromPoint,
   compass8FromPoint,
-  eastWestOf,
   initialBearingDegrees,
   snapToCompass4,
   snapToCompass8,
@@ -29,10 +28,5 @@ describe('canonical intel direction geometry', () => {
     expect(snapToCompass4(134.99)).toBe('E')
     expect(snapToCompass4(135)).toBe('S')
     expect(compass4FromPoint(PLAY_AREA_CENTRE, { lat: 41.2855, lng: -7.7561 })).toBe('S')
-  })
-
-  it('compares I2 to the defending home in either longitude direction', () => {
-    expect(eastWestOf(-7.75, -7.74)).toBe('east')
-    expect(eastWestOf(-7.74, -7.75)).toBe('west')
   })
 })

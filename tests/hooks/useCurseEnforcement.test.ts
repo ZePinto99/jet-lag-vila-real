@@ -468,4 +468,89 @@ describe('useCurseEnforcement', () => {
     await act(async () => Promise.resolve())
     expect(mockApiPost).toHaveBeenCalledTimes(1)
   })
+
+  // P14: photo windows are narrow (Outfit Swap's second slot is 60 s opening 19
+  // minutes after the cast) and a miss returns 409 proof_window_closed
+  // permanently. The only prior signal was the prompt appearing inside an
+  // already-running window, so the window has to announce itself beforehand.
+  describe('proof window pre-warning (P14)', () => {
+    const started = Date.parse('2026-08-27T12:00:00.000Z')
+
+    function enforcement(curse: ReturnType<typeof makeCurse>, nowMs: number) {
+      const { result } = renderHook(() =>
+        useCurseEnforcement({
+          activeCurses: [curse],
+          myGps: null,
+          myTeamId: 'west',
+          presence: {},
+          nowMs,
+          gameId: null,
+          t,
+        }),
+      )
+      return result.current.byCurseId[curse.id]
+    }
+
+    const photoTax = () =>
+      makeCurse({
+        curse_ref: 'curse.photo-tax',
+        started_at: new Date(started).toISOString(),
+        expires_at: new Date(started + 6 * 60_000).toISOString(),
+        params: { interval_seconds: 90, submission_window_seconds: 30 },
+      })
+
+    it('counts down to the next window once inside the lead time', () => {
+      // Window 1 opens at t+90 s; at t+50 s that is 40 s away.
+      const entry = enforcement(photoTax(), started + 50_000)
+      expect(entry?.proofUpcomingSeconds).toBe(40)
+      expect(entry?.prompt).toBeUndefined()
+    })
+
+    it('does NOT pre-warn while the window is already open', () => {
+      // t+10 s is inside window 0 — the live prompt owns this state.
+      const entry = enforcement(photoTax(), started + 10_000)
+      expect(entry?.proofUpcomingSeconds).toBeUndefined()
+      expect(entry?.prompt?.proofRequired).toBe(true)
+    })
+
+    it('does NOT pre-warn when the next window is beyond the lead time', () => {
+      // t+31 s: window 0 just closed, window 1 is 59 s away — inside the 60 s
+      // lead. t+29 s inside window 0 is covered above, so probe the far side of
+      // a longer interval instead.
+      const curse = makeCurse({
+        curse_ref: 'curse.photo-tax',
+        started_at: new Date(started).toISOString(),
+        expires_at: new Date(started + 30 * 60_000).toISOString(),
+        params: { interval_seconds: 600, submission_window_seconds: 30 },
+      })
+      // Window 1 opens at t+600 s; at t+100 s it is 500 s away, far outside the
+      // 60 s lead, so nothing should be announced yet.
+      const entry = enforcement(curse, started + 100_000)
+      expect(entry?.proofUpcomingSeconds).toBeUndefined()
+      expect(entry?.prompt).toBeUndefined()
+    })
+
+    it('warns before Outfit Swap’s closing slot, the tightest window in the game', () => {
+      const curse = makeCurse({
+        curse_ref: 'curse.outfit-swap',
+        started_at: new Date(started).toISOString(),
+        expires_at: new Date(started + 20 * 60_000).toISOString(),
+        params: { before_after_required: true, dispute_window_seconds: 60 },
+      })
+      // The closing slot runs for the final 60 s (t+19:00 → t+20:00). At
+      // t+18:40 it is 20 s away.
+      const entry = enforcement(curse, started + 18 * 60_000 + 40_000)
+      expect(entry?.proofUpcomingSeconds).toBe(20)
+    })
+
+    it('never pre-warns a non-photo curse', () => {
+      const curse = makeCurse({
+        curse_ref: 'curse.check-in',
+        started_at: new Date(started).toISOString(),
+        expires_at: null,
+        params: { interval_seconds: 60, submission_window_seconds: 30 },
+      })
+      expect(enforcement(curse, started + 45_000)?.proofUpcomingSeconds).toBeUndefined()
+    })
+  })
 })

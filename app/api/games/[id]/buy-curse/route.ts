@@ -257,8 +257,42 @@ export async function POST(
       (candidate.id !== 'curse.intel-loss' || (enemyIntelCount ?? 0) > 0),
   )
   if (tierCurses.length === 0) {
+    // RULEBOOK §10 is explicit that a roll with no eligible result costs
+    // nothing, so the refund stays. But a free roll used to be a silent oracle
+    // (SIM_EVALUATION P6): eligibility depends on hidden enemy state (coins > 0,
+    // in_hand intel > 0, which refs are already active), so a buyer could roll
+    // repeatedly at zero cost and enumerate it — unmetered, unlogged, and
+    // invisible to the victim. Two things close that:
+    //
+    // 1. Do NOT echo the rolled tier. `details: { tier }` told the prober which
+    //    bucket had been exhausted, which is the most useful bit of the leak. A
+    //    bare error still explains the outcome ("nothing to cast, nothing
+    //    charged") without naming the bucket.
+    // 2. Append a `curse_roll_failed` event so the probe is visible and
+    //    attributable. The payload deliberately carries NO enemy state and no
+    //    tier: only who rolled, their own team, and the dice they can already
+    //    see. That makes repeated probing legible to the victim (and to the
+    //    results timeline) without handing the prober a durable, replayable
+    //    record of the enemy's coins/intel — every client can read events.
+    const { error: rollEventError } = await supabase.from('events').insert({
+      game_id: game.id,
+      type: 'curse_roll_failed',
+      actor_player_id: caller.id,
+      payload: {
+        team_id: buyerTeam.id,
+        num_dice,
+        dice_total,
+        dice_rolls,
+      },
+    })
+    if (rollEventError) {
+      return NextResponse.json(
+        { error: 'event_insert_failed', details: rollEventError.message },
+        { status: 500 },
+      )
+    }
     return NextResponse.json(
-      { error: 'no_available_curse', details: { tier } },
+      { error: 'no_available_curse' },
       { status: 409 },
     )
   }
@@ -318,6 +352,25 @@ export async function POST(
   } | null
   if (!cast || cast.error) {
     const error = cast?.error ?? 'curse_purchase_failed'
+    // The RPC re-checks one-shot eligibility under the team locks, so a probe
+    // that loses a race still lands here rather than above. Log it the same way
+    // so the oracle stays visible on this path too (SIM_EVALUATION P6). The
+    // RPC's own `coins` value is the BUYER's balance, not the enemy's, so
+    // forwarding it leaks nothing. Best-effort: a failed log must not convert an
+    // already-correct 409 refusal into a 500.
+    if (error === 'no_available_curse') {
+      await supabase.from('events').insert({
+        game_id: game.id,
+        type: 'curse_roll_failed',
+        actor_player_id: caller.id,
+        payload: {
+          team_id: buyerTeam.id,
+          num_dice,
+          dice_total,
+          dice_rolls,
+        },
+      })
+    }
     return NextResponse.json(
       {
         error,

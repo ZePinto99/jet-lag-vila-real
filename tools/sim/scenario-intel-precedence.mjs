@@ -41,9 +41,9 @@ await strictStep(rec, 'reach the cap', async () => {
   // 4 cheap-to-mid cards that need no player_pos.
   for (const ref of [
     'intel.north-south',
-    'intel.east-west',
     'intel.eliminate-one',
     'intel.eliminate-two',
+    'intel.decoy-reveal',
   ]) {
     const r = await buy(ref)
     rec.check(`bought ${ref}`, r.status < 400, `status=${r.status} ${r.body.error ?? ''}`)
@@ -58,7 +58,7 @@ await strictStep(rec, 'reach the cap', async () => {
 await strictStep(rec, 'capped AND broke reports the cap, not the balance', async () => {
   // Drain the balance below the cheapest remaining card so BOTH conditions hold.
   db(`update teams set coins = 5 where id='${g.eTeam}';`)
-  const r = await buy('intel.decoy-reveal') // costs 100, team has 5
+  const r = await buy('intel.surroundings') // costs 80, team has 5
   rec.check(
     'route reports intel_cap_reached (matches the RPC), not insufficient_coins',
     r.status === 409 && r.body.error === 'intel_cap_reached',

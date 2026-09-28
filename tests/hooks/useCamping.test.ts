@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { apiPost } from '@/lib/api'
 import {
+  CAMPING_COOLDOWN_S,
   CAMPING_LOCK_S,
   CAMPING_WARNING_S,
   useCamping,
@@ -130,6 +131,71 @@ describe('useCamping', () => {
     expect(result.current.status).toBe('locked')
     rerender({ gameplayActive: true, clockNowMs: NOW + 1_000 })
     expect(result.current.status).toBe('idle')
+  })
+
+  // P8: the 90 s warning is only worth promising if it is correct after a
+  // reload. It is derived from the server's accumulated seconds, so a client
+  // that has been open for zero seconds must still know it is at 95 s.
+  it('derives the lock countdown from server seconds on a cold start, not from local elapsed time', async () => {
+    mockApiPost.mockResolvedValue(response({ seconds_in_zone: 95 }))
+    const { result } = renderHook(() => useCamping(params()))
+
+    await waitFor(() => expect(result.current.status).toBe('warning'))
+    // Freshly mounted: no locally accumulated time at all, yet the countdown is
+    // already correct because the server supplied the 95 s.
+    expect(result.current.secondsUntilLock).toBe(CAMPING_LOCK_S - 95)
+    expect(result.current.secondsUntilUnlock).toBeNull()
+  })
+
+  it('does NOT warn below the threshold even after a long time on screen', async () => {
+    mockApiPost.mockResolvedValue(response({ seconds_in_zone: 20 }))
+    const { result, rerender } = renderHook(
+      ({ clockNowMs }) => useCamping(params({ clockNowMs })),
+      { initialProps: { clockNowMs: NOW } },
+    )
+    await waitFor(() => expect(result.current.secondsInZone).toBe(20))
+
+    // The optimistic projection is capped at 15 s, so 20 + 15 = 35 s stays well
+    // under the 90 s warning no matter how long the tab is left open.
+    rerender({ clockNowMs: NOW + 30 * 60_000 })
+    expect(result.current.status).toBe('idle')
+    expect(result.current.secondsUntilLock).toBeGreaterThan(0)
+  })
+
+  it('does not warn while outside the zone even with a high in-zone total', async () => {
+    mockApiPost.mockResolvedValue(response({
+      inside_zone: false,
+      seconds_in_zone: 119,
+      seconds_outside: 5,
+    }))
+    const { result } = renderHook(() => useCamping(params()))
+
+    await waitFor(() => expect(result.current.secondsInZone).toBe(119))
+    expect(result.current.status).toBe('idle')
+  })
+
+  it('reports the remaining cooldown while locked and outside the zone', async () => {
+    mockApiPost.mockResolvedValue(response({
+      inside_zone: false,
+      seconds_in_zone: CAMPING_LOCK_S,
+      seconds_outside: 42,
+      locked: true,
+    }))
+    const { result } = renderHook(() => useCamping(params()))
+
+    await waitFor(() => expect(result.current.status).toBe('locked'))
+    expect(result.current.secondsUntilUnlock).toBe(CAMPING_COOLDOWN_S - 42)
+    expect(result.current.secondsUntilLock).toBe(0)
+  })
+
+  it('exposes full thresholds before the first heartbeat resolves', () => {
+    mockApiPost.mockReturnValue(new Promise(() => {}))
+    const { result } = renderHook(() => useCamping(params()))
+
+    expect(result.current.status).toBe('idle')
+    expect(result.current.secondsUntilLock).toBe(CAMPING_LOCK_S)
+    expect(result.current.secondsUntilUnlock).toBeNull()
+    expect(result.current.cooldownThresholdSeconds).toBe(CAMPING_COOLDOWN_S)
   })
 
   it('does not report or advance state from stale GPS', async () => {
