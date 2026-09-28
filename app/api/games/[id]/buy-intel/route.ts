@@ -195,19 +195,16 @@ export async function POST(
   }
   const cost = intelDef.cost_coins
 
-  // 5. Coin check against the materialized counter.
-  if (callerTeam.coins < cost) {
-    return NextResponse.json(
-      {
-        error: 'insufficient_coins',
-        details: { coins: callerTeam.coins, cost },
-      },
-      { status: 409 },
-    )
-  }
-
-  // 6. Intel-cap and duplicate-purchase checks. Both look at any state — once
+  // 5. Intel-cap and duplicate-purchase checks. Both look at any state — once
   // a card has ever existed for this team, it counts.
+  //
+  // Ordered BEFORE the coin check to match the authoritative RPC, which tests
+  // the cap at 0015_atomic_game_mutations.sql:245-250 and only then the balance
+  // at :259. The route used to check coins first, so a team that was both at
+  // the cap and short of coins was told `insufficient_coins` — sending it off
+  // to earn coins that can never unblock the purchase, because the cap is
+  // permanent for the rest of the game. Both layers refuse either way and
+  // nothing is ever charged; this only fixes which reason the player is shown.
   const { data: teamCardsData, error: teamCardsError } = await supabase
     .from('cards')
     .select('*')
@@ -228,6 +225,17 @@ export async function POST(
   if (teamIntelCards.some((c) => c.ref === intel_ref)) {
     return NextResponse.json(
       { error: 'intel_already_purchased' },
+      { status: 409 },
+    )
+  }
+
+  // 6. Coin check against the materialized counter.
+  if (callerTeam.coins < cost) {
+    return NextResponse.json(
+      {
+        error: 'insufficient_coins',
+        details: { coins: callerTeam.coins, cost },
+      },
       { status: 409 },
     )
   }

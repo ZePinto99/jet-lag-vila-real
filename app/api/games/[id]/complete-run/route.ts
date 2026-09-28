@@ -170,9 +170,22 @@ export async function POST(
   } | null
   if (!finish?.game || !finish.winner_team_id || finish.error) {
     const error = finish?.error ?? 'game_finish_failed'
+    // `game_expired` is a legitimate guard result, not a server fault:
+    // gameplay_action_guard_locked (0030:51) returns it once the game duration
+    // has elapsed. It must map to 409 like every other guard rejection, as
+    // submit-challenge / accept-challenge / reject-challenge already do.
+    //
+    // It previously fell through this whitelist to `: 500`, so a flag carrier
+    // who reached home a second past the 180-minute deadline got an HTTP 500 —
+    // indistinguishable from a dropped connection, which sends them retrying the
+    // geofence instead of showing them the results screen. Correct refusal,
+    // catastrophic presentation, at the most emotionally loaded moment in the
+    // game.
     const status =
       error === 'not_flag_carrier' ? 403 :
-      error === 'game_not_in_flag_found' || error === 'player_respawning' ? 409 :
+      error === 'game_not_in_flag_found' ||
+      error === 'player_respawning' ||
+      error === 'game_expired' ? 409 :
       error === 'not_found' ? 404 : 500
     return NextResponse.json({ error }, { status })
   }

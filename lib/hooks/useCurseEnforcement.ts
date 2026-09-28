@@ -433,7 +433,11 @@ export function useCurseEnforcement(params: UseCurseEnforcementParams): UseCurse
         }
       } else if (ref === 'curse.buddy-up') {
         if (teamSpreadM != null) {
-          const maxPair = numParam(c.params, 'max_pairwise_distance_m', 10)
+          // Fallback must match data/curses.json ("max_pairwise_distance_m": 25).
+          // It previously read 10 — solo-quarantine's value — which made a
+          // legacy/param-less Buddy Up 2.5x stricter than the rulebook (§10
+          // "all team members within 25 m").
+          const maxPair = numParam(c.params, 'max_pairwise_distance_m', 25)
           entry.readout = {
             text: t('curse.readout_spread', { m: Math.round(teamSpreadM) }),
             ok: teamSpreadM <= maxPair,
@@ -441,7 +445,10 @@ export function useCurseEnforcement(params: UseCurseEnforcementParams): UseCurse
         }
       } else if (ref === 'curse.solo-quarantine') {
         if (teamSpreadM != null) {
-          const maxPair = numParam(c.params, 'max_pairwise_distance_m', 50)
+          // Fallback must match data/curses.json ("max_pairwise_distance_m": 10).
+          // It previously read 50, which made a param-less Team Quarantine 5x
+          // more lenient than the rulebook (§10 "within 10 m of each other").
+          const maxPair = numParam(c.params, 'max_pairwise_distance_m', 10)
           entry.readout = {
             text: t('curse.readout_quarantine', { m: Math.round(teamSpreadM) }),
             ok: teamSpreadM <= maxPair,

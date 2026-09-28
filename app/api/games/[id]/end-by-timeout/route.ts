@@ -158,19 +158,36 @@ async function buildFinishedResponse(
     ? (persistedScores as EndByTimeoutResponse['scores'])
     : computeScores({ events, teams, players })
 
-  // Try to honour an existing game_won event's winner; else recompute.
+  // Try to honour a persisted winner; else recompute.
+  //
+  // finish_game_by_timeout_atomic (0045:241-251) writes the winner into BOTH
+  // `game_ended_by_timeout` and `game_won`, including the mandatory coin-flip
+  // result on an exact tie (0045:236-237, reason 'timeout_coin_flip'). Reading
+  // only `game_won` meant that if that second insert was ever missing — a
+  // legacy game, or a partially-applied finish — we fell through to
+  // pickTimeoutWinner(), which has no coin-flip branch and returns
+  // { winner_team_id: null, reason: 'timeout_tied' }. That contradicts both the
+  // persisted record and RULEBOOK §13 ("Then coin flip"), and it would show a
+  // player a tie for a game the server had already decided.
+  //
+  // So: prefer whichever terminal event actually recorded a winner, and only
+  // recompute when neither did.
   const wonEvent = [...events]
     .reverse()
     .find((e) => e.type === 'game_won')
   let winner_team_id: string | null
   let reason: EndByTimeoutResponse['reason']
-  if (wonEvent) {
-    const wp = wonEvent.payload as {
-      winner_team_id?: string | null
-      reason?: EndByTimeoutResponse['reason']
-    }
-    winner_team_id = wp.winner_team_id ?? null
-    reason = wp.reason ?? 'flag_returned'
+  const persistedTerminal = (wonEvent ?? timeoutEvent)?.payload as
+    | { winner_team_id?: string | null; reason?: EndByTimeoutResponse['reason'] }
+    | undefined
+  if (persistedTerminal?.winner_team_id) {
+    winner_team_id = persistedTerminal.winner_team_id
+    reason = persistedTerminal.reason ?? (wonEvent ? 'flag_returned' : 'timeout_points')
+  } else if (wonEvent) {
+    // A game_won with no winner id is only possible on legacy rows; keep its
+    // reason so the overlay still explains the ending.
+    winner_team_id = null
+    reason = persistedTerminal?.reason ?? 'flag_returned'
   } else {
     const picked = pickTimeoutWinner(scores)
     winner_team_id = picked.winner_team_id

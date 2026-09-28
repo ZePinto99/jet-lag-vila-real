@@ -66,8 +66,12 @@ describe('ActiveCursesBanner', () => {
     }
     expect(screen.getAllByText('[A]')).toHaveLength(6)
     expect(screen.getAllByText('[B]')).toHaveLength(4)
-    expect(screen.getAllByText('[C]')).toHaveLength(2)
-    expect(screen.getAllByText('[L]')).toHaveLength(4)
+    // Check-in is [C], not [L]: its acknowledgement is local React state
+    // (ActiveCursesBanner.tsx setAckedIdx) with no event write and no ledger
+    // mutation, so it is unverifiable — RULEBOOK §10's [C] definition. The true
+    // [L] curses (coin-drain, intel-loss, full-stop) all do real server writes.
+    expect(screen.getAllByText('[C]')).toHaveLength(3)
+    expect(screen.getAllByText('[L]')).toHaveLength(3)
     expect(screen.getAllByText('no timer')).toHaveLength(3)
     expect(screen.getByText('20m 00s')).toBeVisible()
     expect(screen.getAllByText('5m 00s')).toHaveLength(2)
