@@ -14,7 +14,10 @@ describe('curse catalog contract', () => {
       { id: 'curse.slow-walk', name: 'Slow Walk', tier: 'minor', enforcement: 'A', duration_minutes: 5 },
       { id: 'curse.single-file', name: 'Single File', tier: 'minor', enforcement: 'B', duration_minutes: 5 },
       { id: 'curse.photo-tax', name: 'Photo Tax', tier: 'minor', enforcement: 'B', duration_minutes: 6 },
-      { id: 'curse.check-in', name: 'Check-in', tier: 'minor', enforcement: 'L', duration_minutes: 10 },
+      // [C] honour, not [L]: the ack is local React state (ActiveCursesBanner
+      // .tsx:157 setAckedIdx) with no event write and no ledger mutation, so it
+      // is unverifiable by design — exactly RULEBOOK §10's [C] definition.
+      { id: 'curse.check-in', name: 'Check-in', tier: 'minor', enforcement: 'C', duration_minutes: 10 },
       { id: 'curse.detour', name: 'Detour', tier: 'medium', enforcement: 'A', duration_minutes: 15 },
       { id: 'curse.buddy-up', name: 'Buddy Up', tier: 'medium', enforcement: 'A', duration_minutes: 15 },
       { id: 'curse.outfit-swap', name: 'Outfit Swap', tier: 'medium', enforcement: 'B', duration_minutes: 20 },

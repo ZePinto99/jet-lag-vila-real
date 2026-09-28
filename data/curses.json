@@ -38,9 +38,9 @@
     "id": "curse.check-in",
     "name": "Check-in",
     "tier": "minor",
-    "enforcement": "L",
+    "enforcement": "C",
     "duration_minutes": 10,
-    "description": "10 min, each affected player acknowledges an in-app prompt every 2 min (about 5 taps); missed prompts are logged, with no automatic action lock",
+    "description": "10 min, each affected player acknowledges an in-app prompt every 2 min (about 5 taps); honour-based, no action lock",
     "params": {
       "interval_seconds": 120,
       "submission_window_seconds": 60

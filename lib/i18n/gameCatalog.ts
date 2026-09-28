@@ -60,7 +60,7 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
   },
   'curse.check-in': {
     name: 'Check-in',
-    description: 'Durante 10 min, cada jogador afetado confirma um aviso da app a cada 2 min (cerca de 5 toques); as falhas ficam registadas sem bloqueio automático',
+    description: 'Durante 10 min, cada jogador afetado confirma um aviso da app a cada 2 min (cerca de 5 toques); por honra, sem bloqueio automático',
   },
   'curse.detour': {
     name: 'Desvio',
