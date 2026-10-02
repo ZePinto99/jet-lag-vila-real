@@ -16,7 +16,7 @@ describe('TagButton', () => {
     window.localStorage.setItem('device_id', 'device-1')
     global.fetch = jest.fn().mockResolvedValue(
       new Response(
-        JSON.stringify({ tagged_player_ids: ['enemy-1'], rejected: [] }),
+        JSON.stringify({ tagged_player_ids: ['enemy-1'], rejected: [], coins_drained: 40 }),
         { status: 200 },
       ),
     )
@@ -68,7 +68,9 @@ describe('TagButton', () => {
         }),
       }),
     )
-    expect(screen.getByText('Tagged 1 player.')).toBeVisible()
+    expect(screen.getByText(/Tagged 1 player\./)).toBeVisible()
+    // 0058: the same line now states what the tag cost them.
+    expect(screen.getByText(/Fined them 40 coins\./)).toBeVisible()
   })
 
   it('honors an action lock label over normal eligibility', () => {
@@ -91,7 +93,7 @@ describe('TagButton', () => {
   describe('rejection reasons (P12)', () => {
     function tagResponse(rejected: Array<{ player_id: string; reason: string }>) {
       global.fetch = jest.fn().mockResolvedValue(
-        new Response(JSON.stringify({ tagged_player_ids: [], rejected }), { status: 200 }),
+        new Response(JSON.stringify({ tagged_player_ids: [], rejected, coins_drained: 0 }), { status: 200 }),
       )
     }
 
@@ -168,10 +170,28 @@ describe('TagButton', () => {
       ).toBeVisible()
     })
 
+    it('says they had nothing left when the fine clamps to zero (0058)', async () => {
+      // A 0-coin fine must not read as a failed tag — the raiding team was
+      // simply already broke, and the respawn is still the real penalty.
+      global.fetch = jest.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ tagged_player_ids: ['enemy-1'], rejected: [], coins_drained: 0 }),
+          { status: 200 },
+        ),
+      ) as unknown as typeof fetch
+      renderWithProviders(
+        <TagButton gameId="game-1" myPlayerId="player-1" myGpsPos={gps} meState={enabledState} />,
+      )
+      await userEvent.click(screen.getByRole('button', { name: /Tag 1 player/ }))
+
+      expect(await screen.findByText(/Tagged 1 player\./)).toBeVisible()
+      expect(screen.getByText(/no coins left to fine/i)).toBeVisible()
+    })
+
     it('shows no rejection line when every tag landed', async () => {
       global.fetch = jest.fn().mockResolvedValue(
         new Response(
-          JSON.stringify({ tagged_player_ids: ['enemy-1'], rejected: [] }),
+          JSON.stringify({ tagged_player_ids: ['enemy-1'], rejected: [], coins_drained: 40 }),
           { status: 200 },
         ),
       )
@@ -180,7 +200,7 @@ describe('TagButton', () => {
       )
       await userEvent.click(screen.getByRole('button', { name: /Tag 1 player/ }))
 
-      expect(await screen.findByText('Tagged 1 player.')).toBeVisible()
+      expect(await screen.findByText(/Tagged 1 player\./)).toBeVisible()
       expect(screen.queryByText(/rejected/)).not.toBeInTheDocument()
     })
   })

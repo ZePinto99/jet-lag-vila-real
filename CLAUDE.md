@@ -139,7 +139,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | **Raider** | Player physically outside their own defense zone |
 | **Defender** | Player physically inside their own defense zone (within 200 m of any own candidate) |
 | **Defense zone** | 200 m radius around each own candidate landmark; union defines where you can tag |
-| **Tag** | Defender within 5 m of raider AND inside own defense zone → Tag button activates → tagged raiders lose 1 intel card and must respawn at neutral landmark |
+| **Tag** | Defender within 5 m of raider AND inside own defense zone → Tag button activates → the raiding team is fined 40 coins (once per Tag action, clamped at their balance — migration 0058, NOT an intel card) and every tagged raider must respawn at a neutral landmark |
 | **Intel card** | Purchased clue about enemy flag location; max 4 per team per game |
 | **Curse** | Purchased handicap applied to enemy team; 3 tiers (minor/medium/major) rolled with dice |
 | **Enforcement tier** | [A] GPS-verified, [B] photo-verified, [C] honor system, [L] ledger-only |

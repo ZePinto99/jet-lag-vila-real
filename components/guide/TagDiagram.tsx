@@ -10,7 +10,7 @@ export interface TagDiagramLabels {
   defender: string
   /** The two caught raiders, e.g. "Both raiders tagged in one tap". */
   raiders: string
-  /** Cost of being tagged, e.g. "Their team loses 1 intel card". */
+  /** Cost of being tagged, e.g. "Their team is fined 40 coins" (migration 0058). */
   cost: string
   /** Step 1 of respawn, e.g. "Walk to the assigned neutral landmark". */
   step1: string

@@ -35,6 +35,24 @@ export const TIME_BONUS = 20
 export const COIN_COST_PER_DIE = 50
 
 /**
+ * Coins the raiding team loses when a Tag lands (RULEBOOK §6).
+ *
+ * One fine per Tag ACTION, not per raider caught, and clamped at the team's
+ * balance so it can never go negative. This replaced the old "lose 1 random
+ * intel card" penalty (migration 0058): an expired card's answer was still sent
+ * to the client, so the old rule confiscated a map overlay rather than the
+ * knowledge, and its real cost was the re-purchase price anyway.
+ *
+ * Sits between the cheapest intel (30) and the mid-tier cards (50–60), and
+ * under one curse die (50), so a tag is never worse than a full curse cast.
+ *
+ * NOTE: the authoritative value is the literal in migration 0058's
+ * `apply_tags_atomic`. This constant exists so the player guide and UI can state
+ * the figure without hardcoding it; if you change one, change both.
+ */
+export const TAG_COIN_PENALTY = 40
+
+/**
  * Cost to harden your own real flag's challenge, once per game
  * (RULEBOOK §5.3 / §7.3).
  */

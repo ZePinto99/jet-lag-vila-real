@@ -199,6 +199,16 @@ export function TagButton({
             {lastResult.rejected.length > 0
               ? ` ${t('tag.result_rejected_count', { n: lastResult.rejected.length })}`
               : ''}
+            {/* 0058: say what the tag actually cost them. The fine is clamped at
+                the raiding team's balance, so 0 means they had nothing left to
+                take — worth stating rather than implying the tag did nothing. */}
+            {landed > 0
+              ? ` ${
+                  lastResult.coins_drained > 0
+                    ? t('tag.result_fined', { c: lastResult.coins_drained })
+                    : t('tag.result_fined_broke')
+                }`
+              : ''}
           </p>
           {/* P12: name the cause. Without this, an aborted batch rendered as a
               bare "No tags landed." with no explanation at all. */}

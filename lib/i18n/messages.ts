@@ -241,6 +241,14 @@ export const MESSAGES: MessageDict = {
   // "no tags landed" with no cause reads as a broken button.
   'tag.result_tagged_one': { en: 'Tagged 1 player.', pt: 'Apanhaste 1 jogador.' },
   'tag.result_tagged_many': { en: 'Tagged {n} players.', pt: 'Apanhaste {n} jogadores.' },
+  // 0058: the tag fine. Shown after a successful tag so the defender sees the
+  // cost landed, and the _broke variant so a 0-coin fine reads as "they had
+  // nothing" rather than looking like the tag failed.
+  'tag.result_fined': { en: 'Fined them {c} coins.', pt: 'Multa de {c} moedas.' },
+  'tag.result_fined_broke': {
+    en: 'They had no coins left to fine.',
+    pt: 'Não tinham moedas para multar.',
+  },
   'tag.result_none': { en: 'No tags landed.', pt: 'Nenhuma captura foi aplicada.' },
   'tag.result_rejected_count': { en: '({n} rejected)', pt: '({n} rejeitadas)' },
   // Single target that was already down by the time the tap reached the server.
@@ -670,9 +678,11 @@ export const MESSAGES: MessageDict = {
     pt: '{player} encontrou a tua bandeira em {name} — intercetem!',
   },
   'moment.tag_made.title': { en: 'RAIDER TAGGED!', pt: 'RAIDER APANHADO!' },
+  // 0058: a tag fines coins, it does NOT take intel. This subtitle said
+  // "they lose intel" and was shown live, mid-game, to the whole team.
   'moment.tag_made.sub': {
-    en: '{tagger} tagged {raider} — they lose intel and must respawn',
-    pt: '{tagger} apanhou {raider} — perde intel e tem de renascer',
+    en: '{tagger} tagged {raider} — their team is fined and they must respawn',
+    pt: '{tagger} apanhou {raider} — a equipa deles é multada e tem de renascer',
   },
   'moment.tagged.title': { en: 'TAGGED!', pt: 'APANHADO!' },
   'moment.tagged.sub': {
@@ -1129,8 +1139,8 @@ export const MESSAGES: MessageDict = {
     pt: 'Chega a menos de {radius} m de um atacante adversário enquanto estás dentro da tua zona de defesa e o botão de captura acende sozinho. Não há nada para escrever.',
   },
   'guide.tag.bunching': {
-    en: 'One tap catches every raider inside that circle at once — but it only ever costs them 1 intel card in total. Bunching up is cheap for raiders.',
-    pt: 'Um toque apanha todos os atacantes dentro desse círculo ao mesmo tempo — mas só lhes custa 1 carta de intel no total. Andar em grupo é barato para os atacantes.',
+    en: 'One tap catches every raider inside that circle at once — but it only ever costs them {c} coins in total, however many are caught. Bunching up is cheap for raiders. Their intel cards are never taken.',
+    pt: 'Um toque apanha todos os atacantes dentro desse círculo ao mesmo tempo — mas só lhes custa {c} moedas no total, independentemente de quantos sejam apanhados. Andar em grupo é barato para os atacantes. As cartas de intel deles nunca são retiradas.',
   },
   'guide.tag.tolerance': {
     en: 'Your phone lights the button at {client} m; the server allows up to {server} m, because two phones in a narrow street rarely agree. The server’s number is the one that counts.',
@@ -1143,7 +1153,7 @@ export const MESSAGES: MessageDict = {
   'guide.tag.label_radius': { en: '{n} m', pt: '{n} m' },
   'guide.tag.label_defender': { en: 'You', pt: 'Tu' },
   'guide.tag.label_raiders': { en: 'Both caught in one tap', pt: 'Ambos apanhados num toque' },
-  'guide.tag.label_cost': { en: 'Their team loses 1 intel card', pt: 'A equipa deles perde 1 carta de intel' },
+  'guide.tag.label_cost': { en: 'Their team is fined {c} coins', pt: 'A equipa deles é multada em {c} moedas' },
   'guide.tag.label_step1': { en: 'Walk to the assigned neutral landmark', pt: 'Caminha até ao local neutro atribuído' },
   'guide.tag.label_step2': { en: 'Confirm, then walk {n} m away', pt: 'Confirma e afasta-te {n} m' },
 
@@ -1274,9 +1284,12 @@ export const MESSAGES: MessageDict = {
     en: 'Sequence matters. A north/south split halves five candidates to two or three; an eliminate card then takes one of those away. Buying two cards that rule out the same ground wastes one.',
     pt: 'A ordem importa. Uma divisão norte/sul reduz cinco candidatos a dois ou três; uma carta de eliminação tira depois um deles. Comprar duas cartas que excluem o mesmo terreno desperdiça uma.',
   },
+  // 0058: a tag no longer takes a card — it fines {c} coins. The decoy wipe is
+  // unchanged and is now the ONLY thing that costs you intel, which is the point
+  // of the warning.
   'guide.intel.loss': {
-    en: 'Getting tagged costs you one random card. Photographing a decoy costs you every card you own — which is why a guess is never free.',
-    pt: 'Ser capturado custa-te uma carta aleatória. Fotografar um engano custa-te todas as cartas que tens — por isso adivinhar nunca é grátis.',
+    en: 'Getting tagged never takes a card — it fines your team {c} coins. Photographing a decoy is the one thing that costs you intel: every card you own, which is why a guess is never free.',
+    pt: 'Ser capturado nunca te tira uma carta — multa a tua equipa em {c} moedas. Fotografar um engano é a única coisa que te custa intel: todas as cartas que tens, por isso adivinhar nunca é grátis.',
   },
   'guide.intel.diagram_alt': {
     en: 'Five candidate markers, then a purchased north/south card, then the same five with two struck out and three still live.',

@@ -178,7 +178,7 @@ Vila Real's compact ridge-and-valley geography makes a strict east/west midline 
 - When a defender comes within **5 m** of any enemy raider, a **Tag button activates automatically** in the app. Tapping it tags **every adversary currently within that 5 m radius** simultaneously — a single tap catches an entire raiding party if they're bunched together. The app enables the button only when GPS confirms (a) the defender is inside their own defense zone and (b) the proximity threshold is met. The tag is recorded server-side against both players' coordinates at that timestamp.
 - **Camping rule:** defenders cannot stand within 50 m of any of their own candidate landmarks for more than 2 consecutive minutes. The app warns at 90 s and disables the Tag button at 120 s. They must leave the radius for at least 60 s to reset. (The 50 m no-stand zone sits inside the 200 m defense zone — you can patrol the donut between them freely.) Both the 90 s warning and the 120 s lock are counted by the server, so they survive a reload — but the timer only advances while the app is sending your position, and the warning can only be *shown* to an app that is open. Keep it open while you defend: if you close it, the warning is the part you lose, and the lock is still waiting when you come back.
 - A Tag action:
-  - Discards at most **1 random intel card from the raiding team in total**, whether it catches one raider or a whole bunched party
+  - Fines the raiding team **40 coins in total**, whether it catches one raider or a whole bunched party. The fine is clamped at their balance, so a team with nothing left pays nothing — the walk and any dropped flag are still real costs.
 - Each tagged raider:
   - Is assigned the nearest **neutral landmark** from the verified tag position
   - Must confirm arrival at that exact geofence, then walk at least **45 m away** before respawn clears; they remain immune and action-locked during both stages
@@ -210,6 +210,7 @@ Vila Real's compact ridge-and-valley geography makes a strict east/west midline 
 | Buy 1 curse die | 50 |
 | Roll up to 3 dice combined | 50 × number of dice |
 | Harden own flag challenge (one-time) | 150 |
+| **Penalty — being tagged** | **−40** (once per Tag action, clamped at your balance) |
 
 ---
 
@@ -241,7 +242,9 @@ Three decks live in the app. Drawing/buying from a deck is a server action that 
 ### 8.3 Intel (find the real flag)
 
 - Any player buys intel cards. Each card reveals partial info about the enemy team's flag assignment.
-- Intel is **persistent**: stays in the team's view until the game ends or the team is tagged (loses 1 card).
+- Intel is **persistent**: once bought, a card stays in the team's view for the rest of the game. A tag does **not** take it away.
+
+> ℹ️ **Why a tag costs coins, not a card.** Earlier editions discarded a random intel card on a tag. It read well but did almost nothing: the app had already shown the team the answer, so confiscating the card removed a map overlay and left the knowledge intact — and a player who had written it down or screenshotted it lost nothing at all. The real cost was simply re-buying the card, so the rule now charges that directly and honestly. Memory is not something the app can take back.
 
 ---
 

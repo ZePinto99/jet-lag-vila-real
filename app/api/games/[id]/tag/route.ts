@@ -59,7 +59,12 @@ interface CampingStateResponse {
 }
 
 type BulkTagResult =
-  | { tagged_player_ids: string[] }
+  // `coins_drained` is the 40-coin tag fine from migration 0058, already
+  // clamped at the raiding team's balance — so it is 0 for a broke team, and
+  // below 40 for one that could not cover it in full. Forwarded to the client
+  // so the UI can state what the tag actually cost rather than leaving the
+  // player to notice the balance moved.
+  | { tagged_player_ids: string[]; coins_drained?: number }
   | { error: string; player_id?: string }
 
 export async function POST(
@@ -248,6 +253,8 @@ export async function POST(
   const playersById = new Map(players.map((p) => [p.id, p]))
   const tagged_player_ids: string[] = []
   const rejected: RejectedTarget[] = []
+  // 0058: coins the raiding team lost to this tag (0 when they had none).
+  let coins_drained = 0
   // Dedupe by player_id — if the client sends the same target twice, only
   // process it once (the first occurrence wins).
   const seenTargetIds = new Set<string>()
@@ -338,6 +345,7 @@ export async function POST(
       }
     } else {
       tagged_player_ids.push(...applyResult.tagged_player_ids)
+      coins_drained = applyResult.coins_drained ?? 0
     }
   }
 
@@ -351,6 +359,6 @@ export async function POST(
     })
   }
 
-  const response: TagResponse = { tagged_player_ids, rejected }
+  const response: TagResponse = { tagged_player_ids, rejected, coins_drained }
   return NextResponse.json(response)
 }

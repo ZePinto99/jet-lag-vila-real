@@ -42,8 +42,8 @@ Every player can buy intel and cast curses in the app at any time — there is n
 - Tapping it tags **every adversary currently within that 5 m radius** simultaneously. If two raiders are bunched together, both get caught in one tap.
 - Defender must be in their **own defense zone**. The target must be outside theirs, unless they are within 50 m of one of the defender's candidates; the app verifies both fresh GPS fixes.
 - Your phone lights the button at **5 m**, but the server accepts up to **10 m** — two phones in a narrow street rarely agree. The server's number is the one that counts.
-- One Tag tap discards at most **1 random intel card from the raiding team in total**, even when several raiders are caught.
-- **Tagging the flag carrier strips the flag** and ends their run. The photo still scores, but their team has to find and photograph the real flag again to win. *(Rule agreed; not yet enforced by the app — see RULEBOOK §6.)*
+- One Tag tap fines the raiding team **40 coins in total**, even when several raiders are caught — so bunching up is cheaper than being caught one by one. Your intel cards are safe; a tag never takes them.
+- **Tagging the flag carrier strips the flag** and ends their run. The photo still scores, but their team has to find and photograph the real flag again to win. The app enforces this.
 - A tagged raider:
   - Must walk to the specifically assigned **nearest neutral landmark**
   - Remains immune/respawning until they confirm arrival and then walk at least **45 m away**

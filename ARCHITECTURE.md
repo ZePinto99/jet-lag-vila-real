@@ -252,9 +252,14 @@ For each valid tagged raider:
   - insert event: tag { defender_id, raider_id }
   - persist the nearest neutral target and two-stage respawn state
 
-After the batch succeeds, expire at most 1 random in-hand intel card from the raiding team for the whole Tag action.
+After the batch succeeds, fine the raiding team TAG_COIN_PENALTY (40) coins for the
+whole Tag action — once per tap, not per raider — clamped at their balance so it can
+never go negative, and recorded as `coins_deducted { reason: 'tag_penalty' }`. Intel
+cards are NOT touched (migration 0058; the old rule expired one random card, but
+`/live-state` had already sent the client that card's answer, so it confiscated a map
+overlay rather than the knowledge).
 
-Return: { tagged: raider_ids[] }
+Return: { tagged: raider_ids[], coins_drained }
 ```
 
 #### `POST /api/games/[id]/buy-intel`

@@ -2,6 +2,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { TAG_COIN_PENALTY } from '@/lib/gameConstants'
 
 function migration(name: string): string {
   return readFileSync(join(process.cwd(), 'supabase', 'migrations', name), 'utf8')
@@ -15,6 +16,60 @@ describe('balance migration contracts', () => {
   it('applies the batch intel loss after all per-player tags', () => {
     const sql = migration('0039_one_intel_loss_per_tag_action.sql')
     expect(sql.indexOf('foreach v_raider_id')).toBeLessThan(sql.indexOf('select * into v_victim'))
+  })
+
+  describe('0058 — a tag fines coins instead of expiring intel', () => {
+    const sql = () => migration('0058_tag_drains_coins_not_intel.sql')
+
+    it('fines a flat amount clamped at the team balance, so it can never go negative', () => {
+      // `greatest(0, ...)` guards a null/negative balance; `least(40, ...)` is the
+      // clamp that makes a broke team pay what it has rather than overdraw.
+      expect(sql()).toContain('least(40, greatest(0, coalesce(v_raider_coins, 0)))')
+    })
+
+    it('no longer touches intel cards at all', () => {
+      // The whole point of 0058: the old rule expired a card whose answer the
+      // client had already been shown, so it confiscated a map overlay rather
+      // than the knowledge.
+      expect(sql()).not.toContain("state = 'expired'")
+      expect(sql()).not.toContain("kind = 'intel'")
+    })
+
+    it('fines once per Tag ACTION, after the per-raider loop, not once per raider', () => {
+      expect(sql().indexOf('foreach v_raider_id')).toBeLessThan(
+        sql().indexOf('select coins into v_raider_coins'),
+      )
+    })
+
+    it('writes the ledger event before mutating the materialised counter', () => {
+      // Project-wide rule for every coin mutation: event first, then teams.coins,
+      // same transaction.
+      const text = sql()
+      expect(text).toContain("'reason', 'tag_penalty'")
+      expect(text.indexOf("insert into public.events")).toBeLessThan(
+        text.indexOf('update public.teams set coins = coins - v_drain'),
+      )
+    })
+
+    it('skips the ledger write entirely when there is nothing to take', () => {
+      expect(sql()).toContain('if v_drain > 0 then')
+    })
+
+    it('preserves 0044 precondition — recreating an RPC must not revert later guards', () => {
+      // An earlier draft of 0058 was built from 0039, which predates 0044, and
+      // silently dropped the "every requested id must still be a valid raider"
+      // check. scenario-races caught it (the batch raised
+      // tag_batch_invariant_failed from inside the loop instead of returning a
+      // clean target_state_changed). This pins it so the same mistake cannot
+      // land twice.
+      expect(sql()).toContain('v_valid_raider_count <> cardinality(p_raider_player_ids)')
+      expect(sql()).toContain('v_valid_raider_count integer;')
+    })
+
+    it('agrees with the TAG_COIN_PENALTY constant the guide quotes', () => {
+      expect(TAG_COIN_PENALTY).toBe(40)
+      expect(sql()).toContain(`least(${TAG_COIN_PENALTY},`)
+    })
   })
 
   it('requires every requested bulk-tag target to remain a valid raider', () => {

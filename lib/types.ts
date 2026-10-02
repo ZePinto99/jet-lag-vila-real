@@ -442,6 +442,15 @@ export interface TagRequest {
 export interface TagResponse {
   tagged_player_ids: string[]
   rejected: Array<{ player_id: string; reason: string }>
+  /**
+   * Coins taken from the raiding team by this tag (RULEBOOK §6, migration
+   * 0058). One fine per Tag action however many raiders were caught, already
+   * clamped at their balance — so 0 when they had nothing, and below the full
+   * TAG_COIN_PENALTY when they could not cover it. Replaced the old "expire one
+   * random intel card" penalty, which confiscated a map overlay rather than the
+   * knowledge, since the answer had already been shown to the client.
+   */
+  coins_drained: number
 }
 
 // POST /api/games/[id]/respawn-clear

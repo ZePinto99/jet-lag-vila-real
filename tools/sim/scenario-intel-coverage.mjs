@@ -977,7 +977,7 @@ await strictStep(rec, 'decoy attempt expires ALL in-hand intel', async () => {
 // finding above does not rest on a hand-written UPDATE.
 // ---------------------------------------------------------------------------
 
-await strictStep(rec, 'a real tag burns a purchase slot permanently', async () => {
+await strictStep(rec, 'a real tag fines coins and leaves intel alone (0058)', async () => {
   const gt = await makeGameN(2, 2, `intelT-${seed}`)
   const east = gt.east[0]
   const westDefender = gt.west[0]
@@ -995,10 +995,11 @@ await strictStep(rec, 'a real tag burns a purchase slot permanently', async () =
     })
   }
   const pre = intelCards(gt.gid, gt.eTeam)
+  const coinsBefore = coinsOf(gt.eTeam)
   rec.check(
     'East bought its full 4-card hand',
     pre.length === 4 && pre.every((c) => c.state === 'in_hand'),
-    `total=${pre.length} in_hand=${pre.filter((c) => c.state === 'in_hand').length}`,
+    `total=${pre.length} in_hand=${pre.filter((c) => c.state === 'in_hand').length} coins=${coinsBefore}`,
   )
 
   // West defender stands on its own candidate (inside its 200 m zone); East
@@ -1022,27 +1023,61 @@ await strictStep(rec, 'a real tag burns a purchase slot permanently', async () =
   )
 
   const postTag = intelCards(gt.gid, gt.eTeam)
-  const inHand = postTag.filter((c) => c.state === 'in_hand')
-  const expired = postTag.filter((c) => c.state === 'expired')
+  const coinsAfter = coinsOf(gt.eTeam)
   rec.check(
-    'tag expires exactly 1 random intel card (0039:155-164)',
-    postTag.length === 4 && inHand.length === 3 && expired.length === 1,
-    `total=${postTag.length} in_hand=${inHand.length} expired=${expired.length} lost=${expired.map((c) => c.ref).join(',')}`,
+    '0058: the tag fines exactly 40 coins',
+    coinsBefore - coinsAfter === 40 && tag.body.coins_drained === 40,
+    `coins ${coinsBefore} -> ${coinsAfter} (delta ${coinsBefore - coinsAfter}); route reported coins_drained=${tag.body.coins_drained}`,
   )
-
-  clearRespawn(east.player)
-  const rebuy = await post(`/api/games/${gt.gid}/buy-intel`, {
-    device_id: east.device,
-    player_id: east.player,
-    intel_ref: 'intel.direction',
-  })
   rec.check(
-    'P1 FIXED (0054): via the production tag path, the tagged team CAN replace the lost card',
-    rebuy.status === 200 && rebuy.body.error === undefined,
-    `status=${rebuy.status} error=${rebuy.body.error} in_hand=${inHand.length} coins=${coinsOf(gt.eTeam)}`,
+    '0058: NO intel card is touched — the hand is intact and every card still in_hand',
+    postTag.length === 4 && postTag.every((c) => c.state === 'in_hand'),
+    `total=${postTag.length} in_hand=${postTag.filter((c) => c.state === 'in_hand').length} expired=${postTag.filter((c) => c.state === 'expired').length}`,
+  )
+  const ledger = db(
+    `select count(*) from events where game_id='${gt.gid}' and type='coins_deducted' and payload->>'reason'='tag_penalty';`,
+  )
+  rec.check(
+    'the fine is recorded as a coins_deducted event with reason tag_penalty',
+    Number(ledger[0]) === 1,
+    `tag_penalty coins_deducted events=${ledger[0]}`,
   )
   rec.note(
-    `CONFIRMED via the production tag path (not a hand-written UPDATE): the tag expires exactly 1 card (0039:155-164), and post-0054 East can spend its ${coinsOf(gt.eTeam)} coins to replace it. §8.3's "tagged: loses 1 card" now costs exactly that — one card — instead of the card AND a permanent purchase slot.`,
+    `0058 (via the production tag path, not a hand-written UPDATE): a tag now costs the raiding team 40 coins — measured ${coinsBefore} -> ${coinsAfter} — and leaves all 4 intel cards in_hand. The old rule expired 1 random card, which read well but confiscated little: /live-state loads cards with select('*') in ANY state, so the expired card's payload (the answer) was still sent to the client and only the map narrowing stopped. The team kept the knowledge and lost an overlay, and the real cost was the re-purchase price anyway — so the fine now charges that directly. One fine per Tag ACTION, clamped at the team's balance.`,
+  )
+})
+
+await strictStep(rec, 'the tag fine clamps at a broke team and never goes negative (0058)', async () => {
+  const gt = await makeGameN(2, 2, `intelZ-${seed}`)
+  const east = gt.east[0]
+  const westDefender = gt.west[0]
+  // 10 coins: less than the 40-coin fine, so the clamp is the whole point.
+  setCoins(gt.gid, gt.eTeam, 10)
+  const raiderPos = offsetMeters(WEST_REAL, 8, 0)
+  await post(`/api/games/${gt.gid}/camping-heartbeat`, {
+    device_id: westDefender.device,
+    player_id: westDefender.player,
+    pos: freshPos(WEST_REAL),
+  })
+  const tag = await post(`/api/games/${gt.gid}/tag`, {
+    device_id: westDefender.device,
+    tagger_player_id: westDefender.player,
+    tagger_pos: freshPos(WEST_REAL),
+    targets: [{ player_id: east.player, pos: freshPos(raiderPos) }],
+  })
+  const after = coinsOf(gt.eTeam)
+  rec.check(
+    '0058: a team with 10 coins is fined only 10 and lands on exactly 0, never negative',
+    tag.status === 200 && after === 0 && tag.body.coins_drained === 10,
+    `coins 10 -> ${after}; coins_drained=${tag.body.coins_drained}`,
+  )
+  const respawning = db(
+    `select respawning from players where id='${east.player}';`,
+  )[0]
+  rec.check(
+    'the tag still APPLIES to a broke team — the respawn is the real penalty',
+    (tag.body.tagged_player_ids ?? []).includes(east.player) && respawning === 't',
+    `tagged=${JSON.stringify(tag.body.tagged_player_ids ?? [])} respawning=${respawning}`,
   )
 })
 

@@ -64,6 +64,7 @@ import {
   TAG_PTS,
   TAG_RANGE_M,
   TIME_BONUS,
+  TAG_COIN_PENALTY,
 } from '@/lib/gameConstants'
 import challengesSeed from '@/data/challenges.json'
 import intelSeed from '@/data/intel.json'
@@ -211,13 +212,13 @@ export default function GuidePage() {
               radius: t('guide.tag.label_radius', { n: TAG_RADIUS_M }),
               defender: t('guide.tag.label_defender'),
               raiders: t('guide.tag.label_raiders'),
-              cost: t('guide.tag.label_cost'),
+              cost: t('guide.tag.label_cost', { c: TAG_COIN_PENALTY }),
               step1: t('guide.tag.label_step1'),
               step2: t('guide.tag.label_step2', { n: NEUTRAL_LEAVE_RADIUS_M }),
             }}
           />
         </GuideFigure>
-        <GuideNote>{t('guide.tag.bunching')}</GuideNote>
+        <GuideNote>{t('guide.tag.bunching', { c: TAG_COIN_PENALTY })}</GuideNote>
         <p>
           {t('guide.tag.tolerance', { client: TAG_RADIUS_M, server: TAG_RANGE_M })}
         </p>
@@ -335,7 +336,7 @@ export default function GuidePage() {
           />
         </GuideFigure>
         <p>{t('guide.intel.sequence')}</p>
-        <GuideWarning>{t('guide.intel.loss')}</GuideWarning>
+        <GuideWarning>{t('guide.intel.loss', { c: TAG_COIN_PENALTY })}</GuideWarning>
       </GuideSection>
 
       {/* ---------- 9. how to lose by accident ---------- */}
