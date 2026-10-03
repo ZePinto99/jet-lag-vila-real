@@ -58,7 +58,7 @@ describe('usePushNotifications', () => {
     await waitFor(() => expect(result.current.status).toBe('enabled'))
 
     expect(requestPermission).toHaveBeenCalledTimes(1)
-    expect(register).toHaveBeenCalledWith('/sw.js')
+    expect(register).toHaveBeenCalledWith('/sw.js', { updateViaCache: 'none' })
     expect(mockApiPost).toHaveBeenCalledWith('/api/games/game-1/push-subscribe', {
       device_id: 'test-device-id',
       player_id: 'player-1',

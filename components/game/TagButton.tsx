@@ -1,25 +1,17 @@
 'use client'
 
-// Tag button (rulebook §6). Renders the result of useTagButton: a large
-// pulsing button when enabled, a greyed-out one with a reason underneath
-// otherwise. On tap, asks for confirmation, then POSTs to /api/games/[id]/tag
-// with the local list of presence-derived targets.
+// Tag button (rulebook §6). The live HUD mounts it only when a legal target is
+// present, so it becomes a large reflex action without permanently covering
+// the map. On tap it POSTs the presence-derived targets to /api/games/[id]/tag;
+// the server revalidates every coordinate.
 
 import { useState } from 'react'
 import { apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
 import { getDeviceId } from '@/lib/device'
 import { useT } from '@/lib/i18n/context'
-import type {
-  GpsPosition,
-  TagRequest,
-  TagResponse,
-} from '@/lib/types'
-import {
-  TAG_RADIUS_M,
-  type TagDisabledReason,
-  type TagTarget,
-} from '@/lib/hooks/useTagButton'
+import type { GpsPosition, TagRequest, TagResponse } from '@/lib/types'
+import { TAG_RADIUS_M, type TagDisabledReason, type TagTarget } from '@/lib/hooks/useTagButton'
 
 interface TagButtonProps {
   gameId: string
@@ -86,9 +78,7 @@ export function tagRejectionMessage(
 ): string | null {
   if (rejected.length === 0) return null
   const reasons = new Set(rejected.map((r) => r.reason))
-  const reason = reasons.has('batch_aborted')
-    ? 'batch_aborted'
-    : (rejected[0]?.reason ?? '')
+  const reason = reasons.has('batch_aborted') ? 'batch_aborted' : (rejected[0]?.reason ?? '')
   const key = REJECT_REASON_KEYS[reason]
   return key ? t(key) : t('tag.reject_generic', { reason })
 }
@@ -112,9 +102,7 @@ export function TagButton({
   const targetCount = targets.length
   const reasonKey = reasonLabelKey(reason)
   const landed = lastResult?.tagged_player_ids.length ?? 0
-  const rejectionMessage = lastResult
-    ? tagRejectionMessage(lastResult.rejected, t)
-    : null
+  const rejectionMessage = lastResult ? tagRejectionMessage(lastResult.rejected, t) : null
 
   async function handleTap() {
     if (!enabled || !myGpsPos || busy) return
@@ -135,10 +123,7 @@ export function TagButton({
     }
 
     try {
-      const res = await apiPost<TagResponse>(
-        `/api/games/${gameId}/tag`,
-        body,
-      )
+      const res = await apiPost<TagResponse>(`/api/games/${gameId}/tag`, body)
       setLastResult(res)
       onTagSuccess?.(res)
     } catch (err) {
@@ -149,14 +134,14 @@ export function TagButton({
   }
 
   return (
-    <div className="pointer-events-auto flex w-full flex-col items-center gap-1.5">
+    <div className="pointer-events-none flex w-full max-w-sm flex-col items-center gap-1.5">
       <button
         type="button"
         onClick={handleTap}
         disabled={!enabled || busy}
         className={cn(
           // Base
-          'w-full max-w-sm rounded-2xl px-6 py-4 text-base font-semibold uppercase tracking-wider shadow-lg transition focus:outline-none',
+          'pointer-events-auto w-full rounded-2xl px-6 py-4 text-base font-semibold uppercase tracking-wider shadow-lg transition focus:outline-none',
           enabled
             ? 'animate-pulse bg-red-600 text-white shadow-red-900/40 hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300'
             : 'cursor-not-allowed bg-neutral-800 text-neutral-500 shadow-none',
@@ -164,10 +149,10 @@ export function TagButton({
         )}
         aria-label={
           enabled
-            ? t(
-                targetCount === 1 ? 'tag.aria_enabled_one' : 'tag.aria_enabled_many',
-                { n: targetCount, m: TAG_RADIUS_M },
-              )
+            ? t(targetCount === 1 ? 'tag.aria_enabled_one' : 'tag.aria_enabled_many', {
+                n: targetCount,
+                m: TAG_RADIUS_M,
+              })
             : t('tag.aria_disabled')
         }
       >
@@ -184,18 +169,13 @@ export function TagButton({
         <div
           className={cn(
             'rounded px-2 py-0.5 text-[11px]',
-            landed > 0
-              ? 'bg-emerald-950/80 text-emerald-200'
-              : 'bg-amber-950/80 text-amber-100',
+            landed > 0 ? 'bg-emerald-950/80 text-emerald-200' : 'bg-amber-950/80 text-amber-100',
           )}
         >
           <p>
             {landed === 0
               ? t('tag.result_none')
-              : t(
-                  landed === 1 ? 'tag.result_tagged_one' : 'tag.result_tagged_many',
-                  { n: landed },
-                )}
+              : t(landed === 1 ? 'tag.result_tagged_one' : 'tag.result_tagged_many', { n: landed })}
             {lastResult.rejected.length > 0
               ? ` ${t('tag.result_rejected_count', { n: lastResult.rejected.length })}`
               : ''}
@@ -217,7 +197,7 @@ export function TagButton({
       )}
       {error && (
         <p className="rounded bg-red-950/80 px-2 py-0.5 text-[11px] text-red-200">
-          {error}
+          {t('tag.action_error')}
         </p>
       )}
     </div>

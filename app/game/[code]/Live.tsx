@@ -13,10 +13,7 @@ import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import type { Locale } from '@/lib/i18n/messages'
 import { apiGet, apiPost } from '@/lib/api'
 import { cn } from '@/lib/cn'
-import {
-  DEFAULT_DURATION_MIN,
-  PROTECTION_WINDOW_MS,
-} from '@/lib/gameConstants'
+import { DEFAULT_DURATION_MIN, PROTECTION_WINDOW_MS } from '@/lib/gameConstants'
 import { getDeviceId } from '@/lib/device'
 import { useGameStore } from '@/store/gameStore'
 import { useGPS } from '@/lib/hooks/useGPS'
@@ -34,16 +31,19 @@ import { usePlacedCurseTrigger } from '@/lib/hooks/usePlacedCurseTrigger'
 import { useWalkingSpeed } from '@/lib/hooks/useWalkingSpeed'
 import { useChaseStatus } from '@/lib/hooks/useChaseStatus'
 import { useTimeTick } from '@/lib/hooks/useTimeTick'
-import {
-  usePushNotifications,
-  type PushNotificationStatus,
-} from '@/lib/hooks/usePushNotifications'
+import { usePushNotifications, type PushNotificationStatus } from '@/lib/hooks/usePushNotifications'
 import { isMuted as soundIsMuted, setMuted as soundSetMuted } from '@/lib/sound'
 import { ToastLayer } from '@/components/game/ToastLayer'
 import { MomentOverlay } from '@/components/game/MomentOverlay'
 import { WalkingNudge } from '@/components/game/WalkingNudge'
 import { BoundaryNudge } from '@/components/game/BoundaryNudge'
-import { getPlayAreaState } from '@/lib/geo/playArea'
+import {
+  getMapDisplayPosition,
+  getPlayAreaReturnPoint,
+  getPlayAreaStateForGps,
+  type PlayAreaState,
+} from '@/lib/geo/playArea'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import { ChaseHud } from '@/components/game/ChaseHud'
 import { TimeBonusBanner } from '@/components/game/TimeBonusBanner'
 import { WeatherPausePanel } from '@/components/game/WeatherPausePanel'
@@ -89,11 +89,7 @@ import type {
 
 const GameMap = dynamic(() => import('@/components/map/GameMap'), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-full w-full items-center justify-center bg-neutral-950 text-sm text-neutral-500">
-      Loading map…
-    </div>
-  ),
+  loading: () => <LiveMapLoading />,
 })
 
 type Tab = 'map' | 'actions' | 'status' | 'chat'
@@ -137,6 +133,7 @@ export function Live() {
   const [snapshotLoading, setSnapshotLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [gpsEnabled, setGpsEnabled] = useState(false)
+  const [flagAttemptPanelOpen, setFlagAttemptPanelOpen] = useState(false)
   const [now, setNow] = useState<number>(() => Date.now())
   const [muted, setMutedState] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -205,11 +202,21 @@ export function Live() {
   useLiveGameRealtime(game?.id ?? null, myTeamId)
 
   // In-game chat (G22) — ephemeral broadcast, global + per-team channels.
-  const chat = useChat(game?.id ?? null, me?.id ?? null, myTeamId, me?.display_name ?? 'Player')
+  const chat = useChat(
+    game?.id ?? null,
+    me?.id ?? null,
+    myTeamId,
+    me?.display_name ?? t('common.player'),
+  )
   const [chatSeen, setChatSeen] = useState(0)
   useEffect(() => {
     if (tab === 'chat') setChatSeen(chat.messages.length)
   }, [tab, chat.messages.length])
+  useEffect(() => {
+    if ((!gpsEnabled || tab !== 'map') && flagAttemptPanelOpen) {
+      setFlagAttemptPanelOpen(false)
+    }
+  }, [gpsEnabled, tab, flagAttemptPanelOpen])
   const chatUnread = tab === 'chat' ? 0 : Math.max(0, chat.messages.length - chatSeen)
 
   // Web Push (lock-screen alerts). First-time permission is initiated by the
@@ -241,10 +248,41 @@ export function Live() {
 
   // Out-of-bounds warning (RULEBOOK §12.1). Derived, never stored: a boundary
   // warning is advisory, so it must not depend on server round-trips.
-  const playAreaState = useMemo(
-    () => (myGps ? getPlayAreaState({ lat: myGps.lat, lng: myGps.lng }) : null),
-    [myGps],
+  const [playAreaState, setPlayAreaState] = useState<PlayAreaState | null>(null)
+  useEffect(() => {
+    setPlayAreaState((previous) => {
+      const next =
+        myGps && isPositionFresh(myGps.updated_at, now)
+          ? getPlayAreaStateForGps(myGps, undefined, undefined, previous?.status ?? null)
+          : null
+      if (
+        previous?.status === next?.status &&
+        previous?.distanceM === next?.distanceM &&
+        previous?.marginM === next?.marginM &&
+        previous?.overshootM === next?.overshootM
+      ) {
+        return previous
+      }
+      return next
+    })
+  }, [myGps, now])
+  const playAreaReturnTarget = useMemo(
+    () =>
+      myGps && playAreaState?.status === 'outside'
+        ? getPlayAreaReturnPoint(myGps)
+        : null,
+    [myGps, playAreaState?.status],
   )
+  const translatedLiveGpsError = gps.error
+    ? t(
+        {
+          gps_permission_denied: 'gps.error_permission_denied',
+          gps_unavailable: 'gps.error_unavailable',
+          gps_timeout: 'gps.error_timeout',
+          gps_unsupported: 'gps.error_unsupported',
+        }[gps.error] ?? 'gps.error_generic',
+      )
+    : null
 
   // A short alert cue the moment camping locks the Tag button.
   const prevCampingRef = useRef(camping.status)
@@ -311,6 +349,7 @@ export function Live() {
     respawning: me?.respawning ?? false,
     gameStatus: game?.status ?? 'lobby',
     discoveredEnemyKinds,
+    nowMs: now,
   })
 
   // Presence broadcast for my GPS.
@@ -327,10 +366,7 @@ export function Live() {
     const teamByPlayer = new Map(players.map((player) => [player.id, player.team_id]))
     const verified: typeof presenceFromHook = {}
     for (const [key, entry] of Object.entries(presenceFromHook)) {
-      if (
-        key === entry.player_id &&
-        teamByPlayer.get(entry.player_id) === entry.team_id
-      ) {
+      if (key === entry.player_id && teamByPlayer.get(entry.player_id) === entry.team_id) {
         verified[key] = entry
       }
     }
@@ -394,13 +430,7 @@ export function Live() {
 
   // Placed-curse trigger (P2-2): fire a hidden enemy placement when I enter its
   // zone. Server-authoritative; silent if no trap.
-  usePlacedCurseTrigger(
-    game?.id ?? null,
-    me?.id ?? null,
-    myGps,
-    enemyLandmarks,
-    gameplayActive,
-  )
+  usePlacedCurseTrigger(game?.id ?? null, me?.id ?? null, myGps, enemyLandmarks, gameplayActive)
 
   const myTeam = useMemo<Team | null>(() => {
     if (!me) return null
@@ -493,7 +523,7 @@ export function Live() {
   if (!game || !me) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-neutral-950 text-sm text-neutral-400">
-        Loading live game…
+        {t('live.loading_live')}
       </main>
     )
   }
@@ -509,11 +539,13 @@ export function Live() {
   if (loadError || !myTeam || !enemyTeam) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <h1 className="text-2xl font-semibold">Live phase</h1>
+        <h1 className="text-2xl font-semibold">{t('live.title')}</h1>
         <div className="rounded-md border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-200">
-          {loadError ?? 'Could not load live state.'}
+          {t('live.load_error')}
         </div>
-        <p className="text-xs text-neutral-500">Game {game.code}</p>
+        <p className="text-xs text-neutral-500">
+          {t('common.game')} {game.code}
+        </p>
       </main>
     )
   }
@@ -536,7 +568,7 @@ export function Live() {
       : null
 
   return (
-    <main className="flex min-h-screen flex-col bg-neutral-950 text-neutral-100">
+    <main className="relative flex h-dvh min-h-0 flex-col overflow-hidden bg-neutral-950 text-neutral-100">
       {/* Header */}
       <header className="flex items-center justify-between gap-3 border-b border-neutral-800 bg-neutral-950/95 px-4 py-2 backdrop-blur">
         <div className="flex items-baseline gap-3">
@@ -634,7 +666,7 @@ export function Live() {
       )}
 
       {/* Next +20 time-bonus countdown strip. */}
-      {!isGameOver && (
+      {!isGameOver && !withinProtection && (
         <TimeBonusBanner
           startedAt={game.started_at}
           nowMs={clockNowMs}
@@ -696,7 +728,7 @@ export function Live() {
       />
 
       {/* Tab content */}
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
         {tab === 'map' && (
           <div className="absolute inset-0">
             <GameMap
@@ -716,27 +748,63 @@ export function Live() {
               attemptsLocked={withinProtection}
               enemyLocks={enemyLocks}
               nowMs={clockNowMs}
+              wallNowMs={now}
+              boundaryState={playAreaState}
               challenges={challengeMarkers}
             />
-            {/* Bottom-anchored action stack: Tag at the top of the stack
-                (most reflex-driven), Flag Attempt below. The pointer-events
-                wrapper is set on each child so map taps still register
-                between the buttons. */}
+            {/* Context rail: a compact approach/defense cue most of the time,
+                expanding only when a flag attempt is actually usable. Tag is
+                global below because it must work from every tab. */}
             <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[1000] flex flex-col items-center gap-2 px-4">
-              <TagButton
-                gameId={game.id}
-                myPlayerId={me.id}
-                myGpsPos={myGps}
-                meState={tagState}
-                lockedLabel={lockedLabel}
-              />
-              <FlagAttemptButton
-                gameId={game.id}
-                myPlayerId={me.id}
-                myGpsPos={myGps}
-                meState={flagAttemptState}
-                lockedLabel={flagAttemptLockedLabel}
-              />
+              {!gpsEnabled ? (
+                <button
+                  type="button"
+                  onClick={toggleGps}
+                  className="pointer-events-auto rounded-full border border-cyan-400/50 bg-neutral-950/95 px-5 py-3 text-sm font-semibold text-cyan-100 shadow-xl backdrop-blur"
+                >
+                  ◎ {t('live.enable_gps')}
+                </button>
+              ) : gps.error ? (
+                <div
+                  role="alert"
+                  className="rounded-full border border-amber-700 bg-neutral-950/90 px-4 py-2 text-xs text-amber-100 shadow-lg backdrop-blur"
+                >
+                  {t('settings.gps_error', {
+                    error: translatedLiveGpsError ?? t('gps.error_generic'),
+                  })}
+                </div>
+              ) : !myGps ? (
+                <div
+                  role="status"
+                  className="rounded-full border border-neutral-700 bg-neutral-950/90 px-4 py-2 text-xs text-neutral-300 shadow-lg backdrop-blur"
+                >
+                  {t('settings.gps_acquiring')}
+                </div>
+              ) : !isPositionFresh(myGps.updated_at, now) || !playAreaState ? (
+                <div
+                  role="status"
+                  className="rounded-full border border-neutral-700 bg-neutral-950/90 px-4 py-2 text-xs text-neutral-300 shadow-lg backdrop-blur"
+                >
+                  {t('settings.gps_updating')}
+                </div>
+              ) : (
+                <>
+                  {flagAttemptPanelOpen || (!tagState.enabled && flagAttemptState.visible) ? (
+                    <FlagAttemptButton
+                      gameId={game.id}
+                      myPlayerId={me.id}
+                      myGpsPos={myGps}
+                      meState={flagAttemptState}
+                      lockedLabel={flagAttemptLockedLabel}
+                      onPanelOpenChange={setFlagAttemptPanelOpen}
+                    />
+                  ) : gameplayActive && !tagState.enabled && tagState.visible ? (
+                    <div className="rounded-full border border-blue-400/30 bg-neutral-950/80 px-3 py-1.5 text-[11px] font-medium text-blue-100 shadow-md backdrop-blur">
+                      ◉ {t('tag.zone_ready')}
+                    </div>
+                  ) : null}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -795,8 +863,22 @@ export function Live() {
         )}
       </div>
 
+      {/* Tag is a reflex action, so when a valid raider is within 5 m it must
+          be reachable from Actions, Status and Chat as well as the map. */}
+      {gameplayActive && tagState.enabled && !flagAttemptPanelOpen && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-[calc(3.25rem+env(safe-area-inset-bottom))] z-[1100] flex justify-center px-4">
+          <TagButton
+            gameId={game.id}
+            myPlayerId={me.id}
+            myGpsPos={myGps}
+            meState={tagState}
+            lockedLabel={lockedLabel}
+          />
+        </div>
+      )}
+
       {/* Bottom tab bar */}
-      <nav className="grid grid-cols-4 border-t border-neutral-800 bg-neutral-950">
+      <nav className="grid shrink-0 grid-cols-4 border-t border-neutral-800 bg-neutral-950 pb-[max(env(safe-area-inset-bottom),0px)]">
         <TabButton label={t('live.tab_map')} active={tab === 'map'} onClick={() => setTab('map')} />
         <TabButton
           label={t('live.tab_actions')}
@@ -825,7 +907,10 @@ export function Live() {
       <WalkingNudge speeding={gameplayActive && speeding} speedKmh={speedKmh} t={t} />
 
       {/* Out-of-bounds warning, just below the walking nudge (RULEBOOK §12.1). */}
-      <BoundaryNudge state={gameplayActive ? playAreaState : null} />
+      <BoundaryNudge
+        state={gameplayActive ? playAreaState : null}
+        returnTarget={gameplayActive ? playAreaReturnTarget : null}
+      />
 
       {/* Game-over screen — fixed/full-screen, sits over everything else. */}
       {isGameOver && (
@@ -897,13 +982,34 @@ function LiveSettingsMenu({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  const translatedGpsError = gpsError
+    ? t(
+        {
+          gps_permission_denied: 'gps.error_permission_denied',
+          gps_unavailable: 'gps.error_unavailable',
+          gps_timeout: 'gps.error_timeout',
+          gps_unsupported: 'gps.error_unsupported',
+        }[gpsError] ?? 'gps.error_generic',
+      )
+    : null
+
   const gpsStatus = gpsEnabled
     ? gpsError
-      ? t('settings.gps_error', { error: gpsError })
-      : gpsPosition
-        ? t('settings.gps_accuracy', { m: Math.round(gpsPosition.accuracy) })
-        : t('settings.gps_acquiring')
+      ? t('settings.gps_error', { error: translatedGpsError ?? t('gps.error_generic') })
+      : !gpsPosition
+        ? t('settings.gps_acquiring')
+        : isPositionFresh(gpsPosition.updated_at, nowMs) &&
+            getPlayAreaStateForGps(gpsPosition) !== null
+          ? t('settings.gps_accuracy', { m: Math.round(gpsPosition.accuracy) })
+          : t('settings.gps_updating')
     : t('live.gps_off')
+
+  const usableGpsPosition =
+    gpsPosition &&
+    isPositionFresh(gpsPosition.updated_at, nowMs) &&
+    getPlayAreaStateForGps(gpsPosition) !== null
+      ? gpsPosition
+      : null
 
   return (
     <div
@@ -988,10 +1094,12 @@ function LiveSettingsMenu({
               <button
                 type="button"
                 onClick={() => onMapCommand('recenter')}
-                disabled={!gpsPosition}
+                disabled={!usableGpsPosition}
                 className="rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-xs font-medium text-neutral-100 hover:border-neutral-600 hover:bg-neutral-900 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {t('map.recenter_on_me')}
+                {usableGpsPosition && getMapDisplayPosition(usableGpsPosition).isClamped
+                  ? t('map.show_return_edge')
+                  : t('map.recenter_on_me')}
               </button>
             </div>
           </div>
@@ -1005,9 +1113,7 @@ function LiveSettingsMenu({
             rel="noopener noreferrer"
             className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-sky-900 bg-sky-950/40 px-4 py-3 transition hover:border-sky-700 hover:bg-sky-900/40"
           >
-            <span className="text-sm font-medium text-sky-100">
-              {t('landing.player_guide')}
-            </span>
+            <span className="text-sm font-medium text-sky-100">{t('landing.player_guide')}</span>
             <span aria-hidden="true" className="text-sky-400">
               ↗
             </span>
@@ -1059,9 +1165,7 @@ function SettingsToggleRow({
         onClick={onToggle}
         className={cn(
           'relative h-7 w-12 shrink-0 rounded-full border transition',
-          value
-            ? 'border-emerald-400 bg-emerald-500/80'
-            : 'border-neutral-700 bg-neutral-800',
+          value ? 'border-emerald-400 bg-emerald-500/80' : 'border-neutral-700 bg-neutral-800',
         )}
       >
         <span
@@ -1095,7 +1199,9 @@ function NotificationOptIn({
     return (
       <div className="px-4 py-3 text-sm text-neutral-200">
         <p>{t('settings.notifications')}</p>
-        <p className="mt-0.5 text-[11px] text-neutral-500">{t('settings.notifications_unavailable')}</p>
+        <p className="mt-0.5 text-[11px] text-neutral-500">
+          {t('settings.notifications_unavailable')}
+        </p>
       </div>
     )
   }
@@ -1103,7 +1209,9 @@ function NotificationOptIn({
     return (
       <div className="px-4 py-3 text-sm text-neutral-200">
         <p>{t('settings.notifications')}</p>
-        <p role="alert" className="mt-0.5 text-[11px] text-amber-300">{t('push.denied')}</p>
+        <p role="alert" className="mt-0.5 text-[11px] text-amber-300">
+          {t('push.denied')}
+        </p>
       </div>
     )
   }
@@ -1188,6 +1296,15 @@ function Countdown({ endsAtMs, nowMs }: { endsAtMs: number | null; nowMs: number
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`
+}
+
+function LiveMapLoading() {
+  const t = useT()
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-neutral-950 text-sm text-neutral-500">
+      {t('common.loading')}
+    </div>
+  )
 }
 
 function mmss(remainingMs: number): string {
@@ -1406,7 +1523,9 @@ function StatusTab({
                   <span className="font-mono text-[10px] text-neutral-500">
                     {formatClock(e.created_at)}
                   </span>
-                  <span className="font-medium text-neutral-200">{eventTypeLabel(e.type, locale)}</span>
+                  <span className="font-medium text-neutral-200">
+                    {eventTypeLabel(e.type, locale)}
+                  </span>
                   <span className="text-neutral-400">
                     {summariseEvent(e, players, t)}
                     {proofUrl && (
@@ -1477,8 +1596,11 @@ function eventTypeLabel(type: string, locale: Locale): string {
     challenge_completed: 'Desafio completado',
     challenge_submitted: 'Desafio submetido',
     challenge_rejected: 'Desafio rejeitado',
+    challenge_auto_accepted: 'Desafio aceite automaticamente',
     curse_cast: 'Maldição lançada',
     curse_expired: 'Maldição terminada',
+    curse_completed: 'Maldição concluída',
+    curse_roll_failed: 'Lançamento de maldição falhou',
     curse_proof_submitted: 'Prova de maldição submetida',
     flag_attempt_started: 'Tentativa de bandeira iniciada',
     flag_attempt: 'Tentativa de bandeira',
@@ -1489,6 +1611,7 @@ function eventTypeLabel(type: string, locale: Locale): string {
     intel_lost: 'Intel perdida',
     coin_drain: 'Dreno de moedas',
     coins_deducted: 'Moedas gastas',
+    coins_credited: 'Moedas recebidas',
     tag: 'Jogador apanhado',
     player_respawning_set: 'Respawn iniciado',
     player_respawn_arrived: 'Ponto de respawn alcançado',
@@ -1502,6 +1625,7 @@ function eventTypeLabel(type: string, locale: Locale): string {
     placed_curse_triggered: 'Armadilha ativada',
     flag_hardened: 'Bandeira reforçada',
     time_bonus_awarded: 'Bónus de tempo atribuído',
+    time_bonus: 'Bónus de tempo atribuído',
   }
   const labelsEn: Record<string, string> = {
     player_respawn_timed_out: 'Respawn timed out (10 min)',

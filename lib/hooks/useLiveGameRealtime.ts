@@ -138,12 +138,10 @@ export function useLiveGameRealtime(gameId: string | null, myTeamId: string | nu
         // Hardened landmark details and own placed curses are team-private or
         // hidden tables. Re-fetch the scoped snapshot only when the event says
         // the changed state belongs to this client team.
-        const hardenChanged =
-          event.type === 'flag_hardened' && eventPayload.team_id === myTeamId
+        const hardenChanged = event.type === 'flag_hardened' && eventPayload.team_id === myTeamId
         const ownPlacementChanged =
           (event.type === 'placed_curse_armed' && eventPayload.team_id === myTeamId) ||
-          (event.type === 'placed_curse_triggered' &&
-            eventPayload.owner_team_id === myTeamId)
+          (event.type === 'placed_curse_triggered' && eventPayload.owner_team_id === myTeamId)
         // Pause/resume changes automatic GPS behavior immediately. Reconcile
         // from the durable event as well as the games-row subscription so a
         // missed/coalesced UPDATE cannot leave a client performing actions
@@ -209,12 +207,14 @@ export function useLiveGameRealtime(gameId: string | null, myTeamId: string | nu
     }, 15_000)
 
     window.addEventListener('online', reconcile)
+    window.addEventListener('pageshow', reconcile)
     document.addEventListener('visibilitychange', reconcileWhenVisible)
 
     return () => {
       cancelled = true
       window.clearInterval(reconcileInterval)
       window.removeEventListener('online', reconcile)
+      window.removeEventListener('pageshow', reconcile)
       document.removeEventListener('visibilitychange', reconcileWhenVisible)
       supabase.removeChannel(channel)
     }

@@ -1,28 +1,66 @@
 'use client'
 
 import { useEffect } from 'react'
+import { apiGet } from '@/lib/api'
+import { getDeviceId } from '@/lib/device'
 import { createClient } from '@/lib/supabase/client'
 import { useGameStore } from '@/store/gameStore'
-import type { Game, Player, Team } from '@/lib/types'
+import type { Game, GameByCodeResponse, Player, Team } from '@/lib/types'
 
 // Subscribes to Realtime postgres_changes for the lobby of a given game.
 // Watches: games (by id), teams (by game_id), players (one unfiltered table
 // subscription, then client-side game-team scoping).
 // Forwards inserts/updates/deletes into the Zustand store.
-export function useLobbyRealtime(gameId: string | null) {
+export function useLobbyRealtime(gameId: string | null, gameCode: string | null) {
   const teams = useGameStore((s) => s.teams)
+  const setSnapshot = useGameStore((s) => s.setSnapshot)
   const setGame = useGameStore((s) => s.setGame)
   const upsertTeam = useGameStore((s) => s.upsertTeam)
   const upsertPlayer = useGameStore((s) => s.upsertPlayer)
   const removePlayer = useGameStore((s) => s.removePlayer)
 
-  const teamIdsKey = teams.map((t) => t.id).sort().join(',')
+  const teamIdsKey = teams
+    .map((t) => t.id)
+    .sort()
+    .join(',')
 
   useEffect(() => {
-    if (!gameId) return
+    if (!gameId || !gameCode) return
 
     const supabase = createClient()
     const channel = supabase.channel(`lobby:${gameId}`)
+    let cancelled = false
+    let reconcileInFlight = false
+
+    // Postgres Changes is a live signal, not a durable queue. A browser tab or
+    // installed PWA can be suspended through the lobby -> setup or setup ->
+    // live update and never receive that row change. Re-read the authoritative
+    // snapshot on subscribe/resume/online so the phase router cannot remain on
+    // a stale screen until the user force-refreshes.
+    const reconcile = async () => {
+      if (cancelled || reconcileInFlight) return
+      reconcileInFlight = true
+      try {
+        const snapshot = await apiGet<GameByCodeResponse>(
+          `/api/games/by-code/${encodeURIComponent(gameCode)}`,
+        )
+        if (cancelled) return
+        const deviceId = getDeviceId()
+        const me = deviceId
+          ? (snapshot.players.find((player) => player.device_id === deviceId) ?? null)
+          : null
+        setSnapshot({ ...snapshot, me })
+      } catch {
+        // Best effort. Realtime keeps trying to reconnect and the next focus,
+        // online event, or slow reconciliation tick gives us another chance.
+      } finally {
+        reconcileInFlight = false
+      }
+    }
+
+    const reconcileWhenVisible = () => {
+      if (document.visibilityState === 'visible') void reconcile()
+    }
 
     channel.on(
       'postgres_changes',
@@ -63,10 +101,25 @@ export function useLobbyRealtime(gameId: string | null) {
       },
     )
 
-    channel.subscribe()
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') void reconcile()
+    })
+
+    const reconcileInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void reconcile()
+    }, 15_000)
+
+    window.addEventListener('online', reconcile)
+    window.addEventListener('pageshow', reconcile)
+    document.addEventListener('visibilitychange', reconcileWhenVisible)
 
     return () => {
+      cancelled = true
+      window.clearInterval(reconcileInterval)
+      window.removeEventListener('online', reconcile)
+      window.removeEventListener('pageshow', reconcile)
+      document.removeEventListener('visibilitychange', reconcileWhenVisible)
       supabase.removeChannel(channel)
     }
-  }, [gameId, teamIdsKey, setGame, upsertTeam, upsertPlayer, removePlayer])
+  }, [gameId, gameCode, teamIdsKey, setSnapshot, setGame, upsertTeam, upsertPlayer, removePlayer])
 }

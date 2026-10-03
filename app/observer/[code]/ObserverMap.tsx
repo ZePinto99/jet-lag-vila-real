@@ -22,6 +22,11 @@ import {
 import type { LatLngBoundsExpression } from 'leaflet'
 import type { Team } from '@/lib/types'
 import { LibertyBasemap } from '@/components/map/LibertyBasemap'
+import { MapNavigationBarrier } from '@/components/map/MapNavigationBarrier'
+import {
+  getPlayAreaNavigationBounds,
+  PLAY_AREA_MAP_MIN_ZOOM,
+} from '@/lib/geo/playArea'
 
 interface ObserverLandmark {
   id: string
@@ -74,11 +79,16 @@ export default function ObserverMap({
     <MapContainer
       center={center}
       zoom={14}
+      minZoom={PLAY_AREA_MAP_MIN_ZOOM}
+      maxBounds={getPlayAreaNavigationBounds()}
+      maxBoundsViscosity={1}
+      bounceAtZoomLimits={false}
       scrollWheelZoom
       className="h-full min-h-[300px] w-full"
       style={{ background: '#0a0a0a' }}
     >
       <LibertyBasemap />
+      <MapNavigationBarrier />
       <FitToBounds bounds={bounds} />
       {landmarks.map((l) => {
         const color = colorFor(l)

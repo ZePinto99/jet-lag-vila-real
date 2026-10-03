@@ -37,6 +37,7 @@ export function Lobby({ initial, code }: LobbyProps) {
   const t = useT()
   const setSnapshot = useGameStore((s) => s.setSnapshot)
   const setMe = useGameStore((s) => s.setMe)
+  const setGame = useGameStore((s) => s.setGame)
   const game = useGameStore((s) => s.game)
   const teams = useGameStore((s) => s.teams)
   const players = useGameStore((s) => s.players)
@@ -55,7 +56,7 @@ export function Lobby({ initial, code }: LobbyProps) {
   useEffect(() => {
     const deviceId = getDeviceId()
     const myPlayer = deviceId
-      ? initial.players.find((p) => p.device_id === deviceId) ?? null
+      ? (initial.players.find((p) => p.device_id === deviceId) ?? null)
       : null
     setSnapshot({ ...initial, me: myPlayer })
     // Only on mount or when the lobby code changes.
@@ -74,7 +75,8 @@ export function Lobby({ initial, code }: LobbyProps) {
     }
   }, [players, me, isHydrated, setMe])
 
-  useLobbyRealtime(initial.game.id)
+  const phaseRecoveryActive = game == null || game.status === 'lobby' || game.status === 'setup'
+  useLobbyRealtime(phaseRecoveryActive ? initial.game.id : null, phaseRecoveryActive ? code : null)
 
   const teamsBySide = useMemo(() => {
     const west = teams.find((t) => t.side === 'west') ?? null
@@ -104,20 +106,15 @@ export function Lobby({ initial, code }: LobbyProps) {
     const west = teamsBySide.west
     const east = teamsBySide.east
     return {
-      west: west ? playersByTeam.get(west.id)?.length ?? 0 : 0,
-      east: east ? playersByTeam.get(east.id)?.length ?? 0 : 0,
+      west: west ? (playersByTeam.get(west.id)?.length ?? 0) : 0,
+      east: east ? (playersByTeam.get(east.id)?.length ?? 0) : 0,
     }
   }, [teamsBySide, playersByTeam])
   const validTeamSizes =
-    teamCounts.west === teamCounts.east &&
-    teamCounts.west >= 1 &&
-    teamCounts.west <= 4
+    teamCounts.west === teamCounts.east && teamCounts.west >= 1 && teamCounts.west <= 4
   const mySide = teams.find((tm) => tm.id === me?.team_id)?.side
-  const otherTeamFull = mySide === 'west'
-    ? teamCounts.east >= 4
-    : mySide === 'east'
-      ? teamCounts.west >= 4
-      : false
+  const otherTeamFull =
+    mySide === 'west' ? teamCounts.east >= 4 : mySide === 'east' ? teamCounts.west >= 4 : false
 
   const canStart = allReady && validTeamSizes && game?.status === 'lobby'
 
@@ -162,7 +159,11 @@ export function Lobby({ initial, code }: LobbyProps) {
     setPendingAction('start')
     try {
       const body: StartGameRequest = { device_id: getDeviceId() }
-      await apiPost<StartGameResponse>(`/api/games/${game.id}/start`, body)
+      const result = await apiPost<StartGameResponse>(`/api/games/${game.id}/start`, body)
+      // Apply the authoritative mutation response immediately. Realtime is a
+      // fan-out signal, not something the initiating phone should have to wait
+      // for before leaving the lobby.
+      setGame(result.game)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
@@ -180,10 +181,7 @@ export function Lobby({ initial, code }: LobbyProps) {
         target_player_id: targetId,
         device_id: getDeviceId(),
       }
-      await apiPost<RemovePlayerResponse>(
-        `/api/games/${game.id}/remove-player`,
-        body,
-      )
+      await apiPost<RemovePlayerResponse>(`/api/games/${game.id}/remove-player`, body)
       if (isSelf) {
         router.push('/')
       } else {
@@ -266,7 +264,7 @@ export function Lobby({ initial, code }: LobbyProps) {
         <TeamColumn
           title={t('lobby.team_west_full')}
           team={teamsBySide.west}
-          players={teamsBySide.west ? playersByTeam.get(teamsBySide.west.id) ?? [] : []}
+          players={teamsBySide.west ? (playersByTeam.get(teamsBySide.west.id) ?? []) : []}
           meId={me?.id ?? null}
           meIsHost={me?.is_host ?? false}
           onKick={requestRemovePlayer}
@@ -275,7 +273,7 @@ export function Lobby({ initial, code }: LobbyProps) {
         <TeamColumn
           title={t('lobby.team_east_full')}
           team={teamsBySide.east}
-          players={teamsBySide.east ? playersByTeam.get(teamsBySide.east.id) ?? [] : []}
+          players={teamsBySide.east ? (playersByTeam.get(teamsBySide.east.id) ?? []) : []}
           meId={me?.id ?? null}
           meIsHost={me?.is_host ?? false}
           onKick={requestRemovePlayer}
@@ -317,10 +315,7 @@ export function Lobby({ initial, code }: LobbyProps) {
               variant="secondary"
               onClick={switchTeam}
               disabled={
-                me.ready ||
-                otherTeamFull ||
-                pendingAction !== null ||
-                game.status !== 'lobby'
+                me.ready || otherTeamFull || pendingAction !== null || game.status !== 'lobby'
               }
               className="flex-1 py-4 text-base"
             >
@@ -360,16 +355,21 @@ export function Lobby({ initial, code }: LobbyProps) {
       </section>
 
       {error && (
-        <div role="alert" className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200">
-          {error}
+        <div
+          role="alert"
+          className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200"
+        >
+          {t('lobby.action_error')}
         </div>
       )}
       <ConfirmActionModal
         open={confirmRemoval !== null}
         title={confirmRemoval?.isSelf ? t('lobby.leave_title') : t('lobby.kick_title')}
-        body={confirmRemoval?.isSelf
-          ? t('lobby.leave_confirm')
-          : `${t('lobby.kick_confirm')} ${confirmRemoval?.name ?? ''}`}
+        body={
+          confirmRemoval?.isSelf
+            ? t('lobby.leave_confirm')
+            : `${t('lobby.kick_confirm')} ${confirmRemoval?.name ?? ''}`
+        }
         confirmLabel={confirmRemoval?.isSelf ? t('lobby.leave_action') : t('lobby.kick_action')}
         busy={pendingAction === 'leave' || pendingAction?.startsWith('kick:')}
         danger
@@ -399,16 +399,22 @@ function TeamColumn({
   onKick: (playerId: string) => void
   pendingAction: string | null
 }) {
+  const t = useT()
+
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
       <div className="flex items-baseline justify-between">
         <h2 className="text-base font-medium">{title}</h2>
-        <span className="text-xs text-neutral-500">{players.length} player{players.length === 1 ? '' : 's'}</span>
+        <span className="text-xs text-neutral-500">
+          {players.length === 1
+            ? t('lobby.players_one')
+            : t('lobby.players_many', { n: players.length })}
+        </span>
       </div>
       {!team ? (
-        <p className="text-sm text-neutral-500">Team not initialised yet…</p>
+        <p className="text-sm text-neutral-500">{t('lobby.team_not_initialised')}</p>
       ) : players.length === 0 ? (
-        <p className="text-sm text-neutral-500">No players yet.</p>
+        <p className="text-sm text-neutral-500">{t('lobby.no_players')}</p>
       ) : (
         <ul className="flex flex-col gap-2">
           {players.map((p) => {
@@ -426,11 +432,17 @@ function TeamColumn({
               >
                 <span className="flex-1">
                   {p.display_name}
-                  {p.id === meId && <span className="ml-2 text-xs text-neutral-400">(you)</span>}
-                  {p.is_host && <span className="ml-2 rounded bg-neutral-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-neutral-200">host</span>}
+                  {p.id === meId && (
+                    <span className="ml-2 text-xs text-neutral-400">({t('common.you')})</span>
+                  )}
+                  {p.is_host && (
+                    <span className="ml-2 rounded bg-neutral-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-neutral-200">
+                      {t('common.host')}
+                    </span>
+                  )}
                 </span>
                 <span
-                  aria-label={p.ready ? 'ready' : 'not ready'}
+                  aria-label={p.ready ? t('common.ready') : t('common.not_ready')}
                   className={p.ready ? 'text-emerald-400' : 'text-neutral-600'}
                 >
                   {p.ready ? '✓' : '·'}
@@ -440,7 +452,7 @@ function TeamColumn({
                     onClick={() => onKick(p.id)}
                     disabled={pendingAction !== null}
                     className="rounded px-2 py-1 text-xs text-neutral-500 hover:bg-red-900/40 hover:text-red-200 disabled:opacity-50"
-                    aria-label={`Remove ${p.display_name}`}
+                    aria-label={`${t('lobby.kick_action')} ${p.display_name}`}
                   >
                     {kicking ? '…' : '✕'}
                   </button>

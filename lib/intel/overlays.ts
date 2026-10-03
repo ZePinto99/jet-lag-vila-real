@@ -34,20 +34,6 @@ export { PLAY_AREA_CENTRE, PLAY_AREA_RADIUS_M } from '@/lib/geo/playArea'
 // Mateus-free map redesign (PLAYTEST_TRIAGE P3-1); 1.5 km comfortably covers
 // every remaining seed landmark (the farthest is Parque Florestal at ~1.18 km
 // from this centre).
-// Lat/lng bounding box of the play disk, for framing the map on Vila Real
-// (playtest item C9). Used both for the map's initial fit and the
-// "Fit Vila Real" control, so the two never drift apart again.
-export function getPlayAreaBounds(): [[number, number], [number, number]] {
-  const c = PLAY_AREA_CENTRE
-  const latPad = PLAY_AREA_RADIUS_M / 111_320
-  const lngPad =
-    PLAY_AREA_RADIUS_M / (111_320 * Math.cos((c.lat * Math.PI) / 180))
-  return [
-    [c.lat - latPad, c.lng - lngPad],
-    [c.lat + latPad, c.lng + lngPad],
-  ]
-}
-
 // World-sized outer ring for "everywhere" polygons. The actual map view will
 // only show a tiny corner of this; we just need it bigger than any sane
 // zoom-out so the gray fills the whole viewport.
@@ -134,11 +120,14 @@ export interface MapOverlay {
   strokeColor?: string
 }
 
-export function getOutOfBoundsOverlay(): MapOverlay {
-  const playDisk = circleToRing(PLAY_AREA_CENTRE, PLAY_AREA_RADIUS_M, 96)
+export function getOutOfBoundsOverlay(
+  radiusM: number = PLAY_AREA_RADIUS_M,
+  reason = 'Out of play area',
+): MapOverlay {
+  const playDisk = circleToRing(PLAY_AREA_CENTRE, radiusM, 96)
   return {
     rings: [WORLD_RING, playDisk],
-    reason: 'Out of play area',
+    reason,
   }
 }
 

@@ -14,6 +14,7 @@ const runs = [
   ['scenario-lobby-ui.mjs'],
   ['scenario-setup.mjs'],
   ['scenario-smoke.mjs'],
+  ['scenario-map-boundary.mjs'],
   ['scenario-confirm-spend.mjs'],
   ['scenario-chat.mjs'],
   ['scenario-notifications.mjs'],

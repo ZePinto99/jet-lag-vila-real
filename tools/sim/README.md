@@ -26,8 +26,9 @@ localStorage `device_id`. GPS is fully controllable per client
 ## Run a scenario
 
 ```
-node tools/sim/scenario-smoke.mjs          # live map: framing, challenge stars, buttons (C9/C10/C12)
-node tools/sim/scenario-radar.mjs          # enemy radar pulse + zone-gating (C11)
+node tools/sim/scenario-smoke.mjs           # live map: framing, challenge stars, buttons (C9/C10/C12)
+node tools/sim/scenario-map-boundary.mjs    # fixed map fence + far-outside GPS recovery edge
+node tools/sim/scenario-radar.mjs           # enemy radar pulse + zone-gating (C11)
 node tools/sim/scenario-notifications.mjs  # no history replay + live toast (F18-F20)
 node tools/sim/scenario-chat.mjs           # global live + team-channel isolation (G22)
 node tools/sim/scenario-confirm-spend.mjs  # confirm-spend modal (G21)

@@ -29,6 +29,7 @@ describe('useTagButton', () => {
 
     expect(result.current).toMatchObject({
       enabled: false,
+      visible: false,
       reason: 'no_gps',
       targets: [],
       inDefenseZone: false,
@@ -47,8 +48,22 @@ describe('useTagButton', () => {
         presence: {
           me: { ...gps, player_id: 'me', team_id: 'west' },
           teammate: { ...gps, player_id: 'mate', team_id: 'west' },
-          enemyNear: { lat: 41.29502, lng: -7.746, accuracy: 5, updated_at: 1001, player_id: 'enemy-1', team_id: 'east' },
-          enemyFar: { lat: 41.296, lng: -7.746, accuracy: 5, updated_at: 1001, player_id: 'enemy-2', team_id: 'east' },
+          enemyNear: {
+            lat: 41.29502,
+            lng: -7.746,
+            accuracy: 5,
+            updated_at: 1001,
+            player_id: 'enemy-1',
+            team_id: 'east',
+          },
+          enemyFar: {
+            lat: 41.296,
+            lng: -7.746,
+            accuracy: 5,
+            updated_at: 1001,
+            player_id: 'enemy-2',
+            team_id: 'east',
+          },
         },
         respawning: false,
         campingLocked: false,
@@ -57,6 +72,7 @@ describe('useTagButton', () => {
     )
 
     expect(result.current.enabled).toBe(true)
+    expect(result.current.visible).toBe(true)
     expect(result.current.reason).toBe('enabled')
     expect(result.current.targets).toHaveLength(1)
     expect(result.current.targets[0].player_id).toBe('enemy-1')
@@ -70,7 +86,14 @@ describe('useTagButton', () => {
       myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
       enemyTeamLandmarks: [enemyLandmark],
       presence: {
-        enemy: { lat: 41.29502, lng: -7.746, accuracy: 5, updated_at: 1001, player_id: 'enemy', team_id: 'east' },
+        enemy: {
+          lat: 41.29502,
+          lng: -7.746,
+          accuracy: 5,
+          updated_at: 1001,
+          player_id: 'enemy',
+          team_id: 'east',
+        },
       },
       respawning: false,
       campingLocked: false,
@@ -89,11 +112,13 @@ describe('useTagButton', () => {
       },
     })
     expect(outOfZone.result.current.reason).toBe('out_of_zone')
+    expect(outOfZone.result.current.visible).toBe(false)
 
     const noEnemy = renderHook((props) => useTagButton(props), {
       initialProps: { ...base, presence: {} },
     })
     expect(noEnemy.result.current.reason).toBe('no_enemies_nearby')
+    expect(noEnemy.result.current.visible).toBe(true)
 
     const camping = renderHook((props) => useTagButton(props), {
       initialProps: { ...base, campingLocked: true },
@@ -108,9 +133,7 @@ describe('useTagButton', () => {
         myPlayerId: 'me',
         myTeamId: 'west',
         myTeamLandmarks: [makeLandmark({ lat: gps.lat, lng: gps.lng })],
-        enemyTeamLandmarks: [
-          { ...enemyLandmark, lat: gps.lat, lng: gps.lng },
-        ],
+        enemyTeamLandmarks: [{ ...enemyLandmark, lat: gps.lat, lng: gps.lng }],
         presence: {
           enemy: {
             ...gps,
@@ -168,9 +191,7 @@ describe('useTagButton', () => {
       respawning: false,
       campingLocked: false,
     }
-    const staleMe = renderHook(() =>
-      useTagButton({ ...base, nowMs: 31_001 }),
-    )
+    const staleMe = renderHook(() => useTagButton({ ...base, nowMs: 31_001 }))
     expect(staleMe.result.current.reason).toBe('no_gps')
 
     const staleEnemy = renderHook(() =>

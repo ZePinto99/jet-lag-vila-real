@@ -12,6 +12,11 @@ import { CircleMarker, MapContainer, Tooltip } from 'react-leaflet'
 import seedLandmarks from '@/data/landmarks.json'
 import type { FlagRole, SeedLandmark, TeamSide } from '@/lib/types'
 import { LibertyBasemap } from '@/components/map/LibertyBasemap'
+import { MapNavigationBarrier } from '@/components/map/MapNavigationBarrier'
+import {
+  getPlayAreaNavigationBounds,
+  PLAY_AREA_MAP_MIN_ZOOM,
+} from '@/lib/geo/playArea'
 
 const SEED = seedLandmarks as SeedLandmark[]
 const SEED_BY_ID = new Map(SEED.map((seed) => [seed.id, seed]))
@@ -52,11 +57,16 @@ function SetupMap({
       <MapContainer
         bounds={bounds}
         boundsOptions={{ padding: [36, 36], maxZoom: 15 }}
+        minZoom={PLAY_AREA_MAP_MIN_ZOOM}
+        maxBounds={getPlayAreaNavigationBounds()}
+        maxBoundsViscosity={1}
+        bounceAtZoomLimits={false}
         scrollWheelZoom
         className="h-full w-full"
         style={{ background: '#0a0a0a' }}
       >
         <LibertyBasemap />
+        <MapNavigationBarrier />
 
         {pool.map((seed, index) => {
           const role = selections.get(seed.id) ?? null

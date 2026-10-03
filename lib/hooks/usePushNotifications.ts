@@ -85,7 +85,12 @@ export function usePushNotifications(params: UsePushParams): PushNotificationCon
           return
         }
 
-        const registration = await navigator.serviceWorker.register('/sw.js')
+        const registration = await navigator.serviceWorker.register('/sw.js', {
+          // Always check the worker script itself rather than a browser HTTP
+          // cache. The worker handles push only, but stale worker code makes an
+          // installed PWA look as if a deployment did not arrive.
+          updateViaCache: 'none',
+        })
         let subscription = await registration.pushManager.getSubscription()
         if (!subscription) {
           subscription = await registration.pushManager.subscribe({

@@ -41,7 +41,13 @@ try {
   await sleep(5_000)
 
   const disabled = west.page.getByRole('button', { name: 'Tag button disabled' })
-  expect(await disabled.isDisabled(), 'enemy inside own defense zone is not taggable in browser')
+  expect(
+    (await disabled.count()) === 0,
+    'non-actionable Tag button stays hidden when the nearby enemy is a defender',
+  )
+  await west.page
+    .getByText('Defense zone · Tag ready if a raider comes within 5 m')
+    .waitFor({ state: 'visible', timeout: 8_000 })
 
   const invalidPos = { ...overlap, accuracy: 8, updated_at: Date.now() }
   const invalid = await fetch(`${BASE}/api/games/${g.gid}/tag`, {
@@ -74,7 +80,9 @@ try {
 
   // Meia Laranja is a West candidate but >200m from East candidates. Both
   // East players become raiders while remaining within five metres of West.
-  db(`insert into cards(game_id,team_id,kind,ref,state,payload) values ('${g.gid}','${g.eTeam}','intel','intel.eliminate-one','in_hand','{}'),('${g.gid}','${g.eTeam}','intel','intel.eliminate-two','in_hand','{}');`)
+  const coinsBeforeTag = Number(
+    db(`select coins from teams where id='${g.eTeam}';`)[0],
+  )
   await Promise.all([west.setPos(westZone.lat, westZone.lng), ...east.map((c) => c.setPos(westZone.lat, westZone.lng))])
   const tagButton = west.page.getByRole('button', { name: /Tag 2 players within 5 metres/i })
   await tagButton.waitFor({ state: 'visible', timeout: 12_000 })
@@ -84,10 +92,13 @@ try {
     db(`select count(*) from players where id in ('${g.east[0].player}','${g.east[1].player}') and respawning;`)[0],
   )
   expect(respawningCount === 2, 'one valid multi-raider tag marks both players respawning')
-  const lostIntel = Number(
-    db(`select count(*) from cards where game_id='${g.gid}' and team_id='${g.eTeam}' and kind='intel' and state='expired';`)[0],
+  const coinsAfterTag = Number(
+    db(`select coins from teams where id='${g.eTeam}';`)[0],
   )
-  expect(lostIntel === 1, 'one bulk Tag action expires at most one raiding-team intel card')
+  expect(
+    coinsBeforeTag - coinsAfterTag === Math.min(40, coinsBeforeTag),
+    'one bulk Tag action fines the raiding team 40 coins once',
+  )
 
   const respawnTargets = g.east.map((player) =>
     db(`select respawn_target_ref from players where id='${player.player}';`)[0],

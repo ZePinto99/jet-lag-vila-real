@@ -8,7 +8,8 @@ import { getDeviceId } from '@/lib/device'
 import { createClient } from '@/lib/supabase/client'
 import { useGameStore } from '@/store/gameStore'
 import { PlacedCursePanel } from '@/components/game/PlacedCursePanel'
-import { useT } from '@/lib/i18n/context'
+import { useI18n, useT } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import type {
   FlagAssignment,
   FlagRole,
@@ -22,20 +23,10 @@ import type {
 
 const SetupMap = dynamic(() => import('@/components/map/SetupMap'), {
   ssr: false,
-  loading: () => (
-    <div className="flex h-72 w-full items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-sm text-neutral-500">
-      Loading map…
-    </div>
-  ),
+  loading: () => <SetupMapLoading />,
 })
 
 const ROLES: ReadonlyArray<FlagRole> = ['real', 'decoy', 'empty']
-
-const ROLE_LABEL: Record<FlagRole, string> = {
-  real: 'Real',
-  decoy: 'Decoy',
-  empty: 'Empty',
-}
 
 const ROLE_NEEDED: Record<FlagRole, number> = {
   real: 1,
@@ -49,20 +40,17 @@ async function uploadSurroundingsPhoto(
   file: File,
 ): Promise<string> {
   const supabase = createClient()
-  const ext = (file.name.split('.').pop() ?? 'jpg')
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '') || 'jpg'
-  const unique = typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const ext = (file.name.split('.').pop() ?? 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg'
+  const unique =
+    typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`
   const path = `${gameId}/${teamId}/${unique}.${ext}`
-  const { error } = await supabase.storage
-    .from('surroundings-photos')
-    .upload(path, file, {
-      cacheControl: '3600',
-      upsert: false,
-      contentType: file.type || 'image/jpeg',
-    })
+  const { error } = await supabase.storage.from('surroundings-photos').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type || 'image/jpeg',
+  })
   if (error) throw error
   return path
 }
@@ -82,19 +70,18 @@ interface SetupSnapshot {
 }
 
 export function Setup() {
-  const t = useT()
+  const { locale, t } = useI18n()
   const game = useGameStore((s) => s.game)
   const me = useGameStore((s) => s.me)
   const teams = useGameStore((s) => s.teams)
   const players = useGameStore((s) => s.players)
   const myPlacedCurses = useGameStore((s) => s.myPlacedCurses)
+  const setGame = useGameStore((s) => s.setGame)
 
   const [snapshot, setSnapshot] = useState<SetupSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [selections, setSelections] = useState<Map<string, FlagRole | null>>(
-    new Map(),
-  )
+  const [selections, setSelections] = useState<Map<string, FlagRole | null>>(new Map())
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [surroundingsPhoto, setSurroundingsPhoto] = useState<File | null>(null)
@@ -115,6 +102,7 @@ export function Setup() {
           `/api/games/${gameId}/setup-state?device_id=${encodeURIComponent(deviceId)}`,
         )
         if (cancelled) return
+        setGame(data.game)
 
         const initialSelections = new Map<string, FlagRole | null>()
         for (const seed of data.my_pool) {
@@ -135,7 +123,7 @@ export function Setup() {
         setSelectedMapRef((current) =>
           current && data.my_pool.some((seed) => seed.id === current)
             ? current
-            : data.my_pool[0]?.id ?? null,
+            : (data.my_pool[0]?.id ?? null),
         )
       } catch (err) {
         if (cancelled) return
@@ -199,10 +187,10 @@ export function Setup() {
         assignments,
         surroundings_photo_path: surroundingsPhotoPath,
       }
-      const resp = await apiPost<FlagSetupResponse>(
-        `/api/games/${game.id}/flag-setup`,
-        body,
-      )
+      const resp = await apiPost<FlagSetupResponse>(`/api/games/${game.id}/flag-setup`, body)
+      // If this was the second team, the response already contains the live
+      // game. Do not depend on a realtime row update to enter the match.
+      setGame(resp.game)
       setSnapshot((prev) =>
         prev
           ? {
@@ -212,8 +200,8 @@ export function Setup() {
             }
           : prev,
       )
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'unknown_error')
+    } catch {
+      setSubmitError('submit_failed')
     } finally {
       setSubmitting(false)
     }
@@ -222,7 +210,7 @@ export function Setup() {
   if (!game || !me) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-16">
-        <p className="text-sm text-neutral-400">Loading setup…</p>
+        <p className="text-sm text-neutral-400">{t('common.loading')}</p>
       </main>
     )
   }
@@ -230,7 +218,7 @@ export function Setup() {
   if (loading) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 py-16">
-        <p className="text-sm text-neutral-400">Loading setup…</p>
+        <p className="text-sm text-neutral-400">{t('common.loading')}</p>
       </main>
     )
   }
@@ -238,40 +226,41 @@ export function Setup() {
   if (loadError || !snapshot) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-        <h1 className="text-2xl font-semibold">Setup phase</h1>
+        <h1 className="text-2xl font-semibold">{t('setup.title')}</h1>
         <div className="rounded-md border border-red-900 bg-red-950/50 px-4 py-3 text-sm text-red-200">
-          {loadError ?? 'Could not load setup state.'}
+          {t('setup.load_error')}
         </div>
-        <p className="text-xs text-neutral-500">Game {game.code}</p>
+        <p className="text-xs text-neutral-500">
+          {t('common.game')} {game.code}
+        </p>
       </main>
     )
   }
 
-  const sideLabel = snapshot.myTeam.side === 'east'
-    ? t('common.east')
-    : t('common.west')
-  const homeName = snapshot.myPool.find(
-    (seed) => seed.id === snapshot.myTeam.home_landmark_id,
-  )?.name ?? t('setup.home_base')
-  const selectedMapSeed = snapshot.myPool.find(
-    (seed) => seed.id === selectedMapRef,
-  ) ?? null
+  const sideLabel = snapshot.myTeam.side === 'east' ? t('common.east') : t('common.west')
+  const homeSeed = snapshot.myPool.find((seed) => seed.id === snapshot.myTeam.home_landmark_id)
+  const homeName = homeSeed
+    ? localizeCatalogField(homeSeed.id, 'name', homeSeed.name, locale)
+    : t('setup.home_base')
+  const selectedMapSeed = snapshot.myPool.find((seed) => seed.id === selectedMapRef) ?? null
 
   if (alreadySubmitted) {
-    const submittedAtIso = snapshot.myLandmarks
-      .map((l) => l.created_at)
-      .sort()[0]
+    const submittedAtIso = snapshot.myLandmarks.map((l) => l.created_at).sort()[0]
     const submittedAt = submittedAtIso ? new Date(submittedAtIso) : null
     const submittedRows = snapshot.myLandmarks
       .map((lm) => {
         const seed = snapshot.myPool.find((s) => s.id === lm.ref)
         const role = KIND_TO_ROLE[lm.kind]
-        return { ref: lm.ref, name: seed?.name ?? lm.ref, role }
+        return {
+          ref: lm.ref,
+          name: seed ? localizeCatalogField(seed.id, 'name', seed.name, locale) : lm.ref,
+          role,
+        }
       })
       .sort((a, b) => {
         const order: Record<string, number> = { real: 0, decoy: 1, empty: 2 }
-        const aRank = a.role ? order[a.role] ?? 9 : 9
-        const bRank = b.role ? order[b.role] ?? 9 : 9
+        const aRank = a.role ? (order[a.role] ?? 9) : 9
+        const bRank = b.role ? (order[b.role] ?? 9) : 9
         if (aRank !== bRank) return aRank - bRank
         return a.name.localeCompare(b.name)
       })
@@ -280,30 +269,27 @@ export function Setup() {
       <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-6 px-6 py-10">
         <header className="flex flex-col gap-1">
           <div className="flex items-baseline justify-between gap-3">
-            <h1 className="text-2xl font-semibold">Setup phase</h1>
+            <h1 className="text-2xl font-semibold">{t('setup.title')}</h1>
             <code className="rounded-md bg-neutral-900 px-3 py-1 text-base font-mono tracking-[0.3em] text-neutral-100">
               {game.code}
             </code>
           </div>
           <p className="text-sm text-neutral-400">
-            Team {sideLabel} — assignment locked in.
+            {t('setup.team_assignment_locked', { side: sideLabel })}
           </p>
         </header>
 
         <section className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-300">
           <p>
-            Your team&apos;s flag assignment is locked in. Waiting for the other
-            team…
+            {t('setup.assignment_locked')} {t('setup.waiting_other')}
           </p>
           {snapshot.otherTeamDone && (
-            <p className="mt-2 text-xs text-neutral-500">
-              Other team has also submitted. Game will start shortly.
-            </p>
+            <p className="mt-2 text-xs text-neutral-500">{t('setup.both_done')}</p>
           )}
         </section>
 
         <section className="flex flex-col gap-2 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4">
-          <h2 className="text-base font-medium">Your landmarks</h2>
+          <h2 className="text-base font-medium">{t('setup.your_landmarks')}</h2>
           <ul className="flex flex-col gap-2">
             {submittedRows.map((row) => (
               <li
@@ -317,7 +303,9 @@ export function Setup() {
           </ul>
           {submittedAt && (
             <p className="mt-2 text-xs text-neutral-500">
-              Submitted at {submittedAt.toLocaleTimeString()}
+              {t('setup.submitted_at', {
+                time: submittedAt.toLocaleTimeString(locale === 'pt' ? 'pt-PT' : 'en-GB'),
+              })}
             </p>
           )}
         </section>
@@ -346,7 +334,7 @@ export function Setup() {
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-10">
       <header className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3">
-          <h1 className="text-2xl font-semibold">Setup phase</h1>
+          <h1 className="text-2xl font-semibold">{t('setup.title')}</h1>
           <code className="rounded-md bg-neutral-900 px-3 py-1 text-base font-mono tracking-[0.3em] text-neutral-100">
             {game.code}
           </code>
@@ -361,9 +349,7 @@ export function Setup() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-300">
             {t('setup.step_choose')}
           </p>
-          <h2 className="mt-1 text-lg font-semibold text-neutral-100">
-            {t('setup.choose_title')}
-          </h2>
+          <h2 className="mt-1 text-lg font-semibold text-neutral-100">{t('setup.choose_title')}</h2>
           <p className="mt-1 text-xs leading-relaxed text-neutral-400">
             {t('setup.assignment_rule')}
           </p>
@@ -396,13 +382,13 @@ export function Setup() {
             />
             <MapRolePicker
               landmark={selectedMapSeed}
-              index={selectedMapSeed
-                ? snapshot.myPool.findIndex((seed) => seed.id === selectedMapSeed.id) + 1
-                : null}
+              index={
+                selectedMapSeed
+                  ? snapshot.myPool.findIndex((seed) => seed.id === selectedMapSeed.id) + 1
+                  : null
+              }
               isHome={selectedMapSeed?.id === snapshot.myTeam.home_landmark_id}
-              current={selectedMapSeed
-                ? selections.get(selectedMapSeed.id) ?? null
-                : null}
+              current={selectedMapSeed ? (selections.get(selectedMapSeed.id) ?? null) : null}
               onChange={(role) => {
                 if (selectedMapSeed) setRole(selectedMapSeed.id, role)
               }}
@@ -421,13 +407,8 @@ export function Setup() {
                   >
                     <div className="flex flex-col">
                       <span className="text-sm font-medium text-neutral-100">
-                        {seed.name}
+                        {localizeCatalogField(seed.id, 'name', seed.name, locale)}
                       </span>
-                      {seed.notes && (
-                        <span className="text-xs text-neutral-500">
-                          {seed.notes}
-                        </span>
-                      )}
                     </div>
                     <div className="flex flex-wrap gap-1.5">
                       <RoleButton
@@ -472,14 +453,10 @@ export function Setup() {
             disabled={submitting}
             onChange={(event) => setSurroundingsPhoto(event.target.files?.[0] ?? null)}
           />
-          {surroundingsPhoto
-            ? t('setup.surroundings_ready')
-            : t('setup.surroundings_add')}
+          {surroundingsPhoto ? t('setup.surroundings_ready') : t('setup.surroundings_add')}
         </label>
         {!surroundingsPhoto && (
-          <p className="mt-2 text-[11px] text-amber-300/80">
-            {t('setup.surroundings_required')}
-          </p>
+          <p className="mt-2 text-[11px] text-amber-300/80">{t('setup.surroundings_required')}</p>
         )}
       </section>
 
@@ -488,11 +465,14 @@ export function Setup() {
         disabled={!isValid || !surroundingsPhoto || submitting}
         className="w-full py-4 text-base"
       >
-        {submitting ? 'Submitting…' : t('setup.submit_assignment')}
+        {submitting ? t('common.submitting') : t('setup.submit_assignment')}
       </Button>
       {submitError && (
-        <div role="alert" className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200">
-          {submitError}
+        <div
+          role="alert"
+          className="rounded-md border border-red-900 bg-red-950/50 px-3 py-2 text-sm text-red-200"
+        >
+          {t('setup.submit_error')}
         </div>
       )}
     </main>
@@ -515,9 +495,7 @@ function ViewTab({
       aria-pressed={active}
       className={
         'flex-1 rounded-md px-3 py-2 text-sm font-medium transition ' +
-        (active
-          ? 'bg-neutral-100 text-neutral-900'
-          : 'text-neutral-300 hover:bg-neutral-800')
+        (active ? 'bg-neutral-100 text-neutral-900' : 'text-neutral-300 hover:bg-neutral-800')
       }
     >
       {label}
@@ -541,11 +519,8 @@ function RoleButton({
     decoy: 'border-amber-500 bg-amber-600 text-neutral-50',
     empty: 'border-neutral-400 bg-neutral-300 text-neutral-900',
   }
-  const baseInactive =
-    'border-neutral-700 bg-neutral-950 text-neutral-300 hover:bg-neutral-800'
-  const activeClass = tone
-    ? toneActive[tone]
-    : 'border-neutral-400 bg-neutral-100 text-neutral-900'
+  const baseInactive = 'border-neutral-700 bg-neutral-950 text-neutral-300 hover:bg-neutral-800'
+  const activeClass = tone ? toneActive[tone] : 'border-neutral-400 bg-neutral-100 text-neutral-900'
   return (
     <button
       type="button"
@@ -574,7 +549,7 @@ function MapRolePicker({
   current: FlagRole | null
   onChange: (role: FlagRole | null) => void
 }) {
-  const t = useT()
+  const { locale, t } = useI18n()
 
   if (!landmark) {
     return (
@@ -601,7 +576,7 @@ function MapRolePicker({
             {t('setup.selected_landmark')} {index ? `#${index}` : ''}
           </p>
           <h3 className="mt-1 text-sm font-semibold text-neutral-100">
-            {landmark.name}
+            {localizeCatalogField(landmark.id, 'name', landmark.name, locale)}
           </h3>
           {isHome && (
             <span className="mt-1 inline-flex rounded-full bg-blue-950 px-2 py-0.5 text-[10px] font-medium text-blue-200">
@@ -612,9 +587,7 @@ function MapRolePicker({
         <span
           className={
             'shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ring-1 ' +
-            (current
-              ? currentTone[current]
-              : 'bg-neutral-950 text-neutral-400 ring-neutral-700')
+            (current ? currentTone[current] : 'bg-neutral-950 text-neutral-400 ring-neutral-700')
           }
         >
           {current ? t(`common.${current}`) : t('setup.unassigned')}
@@ -622,11 +595,7 @@ function MapRolePicker({
       </div>
 
       <p className="mt-3 text-xs text-neutral-400">{t('setup.choose_role')}</p>
-      <div
-        role="group"
-        aria-label={t('setup.choose_role')}
-        className="mt-2 flex flex-wrap gap-2"
-      >
+      <div role="group" aria-label={t('setup.choose_role')} className="mt-2 flex flex-wrap gap-2">
         <RoleButton
           label={t('setup.role_none')}
           active={current === null}
@@ -732,10 +701,11 @@ function CountPill({
 }
 
 function RoleBadge({ role }: { role: FlagRole | null }) {
+  const t = useT()
   if (!role) {
     return (
       <span className="rounded bg-neutral-800 px-2 py-0.5 text-[10px] uppercase tracking-wider text-neutral-400">
-        unknown
+        {t('setup.unassigned')}
       </span>
     )
   }
@@ -745,12 +715,17 @@ function RoleBadge({ role }: { role: FlagRole | null }) {
     empty: 'bg-neutral-700 text-neutral-100',
   }
   return (
-    <span
-      className={
-        'rounded px-2 py-0.5 text-[10px] uppercase tracking-wider ' + tone[role]
-      }
-    >
-      {ROLE_LABEL[role]}
+    <span className={'rounded px-2 py-0.5 text-[10px] uppercase tracking-wider ' + tone[role]}>
+      {t(`common.${role}`)}
     </span>
+  )
+}
+
+function SetupMapLoading() {
+  const t = useT()
+  return (
+    <div className="flex h-72 w-full items-center justify-center rounded-xl border border-neutral-800 bg-neutral-950 text-sm text-neutral-500">
+      {t('common.loading')}
+    </div>
   )
 }

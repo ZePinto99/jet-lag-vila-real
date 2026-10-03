@@ -25,20 +25,35 @@ import {
   Tooltip,
   Popup,
   useMap,
+  useMapEvents,
 } from 'react-leaflet'
 
 import seedLandmarks from '@/data/landmarks.json'
 import { LibertyBasemap } from '@/components/map/LibertyBasemap'
+import { MapNavigationBarrier } from '@/components/map/MapNavigationBarrier'
+import { useI18n } from '@/lib/i18n/context'
+import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import { DEFENSE_ZONE_RADIUS_M, isInDefenseZone } from '@/lib/geo/zones'
 import { radarPingVisible } from '@/lib/geo/radar'
+import { isPositionFresh } from '@/lib/geo/positionFreshness'
 import type { ChallengeMarker } from '@/lib/hooks/useActiveChallenges'
 import type { EnemyLandmarkLock } from '@/lib/hooks/useEnemyLandmarkLocks'
 import {
   getOutOfBoundsOverlay,
   getIntelOverlays,
-  getPlayAreaBounds,
   type MapOverlay,
 } from '@/lib/intel/overlays'
+import {
+  getMapDisplayPosition,
+  getPlayAreaBounds,
+  getPlayAreaNavigationBounds,
+  getPlayAreaStateForGps,
+  PLAY_AREA_CENTRE,
+  PLAY_AREA_MAP_MIN_ZOOM,
+  PLAY_AREA_RADIUS_M,
+  type MapDisplayPosition,
+  type PlayAreaState,
+} from '@/lib/geo/playArea'
 import type { Card as IntelCard } from '@/lib/types'
 import type {
   EnemyLandmark,
@@ -106,6 +121,10 @@ interface GameMapProps {
   enemyLocks?: Record<string, EnemyLandmarkLock>
   /** Ticking clock (ms) so the lockout countdown + radar pulse update. */
   nowMs?: number
+  /** Wall clock for rejecting stale GPS before showing boundary alarms. */
+  wallNowMs?: number
+  /** Stabilized boundary state from the live screen; computed locally in tests/other callers. */
+  boundaryState?: PlayAreaState | null
   /** Active challenges (with resolved coords) → gold star markers. */
   challenges?: ChallengeMarker[]
 }
@@ -140,14 +159,28 @@ function radarBlipIcon(color: string): L.DivIcon {
   })
 }
 
-// Fits the viewport to the Vila Real play disk on mount (playtest item C9).
-// Replaces the old centroid-of-points + fixed-zoom framing that centred the
-// map ~1.5 km east of the actual play area.
-function FitToPlayArea() {
-  const map = useMap()
+// Start in a street-level game view. The previous full 3 km play-disk fit made
+// the player feel detached from the immediate hunt. If GPS arrives after the
+// map mounts, focus it once; subsequent fixes never fight manual panning.
+function InitialViewport({ myPosition }: { myPosition: MapDisplayPosition | null }) {
+  const focusedOnPlayerRef = useRef(false)
+  const userMovedMapRef = useRef(false)
+  const map = useMapEvents({
+    dragstart() {
+      userMovedMapRef.current = true
+    },
+    zoomstart() {
+      userMovedMapRef.current = true
+    },
+  })
   useEffect(() => {
-    map.fitBounds(getPlayAreaBounds(), { padding: [24, 24] })
-  }, [map])
+    if (!myPosition || focusedOnPlayerRef.current || userMovedMapRef.current)
+      return
+    focusedOnPlayerRef.current = true
+    // setView avoids an animated excursion beyond maxBounds when the real GPS
+    // point has been projected onto the recovery edge.
+    map.setView([myPosition.lat, myPosition.lng], 16, { animate: false })
+  }, [map, myPosition])
   return null
 }
 
@@ -167,18 +200,20 @@ function walkingDirectionsUrl(lat: number, lng: number, label?: string): string 
   return `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=walking`
 }
 
-function kindHumanLabel(kind: LandmarkKind): string {
+type Translate = (key: string, tokens?: Record<string, string | number>) => string
+
+function kindHumanLabel(kind: LandmarkKind, t: Translate): string {
   switch (kind) {
     case 'flag_real':
-      return 'Real flag'
+      return t('map.real_flag')
     case 'flag_decoy':
-      return 'Decoy'
+      return t('map.decoy')
     case 'flag_empty':
-      return 'Empty'
+      return t('map.empty')
     case 'home':
-      return 'Home base'
+      return t('map.home_base')
     case 'neutral':
-      return 'Neutral'
+      return t('map.legend_neutral')
   }
 }
 
@@ -197,6 +232,7 @@ function LandmarkPopupBody({
   status: string
   statusTone: 'own' | 'enemy' | 'neutral'
 }) {
+  const { t } = useI18n()
   const statusClass =
     statusTone === 'own'
       ? 'text-emerald-700'
@@ -214,7 +250,7 @@ function LandmarkPopupBody({
         rel="noopener noreferrer"
         className="mt-2 inline-flex items-center rounded bg-neutral-900 px-2.5 py-1 text-xs font-medium text-neutral-100 hover:bg-neutral-700"
       >
-        Walking directions
+        {t('map.walking_directions')}
       </a>
     </div>
   )
@@ -222,10 +258,10 @@ function LandmarkPopupBody({
 
 function MapCommandController({
   command,
-  myGps,
+  myPosition,
 }: {
   command: GameMapProps['mapCommand']
-  myGps: GpsPosition | null
+  myPosition: MapDisplayPosition | null
 }) {
   const map = useMap()
   const handledRequestRef = useRef<number | null>(null)
@@ -234,32 +270,59 @@ function MapCommandController({
     handledRequestRef.current = command.requestId
     if (command.type === 'fit') {
       map.flyToBounds(getPlayAreaBounds(), { padding: [24, 24] })
-    } else if (myGps) {
-      map.flyTo([myGps.lat, myGps.lng], 16)
+    } else if (myPosition) {
+      map.setView([myPosition.lat, myPosition.lng], 16)
     }
-  }, [command, map, myGps])
+  }, [command, map, myPosition])
   return null
 }
 
-function MapLegend({ myTeamSide, enemyTeamSide }: { myTeamSide: TeamSide; enemyTeamSide: TeamSide }) {
+function MapLegend({
+  myTeamSide,
+  enemyTeamSide,
+}: {
+  myTeamSide: TeamSide
+  enemyTeamSide: TeamSide
+}) {
+  const { t } = useI18n()
+  const mySide = t(myTeamSide === 'west' ? 'common.west' : 'common.east')
+  const enemySide = t(enemyTeamSide === 'west' ? 'common.west' : 'common.east')
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-[1000] rounded-md border border-neutral-700 bg-neutral-900/90 px-3 py-2 text-[11px] text-neutral-200 shadow-lg backdrop-blur">
-      <div className="font-semibold text-neutral-100 uppercase tracking-wider mb-1">Legend</div>
+    <div
+      aria-label={t('map.legend_title')}
+      className="pointer-events-none absolute left-3 top-3 z-[1000] grid grid-cols-2 gap-x-3 gap-y-1 rounded-full border border-neutral-700 bg-neutral-900/90 px-3 py-2 text-[10px] text-neutral-200 shadow-lg backdrop-blur"
+    >
       <div className="flex items-center gap-2">
-        <span className="inline-block h-3 w-3 rounded-full border-2 border-white" style={{ background: TEAM_COLOR[myTeamSide] }} />
-        <span>Your team ({myTeamSide.toUpperCase()})</span>
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full border border-white"
+          style={{ background: TEAM_COLOR[myTeamSide] }}
+        />
+        <span>
+          {t('map.legend_your_team')} ({mySide})
+        </span>
       </div>
-      <div className="mt-0.5 flex items-center gap-2">
-        <span className="inline-block h-3 w-3 rounded-full border-2 border-white" style={{ background: TEAM_COLOR[enemyTeamSide] }} />
-        <span>Enemy team ({enemyTeamSide.toUpperCase()})</span>
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full border border-white"
+          style={{ background: TEAM_COLOR[enemyTeamSide] }}
+        />
+        <span>
+          {t('map.legend_enemy_team')} ({enemySide})
+        </span>
       </div>
-      <div className="mt-0.5 flex items-center gap-2">
-        <span className="inline-block h-3 w-3 rounded-full border-2 border-white" style={{ background: NEUTRAL_COLOR }} />
-        <span>Neutral</span>
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full border border-white"
+          style={{ background: NEUTRAL_COLOR }}
+        />
+        <span>{t('map.legend_neutral')}</span>
       </div>
-      <div className="mt-0.5 flex items-center gap-2">
-        <span className="inline-block h-3 w-3 rounded-full border-2 border-white" style={{ background: ME_COLOR }} />
-        <span>You</span>
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full border border-white"
+          style={{ background: ME_COLOR }}
+        />
+        <span>{t('map.legend_you')}</span>
       </div>
     </div>
   )
@@ -282,24 +345,28 @@ function GameMap({
   attemptsLocked = false,
   enemyLocks = {},
   nowMs,
+  wallNowMs,
+  boundaryState,
   challenges = [],
 }: GameMapProps) {
+  const { locale, t } = useI18n()
   const outOfBoundsOverlay: MapOverlay = useMemo(() => getOutOfBoundsOverlay(), [])
+  const navigationBounds = useMemo(() => getPlayAreaNavigationBounds(), [])
   const intelOverlays: MapOverlay[] = useMemo(
-    () =>
-      intelFilterEnabled
-        ? getIntelOverlays(myIntelCards, myTeamHomeLng)
-        : [],
+    () => (intelFilterEnabled ? getIntelOverlays(myIntelCards, myTeamHomeLng) : []),
     [intelFilterEnabled, myIntelCards, myTeamHomeLng],
   )
   const filterActive = intelFilterEnabled && narrowedOutRefs != null && narrowedOutRefs.size > 0
   const myHomeSeed = myTeam.home_landmark_id ? findSeed(myTeam.home_landmark_id) : null
   const enemyHomeSeed = enemyTeam.home_landmark_id ? findSeed(enemyTeam.home_landmark_id) : null
+  const myHomeName = myHomeSeed
+    ? localizeCatalogField(myHomeSeed.id, 'name', myHomeSeed.name, locale)
+    : null
+  const enemyHomeName = enemyHomeSeed
+    ? localizeCatalogField(enemyHomeSeed.id, 'name', enemyHomeSeed.name, locale)
+    : null
 
-  const neutralSeeds = useMemo(
-    () => SEED_LANDMARKS.filter((s) => s.team_pool === 'neutral'),
-    [],
-  )
+  const neutralSeeds = useMemo(() => SEED_LANDMARKS.filter((s) => s.team_pool === 'neutral'), [])
 
   const otherPlayers = useMemo(
     () => Object.values(presence).filter((p) => p.player_id !== myPlayerId),
@@ -314,7 +381,22 @@ function GameMap({
   )
   const radarOn = nowMs != null && radarPingVisible(nowMs)
 
-  const myAccuracyM = myGps ? Math.min(50, Math.max(5, myGps.accuracy)) : 0
+  const freshMyGps =
+    myGps &&
+    (wallNowMs == null || isPositionFresh(myGps.updated_at, wallNowMs))
+      ? myGps
+      : null
+  const computedPlayAreaState = useMemo(
+    () => (freshMyGps ? getPlayAreaStateForGps(freshMyGps) : null),
+    [freshMyGps],
+  )
+  const myPlayAreaState = boundaryState === undefined ? computedPlayAreaState : boundaryState
+  const usableMyGps = myPlayAreaState ? freshMyGps : null
+  const myDisplayPosition = useMemo(
+    () => (usableMyGps ? getMapDisplayPosition(usableMyGps) : null),
+    [usableMyGps],
+  )
+  const myAccuracyM = usableMyGps ? Math.min(50, Math.max(5, usableMyGps.accuracy)) : 0
 
   const myColor = TEAM_COLOR[myTeam.side]
   const enemyColor = TEAM_COLOR[enemyTeam.side]
@@ -322,13 +404,19 @@ function GameMap({
   return (
     <div className="relative h-full w-full">
       <MapContainer
-        bounds={getPlayAreaBounds()}
-        boundsOptions={{ padding: [24, 24] }}
+        center={[PLAY_AREA_CENTRE.lat, PLAY_AREA_CENTRE.lng]}
+        zoom={15.5}
+        zoomSnap={0.5}
+        minZoom={PLAY_AREA_MAP_MIN_ZOOM}
+        maxBounds={navigationBounds}
+        maxBoundsViscosity={1}
+        bounceAtZoomLimits={false}
+        zoomControl={false}
         scrollWheelZoom
         className="h-full w-full"
         style={{ background: '#0a0a0a' }}
       >
-        <FitToPlayArea />
+        <InitialViewport myPosition={myDisplayPosition} />
         <LibertyBasemap />
 
         {/* Out-of-play overlay — always on; grays everything > 1.5 km from
@@ -337,7 +425,7 @@ function GameMap({
           positions={outOfBoundsOverlay.rings}
           pathOptions={{
             fillColor: '#000000',
-            fillOpacity: 0.55,
+            fillOpacity: 0.72,
             stroke: false,
             interactive: false,
           }}
@@ -362,7 +450,24 @@ function GameMap({
           />
         ))}
 
-        <MapCommandController command={mapCommand} myGps={myGps} />
+        {/* The 300 m recovery belt ends here. Keep this after every shaded
+            overlay so no intel tint can reveal the basemap past the barrier. */}
+        <MapNavigationBarrier />
+
+        <Circle
+          center={[PLAY_AREA_CENTRE.lat, PLAY_AREA_CENTRE.lng]}
+          radius={PLAY_AREA_RADIUS_M}
+          pathOptions={{
+            color: '#f87171',
+            opacity: 0.9,
+            weight: 2,
+            dashArray: '8 6',
+            fill: false,
+            interactive: false,
+          }}
+        />
+
+        <MapCommandController command={mapCommand} myPosition={myDisplayPosition} />
         <MapLegend myTeamSide={myTeam.side} enemyTeamSide={enemyTeam.side} />
 
         {/* Defense zones — 200 m circles around each of my candidate landmarks.
@@ -397,15 +502,15 @@ function GameMap({
             }}
           >
             <Tooltip direction="right" offset={[8, 0]} className="map-label">
-              {seed.name}
+              {localizeCatalogField(seed.id, 'name', seed.name, locale)}
             </Tooltip>
             <Popup>
               <LandmarkPopupBody
-                name={seed.name}
+                name={localizeCatalogField(seed.id, 'name', seed.name, locale)}
                 lat={seed.lat}
                 lng={seed.lng}
-                teamLabel="Neutral landmark"
-                status="Safe respawn point"
+                teamLabel={t('map.neutral_landmark')}
+                status={t('map.safe_respawn')}
                 statusTone="neutral"
               />
             </Popup>
@@ -413,7 +518,7 @@ function GameMap({
         ))}
 
         {/* My team home base. */}
-        {myHomeSeed && (
+        {myHomeSeed && myHomeName && (
           <CircleMarker
             center={[myHomeSeed.lat, myHomeSeed.lng]}
             radius={RADIUS.home}
@@ -425,15 +530,15 @@ function GameMap({
             }}
           >
             <Tooltip direction="top" offset={[0, -10]} className="map-label map-label--strong">
-              {myHomeSeed.name} (home)
+              {myHomeName} ({t('map.home_base').toLocaleLowerCase(locale)})
             </Tooltip>
             <Popup>
               <LandmarkPopupBody
-                name={myHomeSeed.name}
+                name={myHomeName}
                 lat={myHomeSeed.lat}
                 lng={myHomeSeed.lng}
-                teamLabel={`${myTeam.side.toUpperCase()} — your team`}
-                status="Your home base. Return here with the enemy flag to win."
+                teamLabel={`${t('common.team')} ${t(myTeam.side === 'west' ? 'common.west' : 'common.east')} — ${t('map.your_home')}`}
+                status={t('map.your_home_status')}
                 statusTone="own"
               />
             </Popup>
@@ -441,7 +546,7 @@ function GameMap({
         )}
 
         {/* Enemy team home base. */}
-        {enemyHomeSeed && (
+        {enemyHomeSeed && enemyHomeName && (
           <CircleMarker
             center={[enemyHomeSeed.lat, enemyHomeSeed.lng]}
             radius={RADIUS.home}
@@ -454,15 +559,15 @@ function GameMap({
             }}
           >
             <Tooltip direction="top" offset={[0, -10]} className="map-label map-label--strong">
-              {enemyHomeSeed.name} (enemy home)
+              {enemyHomeName} ({t('map.enemy_home')})
             </Tooltip>
             <Popup>
               <LandmarkPopupBody
-                name={enemyHomeSeed.name}
+                name={enemyHomeName}
                 lat={enemyHomeSeed.lat}
                 lng={enemyHomeSeed.lng}
-                teamLabel={`${enemyTeam.side.toUpperCase()} — enemy team`}
-                status="Enemy home base."
+                teamLabel={`${t('common.team')} ${t(enemyTeam.side === 'west' ? 'common.west' : 'common.east')} — ${t('map.enemy_home')}`}
+                status={t('map.enemy_home_status')}
                 statusTone="enemy"
               />
             </Popup>
@@ -472,7 +577,7 @@ function GameMap({
         {/* My team candidate landmarks — coloured by my team's side. */}
         {myTeamLandmarks.map((lm) => {
           const seed = findSeed(lm.ref)
-          const name = seed?.name ?? lm.ref
+          const name = seed ? localizeCatalogField(seed.id, 'name', seed.name, locale) : lm.ref
           return (
             <CircleMarker
               key={`mine-${lm.id}`}
@@ -493,8 +598,8 @@ function GameMap({
                   name={name}
                   lat={lm.lat}
                   lng={lm.lng}
-                  teamLabel={`${myTeam.side.toUpperCase()} — your candidate`}
-                  status={kindHumanLabel(lm.kind)}
+                  teamLabel={`${t('common.team')} ${t(myTeam.side === 'west' ? 'common.west' : 'common.east')} — ${t('map.your_candidate')}`}
+                  status={kindHumanLabel(lm.kind, t)}
                   statusTone="own"
                 />
               </Popup>
@@ -507,11 +612,10 @@ function GameMap({
             rendered in muted grey. */}
         {enemyLandmarks.map((lm) => {
           const seed = findSeed(lm.ref)
-          const name = seed?.name ?? lm.ref
+          const name = seed ? localizeCatalogField(seed.id, 'name', seed.name, locale) : lm.ref
           const discovered = discoveredEnemyKinds[lm.ref]
           // Eliminated = we attempted it and it was a decoy/empty (a dead end).
-          const eliminated =
-            discovered === 'flag_decoy' || discovered === 'flag_empty'
+          const eliminated = discovered === 'flag_decoy' || discovered === 'flag_empty'
           // Remaining 15-min lockout on this landmark (only meaningful for an
           // eliminated one we just attempted).
           const lock = enemyLocks[lm.ref]
@@ -523,11 +627,7 @@ function GameMap({
           // During the 30-min protection window, undiscovered enemy candidates
           // render "locked" (amber dashed ring).
           const locked = attemptsLocked && !discovered && !isNarrowedOut
-          const fill = eliminated
-            ? ELIMINATED_COLOR
-            : isNarrowedOut
-              ? '#404040'
-              : enemyColor
+          const fill = eliminated ? ELIMINATED_COLOR : isNarrowedOut ? '#404040' : enemyColor
           const stroke = eliminated
             ? '#9ca3af'
             : isNarrowedOut
@@ -564,19 +664,22 @@ function GameMap({
                   name={name}
                   lat={lm.lat}
                   lng={lm.lng}
-                  teamLabel={`${enemyTeam.side.toUpperCase()} — enemy candidate`}
+                  teamLabel={`${t('common.team')} ${t(enemyTeam.side === 'west' ? 'common.west' : 'common.east')} — ${t('map.enemy_candidate')}`}
                   status={
                     eliminated
                       ? lockRemaining > 0
-                        ? `Eliminated (${kindHumanLabel(discovered)}) · locked ${fmtCountdown(lockRemaining)}`
-                        : `Eliminated: ${kindHumanLabel(discovered)}`
+                        ? t('map.eliminated_locked', {
+                            kind: kindHumanLabel(discovered, t),
+                            time: fmtCountdown(lockRemaining),
+                          })
+                        : t('map.eliminated', { kind: kindHumanLabel(discovered, t) })
                       : discovered
-                        ? `Confirmed: ${kindHumanLabel(discovered)}`
+                        ? t('map.confirmed', { kind: kindHumanLabel(discovered, t) })
                         : isNarrowedOut
-                          ? 'Ruled out by intel'
+                          ? t('map.ruled_out')
                           : locked
-                            ? '🔒 Attempts locked (first 30 min)'
-                            : 'Unknown — attempt to discover'
+                            ? t('map.attempts_locked')
+                            : t('map.unknown_attempt')
                   }
                   statusTone="enemy"
                 />
@@ -586,26 +689,26 @@ function GameMap({
         })}
 
         {/* Challenge locations — gold star markers (playtest item C10). */}
-        {challenges.map((c) => (
-          <Marker
-            key={`challenge-${c.ref}`}
-            position={[c.lat, c.lng]}
-            icon={challengeStarIcon()}
-          >
-            <Tooltip direction="top" offset={[0, -12]} className="map-label">
-              ⭐ {c.name} · +{c.reward}
-            </Tooltip>
-            <Popup>
-              <div className="min-w-[180px] text-sm">
-                <div className="font-medium text-neutral-900">⭐ {c.name}</div>
-                <div className="mt-1 text-xs text-neutral-700">{c.task}</div>
-                <div className="mt-1 text-xs font-semibold text-amber-700">
-                  +{c.reward} coins
+        {challenges.map((c) => {
+          const name = localizeCatalogField(c.ref, 'location_name', c.name, locale)
+          const task = localizeCatalogField(c.ref, 'task', c.task, locale)
+          return (
+            <Marker key={`challenge-${c.ref}`} position={[c.lat, c.lng]} icon={challengeStarIcon()}>
+              <Tooltip direction="top" offset={[0, -12]} className="map-label">
+                ⭐ {name} · +{c.reward}
+              </Tooltip>
+              <Popup>
+                <div className="min-w-[180px] text-sm">
+                  <div className="font-medium text-neutral-900">⭐ {name}</div>
+                  <div className="mt-1 text-xs text-neutral-700">{task}</div>
+                  <div className="mt-1 text-xs font-semibold text-amber-700">
+                    {t('challenge.reward', { n: c.reward })}
+                  </div>
                 </div>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          )
+        })}
 
         {/* Players from presence. Team-mates are always visible. Enemies are
             radar-gated: revealed only while inside one of my own defense zones
@@ -626,14 +729,11 @@ function GameMap({
                   weight: 2,
                 }}
               >
-                <Tooltip>Team-mate</Tooltip>
+                <Tooltip>{t('map.teammate')}</Tooltip>
               </CircleMarker>
             )
           }
-          const inMyZone = isInDefenseZone(
-            { lat: p.lat, lng: p.lng },
-            myZonePoints,
-          )
+          const inMyZone = isInDefenseZone({ lat: p.lat, lng: p.lng }, myZonePoints)
           if (!inMyZone || !radarOn) return null
           return (
             <Marker
@@ -642,37 +742,48 @@ function GameMap({
               icon={radarBlipIcon(enemyColor)}
               zIndexOffset={500}
             >
-              <Tooltip
-                direction="top"
-                offset={[0, -12]}
-                className="map-label map-label--strong"
-              >
-                Enemy raider in your zone
+              <Tooltip direction="top" offset={[0, -12]} className="map-label map-label--strong">
+                {t('map.enemy_raider')}
               </Tooltip>
             </Marker>
           )
         })}
 
         {/* Me. */}
-        {myGps && (
+        {usableMyGps && myDisplayPosition && (
           <>
-            <Circle
-              center={[myGps.lat, myGps.lng]}
-              radius={myAccuracyM}
-              pathOptions={{ color: ME_COLOR, fillColor: ME_COLOR, fillOpacity: 0.15, weight: 1 }}
-            />
+            {!myDisplayPosition.isClamped && (
+              <Circle
+                center={[myDisplayPosition.lat, myDisplayPosition.lng]}
+                radius={myAccuracyM}
+                pathOptions={{
+                  color: ME_COLOR,
+                  fillColor: ME_COLOR,
+                  fillOpacity: 0.15,
+                  weight: 1,
+                }}
+              />
+            )}
             <CircleMarker
-              center={[myGps.lat, myGps.lng]}
+              center={[myDisplayPosition.lat, myDisplayPosition.lng]}
               radius={RADIUS.me}
               pathOptions={{
-                color: '#ffffff',
-                fillColor: ME_COLOR,
+                color: myPlayAreaState?.status === 'outside' ? '#fecaca' : '#ffffff',
+                fillColor: myPlayAreaState?.status === 'outside' ? '#ef4444' : ME_COLOR,
                 fillOpacity: 1,
                 weight: 3,
+                dashArray: myDisplayPosition.isClamped ? '3 3' : undefined,
               }}
             >
-              <Tooltip direction="top" offset={[0, -8]} className="map-label map-label--strong">
-                You
+              <Tooltip
+                permanent={myPlayAreaState?.status === 'outside'}
+                direction="top"
+                offset={[0, -8]}
+                className="map-label map-label--strong"
+              >
+                {myPlayAreaState?.status === 'outside'
+                  ? t('map.you_outside', { m: Math.round(myPlayAreaState.overshootM) })
+                  : t('map.legend_you')}
               </Tooltip>
             </CircleMarker>
           </>

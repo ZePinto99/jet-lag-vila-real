@@ -17,6 +17,7 @@ describe('useFlagAttemptButton', () => {
           respawning: false,
           gameStatus: 'live',
           discoveredEnemyKinds: {},
+          nowMs: 1000,
         }),
       ).result.current.reason,
     ).toBe('no_gps')
@@ -29,6 +30,7 @@ describe('useFlagAttemptButton', () => {
           respawning: true,
           gameStatus: 'live',
           discoveredEnemyKinds: {},
+          nowMs: 1000,
         }),
       ).result.current.reason,
     ).toBe('respawning')
@@ -41,6 +43,7 @@ describe('useFlagAttemptButton', () => {
           respawning: false,
           gameStatus: 'flag_found',
           discoveredEnemyKinds: {},
+          nowMs: 1000,
         }),
       ).result.current.reason,
     ).toBe('not_live')
@@ -55,26 +58,45 @@ describe('useFlagAttemptButton', () => {
         respawning: false,
         gameStatus: 'live',
         discoveredEnemyKinds: {},
+        nowMs: 1000,
       }),
     )
 
     expect(result.current.enabled).toBe(true)
+    expect(result.current.visible).toBe(true)
     expect(result.current.target?.ref).toBe('enemy.near')
     expect(result.current.distance_m).toBeLessThan(5)
   })
 
-  it('blocks out-of-range and already-discovered targets', () => {
-    expect(
-      renderHook(() =>
-        useFlagAttemptButton({
-          myGps: { ...gps, lat: 41.299 },
-          enemyLandmarks,
-          respawning: false,
-          gameStatus: 'live',
-          discoveredEnemyKinds: {},
-        }),
-      ).result.current.reason,
-    ).toBe('no_landmark_in_range')
+  it('appears on approach, then hides when far away or already discovered', () => {
+    const approaching = renderHook(() =>
+      useFlagAttemptButton({
+        myGps: { ...gps, lat: 41.2956 },
+        enemyLandmarks,
+        respawning: false,
+        gameStatus: 'live',
+        discoveredEnemyKinds: {},
+        nowMs: 1000,
+      }),
+    ).result.current
+    expect(approaching).toMatchObject({
+      enabled: false,
+      visible: true,
+      reason: 'no_landmark_in_range',
+    })
+
+    const farAway = renderHook(() =>
+      useFlagAttemptButton({
+        myGps: { ...gps, lat: 41.299 },
+        enemyLandmarks,
+        respawning: false,
+        gameStatus: 'live',
+        discoveredEnemyKinds: {},
+        nowMs: 1000,
+      }),
+    ).result.current
+    expect(farAway.reason).toBe('no_landmark_in_range')
+    expect(farAway.visible).toBe(false)
 
     const discovered = renderHook(() =>
       useFlagAttemptButton({
@@ -83,9 +105,11 @@ describe('useFlagAttemptButton', () => {
         respawning: false,
         gameStatus: 'live',
         discoveredEnemyKinds: { 'enemy.near': 'flag_decoy' },
+        nowMs: 1000,
       }),
     ).result.current
     expect(discovered.reason).toBe('already_discovered')
+    expect(discovered.visible).toBe(false)
     expect(discovered.target?.ref).toBe('enemy.near')
   })
 })

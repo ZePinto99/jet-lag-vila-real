@@ -35,6 +35,10 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(path, {
     method: 'GET',
+    // Every GET in this app is an authoritative game-state read. Browsers may
+    // otherwise reuse a response when an installed PWA is resumed, which is
+    // exactly when we need the newest phase rather than a cached lobby.
+    cache: 'no-store',
     headers: { 'content-type': 'application/json' },
   })
   const data = await parseJson(res)

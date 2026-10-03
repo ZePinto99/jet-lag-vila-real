@@ -1,11 +1,6 @@
 import type { Locale } from '@/lib/i18n/messages'
 
-type CatalogField =
-  | 'name'
-  | 'description'
-  | 'reveals'
-  | 'task'
-  | 'location_name'
+type CatalogField = 'name' | 'description' | 'reveals' | 'task' | 'location_name'
 
 type PortugueseCatalogEntry = Partial<Record<CatalogField, string>>
 
@@ -13,9 +8,26 @@ type PortugueseCatalogEntry = Partial<Record<CatalogField, string>>
 // table supplies presentation-only PT-PT copy without changing stable refs or
 // event payloads stored in existing games.
 const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
+  'landmark.utad-main-library': {
+    name: 'Biblioteca Central da UTAD',
+  },
+  'landmark.utad-jardim-botanico': {
+    name: 'Jardim Botânico da UTAD',
+  },
+  'landmark.utad-geosciences-museum': {
+    name: 'Museu de Geociências da UTAD',
+  },
+  'landmark.estacao-ferroviaria': {
+    name: 'Estação Ferroviária de Vila Real',
+  },
+  'landmark.avenida-carvalho-araujo': {
+    name: 'Avenida Carvalho Araújo (ponto central)',
+  },
+
   'intel.north-south': {
     name: 'Norte/Sul',
-    reveals: 'Indica se a bandeira verdadeira fica a norte ou a sul da linha média fixa do conjunto completo de candidatos adversários',
+    reveals:
+      'Indica se a bandeira verdadeira fica a norte ou a sul da linha média fixa do conjunto completo de candidatos adversários',
   },
   // HISTORICAL ONLY — 'intel.east-west' was retired from data/intel.json and is
   // no longer purchasable, so `reveals` (purchase-panel copy) is gone. `name` is
@@ -38,64 +50,79 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
   },
   'intel.hot-cold': {
     name: 'Quente/Frio',
-    reveals: 'Mostra a faixa de distância entre o teu GPS e a bandeira verdadeira (<200 m / <500 m / <1 km / mais longe)',
+    reveals:
+      'Mostra a faixa de distância entre o teu GPS e a bandeira verdadeira (<200 m / <500 m / <1 km / mais longe)',
   },
   'intel.surroundings': {
     name: 'Arredores',
-    reveals: 'Mostra uma foto dos arredores tirada a menos de 30 m da bandeira verdadeira, sem o marcador visível',
+    reveals:
+      'Mostra uma foto dos arredores tirada a menos de 30 m da bandeira verdadeira, sem o marcador visível',
   },
   'intel.direction': {
     name: 'Direção',
-    reveals: 'Mostra a direção geral da bandeira verdadeira a partir do centro da cidade (N / E / S / O)',
+    reveals:
+      'Mostra a direção geral da bandeira verdadeira a partir do centro da cidade (N / E / S / O)',
   },
 
   'curse.slow-walk': {
     name: 'Passo Lento',
-    description: 'Durante 5 min, a velocidade média fica abaixo de 2,5 km/h; a app mostra um aviso assistido por GPS e o cumprimento é por honra',
+    description:
+      'Durante 5 min, a velocidade média fica abaixo de 2,5 km/h; a app mostra um aviso assistido por GPS e o cumprimento é por honra',
   },
   'curse.single-file': {
     name: 'Fila Indiana',
-    description: 'Durante 5 min, a equipa caminha em fila indiana; a app pede duas fotos de grupo tiradas pela frente',
+    description:
+      'Durante 5 min, a equipa caminha em fila indiana; a app pede duas fotos de grupo tiradas pela frente',
   },
   'curse.photo-tax': {
     name: 'Taxa Fotográfica',
-    description: 'Durante 6 min, tira uma selfie junto a uma placa a cada 2 min (cerca de 3 provas)',
+    description:
+      'Durante 6 min, tira uma selfie junto a uma placa a cada 2 min (cerca de 3 provas)',
   },
   'curse.check-in': {
     name: 'Check-in',
-    description: 'Durante 10 min, cada jogador afetado confirma um aviso da app a cada 2 min (cerca de 5 toques); por honra, sem bloqueio automático',
+    description:
+      'Durante 10 min, cada jogador afetado confirma um aviso da app a cada 2 min (cerca de 5 toques); por honra, sem bloqueio automático',
   },
   'curse.detour': {
     name: 'Desvio',
-    description: 'Durante 15 min, evita uma rua escolhida pela app; o GPS mostra um aviso de proximidade e o cumprimento é por honra',
+    description:
+      'Durante 15 min, evita uma rua escolhida pela app; o GPS mostra um aviso de proximidade e o cumprimento é por honra',
   },
   'curse.buddy-up': {
     name: 'Sempre Juntos',
-    description: 'Durante 15 min, todos os membros da equipa ficam a menos de 25 m uns dos outros; o GPS mostra a dispersão em direto',
+    description:
+      'Durante 15 min, todos os membros da equipa ficam a menos de 25 m uns dos outros; o GPS mostra a dispersão em direto',
   },
   'curse.outfit-swap': {
     name: 'Troca de Roupa',
-    description: 'Troca uma peça de roupa com um colega e usa-a durante 20 min; são necessárias fotos antes e depois',
+    description:
+      'Troca uma peça de roupa com um colega e usa-a durante 20 min; são necessárias fotos antes e depois',
   },
   'curse.mute': {
     name: 'Silêncio',
-    description: 'Durante 15 min, só podem comunicar por escrito no chat da app; a app confirma a cada minuto',
+    description:
+      'Durante 15 min, só podem comunicar por escrito no chat da app; a app confirma a cada minuto',
   },
   'curse.backwards': {
     name: 'De Costas',
-    description: 'Durante 10 min, tens de caminhar de costas (um colega pode guiar-te); regra de honra',
+    description:
+      'Durante 10 min, tens de caminhar de costas (um colega pode guiar-te); regra de honra',
   },
   'curse.pose-patrol': {
     name: 'Patrulha de Poses',
-    description: 'Durante 12 min, a app envia uma pose a cada 2 min que deve ser fotografada em 30 s',
+    description:
+      'Durante 12 min, a app envia uma pose a cada 2 min que deve ser fotografada em 30 s',
   },
   'curse.frozen': {
     name: 'Congelados',
-    description: 'Durante 8 min, todos os membros ficam a menos de 10 m da posição inicial; o GPS mostra o desvio em direto',
+    description:
+      'Durante 8 min, todos os membros ficam a menos de 10 m da posição inicial; o GPS mostra o desvio em direto',
   },
   'curse.pilgrimage': {
     name: 'Peregrinação',
-    description: 'Caminha até ao local neutro indicado antes de qualquer outra ação; validado por GPS',
+    description:
+      'Caminha até ao local neutro indicado antes de qualquer outra ação; validado por GPS',
   },
   'curse.coin-drain': {
     name: 'Dreno de Moedas',
@@ -107,24 +134,29 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
   },
   'curse.solo-quarantine': {
     name: 'Quarentena de Equipa',
-    description: 'Durante 15 min, todos os membros da equipa ficam a menos de 10 m uns dos outros; o GPS mostra a dispersão em direto',
+    description:
+      'Durante 15 min, todos os membros da equipa ficam a menos de 10 m uns dos outros; o GPS mostra a dispersão em direto',
   },
   'curse.full-stop': {
     name: 'Paragem Total',
-    description: 'Durante 10 min, nenhuma ação da app é permitida (compras, apanhas ou submissões de desafios)',
+    description:
+      'Durante 10 min, nenhuma ação da app é permitida (compras, apanhas ou submissões de desafios)',
   },
 
   'placed.snare': {
     name: 'Armadilha Congelante',
-    description: 'Apanha um inimigo que entre neste local — a equipa fica congelada no lugar durante 8 minutos.',
+    description:
+      'Apanha um inimigo que entre neste local — a equipa fica congelada no lugar durante 8 minutos.',
   },
   'placed.slow-trap': {
     name: 'Armadilha Lenta',
-    description: 'Um inimigo que entre aqui abranda toda a equipa para passo lento durante 5 minutos.',
+    description:
+      'Um inimigo que entre aqui abranda toda a equipa para passo lento durante 5 minutos.',
   },
   'placed.quarantine-field': {
     name: 'Campo de Quarentena',
-    description: 'Um inimigo que entre aqui junta toda a equipa — todos têm de ficar a menos de 10 m uns dos outros durante 15 minutos.',
+    description:
+      'Um inimigo que entre aqui junta toda a equipa — todos têm de ficar a menos de 10 m uns dos outros durante 15 minutos.',
   },
 
   'challenge.se-cathedral-date': {

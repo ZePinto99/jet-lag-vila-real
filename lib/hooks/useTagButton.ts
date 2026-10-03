@@ -33,6 +33,8 @@ export interface TagTarget {
 
 export interface UseTagButtonResult {
   enabled: boolean
+  /** Render the control only in the part of the map where tagging is legal. */
+  visible: boolean
   targets: TagTarget[]
   reason: TagDisabledReason
   inDefenseZone: boolean
@@ -67,6 +69,7 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     if (!myGps || !isPositionFresh(myGps.updated_at, nowMs)) {
       return {
         enabled: false,
+        visible: false,
         targets: [],
         reason: 'no_gps',
         inDefenseZone: false,
@@ -79,11 +82,23 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     )
 
     if (respawning) {
-      return { enabled: false, targets: [], reason: 'respawning', inDefenseZone }
+      return {
+        enabled: false,
+        visible: false,
+        targets: [],
+        reason: 'respawning',
+        inDefenseZone,
+      }
     }
 
     if (!inDefenseZone) {
-      return { enabled: false, targets: [], reason: 'out_of_zone', inDefenseZone }
+      return {
+        enabled: false,
+        visible: false,
+        targets: [],
+        reason: 'out_of_zone',
+        inDefenseZone,
+      }
     }
 
     // Filter presence to opposing-team players within 5 m of me, skipping self.
@@ -95,13 +110,7 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
       if (myTeamId && entry.team_id === myTeamId) continue
       // Proximity alone is not enough: an opponent inside their own defense
       // zone is a defender, not a raider, and cannot legally be tagged.
-      if (
-        !isRaiderForDefendingTeam(
-          entry,
-          enemyTeamLandmarks,
-          myTeamLandmarks,
-        )
-      ) continue
+      if (!isRaiderForDefendingTeam(entry, enemyTeamLandmarks, myTeamLandmarks)) continue
       const distance = haversineMeters(
         { lat: myGps.lat, lng: myGps.lng },
         { lat: entry.lat, lng: entry.lng },
@@ -122,6 +131,7 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     if (targets.length === 0) {
       return {
         enabled: false,
+        visible: true,
         targets: [],
         reason: 'no_enemies_nearby',
         inDefenseZone,
@@ -134,13 +144,20 @@ export function useTagButton(params: UseTagButtonParams): UseTagButtonResult {
     if (campingLocked) {
       return {
         enabled: false,
+        visible: true,
         targets: [],
         reason: 'camping_locked',
         inDefenseZone,
       }
     }
 
-    return { enabled: true, targets, reason: 'enabled', inDefenseZone }
+    return {
+      enabled: true,
+      visible: true,
+      targets,
+      reason: 'enabled',
+      inDefenseZone,
+    }
   }, [
     myGps,
     myPlayerId,
