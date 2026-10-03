@@ -38,6 +38,8 @@ export function Lobby({ initial, code }: LobbyProps) {
   const setSnapshot = useGameStore((s) => s.setSnapshot)
   const setMe = useGameStore((s) => s.setMe)
   const setGame = useGameStore((s) => s.setGame)
+  const upsertTeam = useGameStore((s) => s.upsertTeam)
+  const upsertPlayer = useGameStore((s) => s.upsertPlayer)
   const game = useGameStore((s) => s.game)
   const teams = useGameStore((s) => s.teams)
   const players = useGameStore((s) => s.players)
@@ -128,7 +130,10 @@ export function Lobby({ initial, code }: LobbyProps) {
         device_id: getDeviceId(),
         ready: !me.ready,
       }
-      await apiPost<SetReadyResponse>(`/api/games/${game.id}/ready`, body)
+      const result = await apiPost<SetReadyResponse>(`/api/games/${game.id}/ready`, body)
+      // Apply the authoritative mutation response on this phone immediately;
+      // Realtime fans the same row out to the other clients.
+      upsertPlayer(result.player)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {
@@ -145,7 +150,12 @@ export function Lobby({ initial, code }: LobbyProps) {
         player_id: me.id,
         device_id: getDeviceId(),
       }
-      await apiPost<SwitchTeamResponse>(`/api/games/${game.id}/switch-team`, body)
+      const result = await apiPost<SwitchTeamResponse>(
+        `/api/games/${game.id}/switch-team`,
+        body,
+      )
+      upsertTeam(result.team)
+      upsertPlayer(result.player)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'unknown_error')
     } finally {

@@ -32,7 +32,10 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(
+  path: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<T> {
   const res = await fetch(path, {
     method: 'GET',
     // Every GET in this app is an authoritative game-state read. Browsers may
@@ -40,6 +43,7 @@ export async function apiGet<T>(path: string): Promise<T> {
     // exactly when we need the newest phase rather than a cached lobby.
     cache: 'no-store',
     headers: { 'content-type': 'application/json' },
+    signal: options.signal,
   })
   const data = await parseJson(res)
   if (!res.ok) throw errorFromBody(res.status, data)
