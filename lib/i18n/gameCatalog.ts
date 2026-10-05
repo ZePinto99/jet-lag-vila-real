@@ -67,7 +67,7 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
   'curse.slow-walk': {
     name: 'Passo Lento',
     description:
-      'Durante 5 min, a velocidade média fica abaixo de 2,5 km/h; a app mostra um aviso assistido por GPS e o cumprimento é por honra',
+      'Durante 5 min, a velocidade média fica abaixo de 2,5 km/h; a app mostra um aviso assistido por GPS e o cumprimento baseia-se na confiança',
   },
   'curse.single-file': {
     name: 'Fila Indiana',
@@ -82,12 +82,12 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
   'curse.check-in': {
     name: 'Check-in',
     description:
-      'Durante 10 min, cada jogador afetado confirma um aviso da app a cada 2 min (cerca de 5 toques); por honra, sem bloqueio automático',
+      'Durante 10 min, cada jogador afetado confirma um aviso da app a cada 2 min (cerca de 5 toques); baseia-se na confiança, sem bloqueio automático',
   },
   'curse.detour': {
     name: 'Desvio',
     description:
-      'Durante 15 min, evita uma rua escolhida pela app; o GPS mostra um aviso de proximidade e o cumprimento é por honra',
+      'Durante 15 min, evita uma rua escolhida pela app; o GPS mostra um aviso de proximidade e o cumprimento baseia-se na confiança',
   },
   'curse.buddy-up': {
     name: 'Sempre Juntos',
@@ -140,7 +140,7 @@ const PT_CATALOG: Record<string, PortugueseCatalogEntry> = {
   'curse.full-stop': {
     name: 'Paragem Total',
     description:
-      'Durante 10 min, nenhuma ação da app é permitida (compras, apanhas ou submissões de desafios)',
+      'Durante 10 min, nenhuma ação da app é permitida (compras, capturas ou submissões de desafios)',
   },
 
   'placed.snare': {

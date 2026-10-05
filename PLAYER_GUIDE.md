@@ -83,7 +83,8 @@ Both counters live on the server, so they survive a reload — but they only tic
 | Curse die (roll 1–3 dice) | 50 each |
 | Harden own flag challenge (once) | 150 |
 
-Cap: max **4 intel cards** per team for the whole game.
+Cap: a team may hold at most **4 intel cards** at a time. If an enemy action
+destroys a card, the slot reopens, but that same card cannot be bought again.
 
 ---
 
@@ -142,7 +143,8 @@ Still tied → most challenges → most coins → coin flip.
 
 - **Walking only.** Stay inside the 1.5 km play-area circle shown in the app.
 - **Don't camp** your own flag landmarks (50 m / 2 min).
-- **Don't hoard intel** past 4 cards — you can't.
+- **Don't hoard intel** past 4 cards — you cannot hold more at once, and a lost
+  card cannot be bought again.
 - A one-way walk between the two home bases is roughly 15 minutes. Budget your time.
 - In unsafe weather, one team may propose a pause; the other team must confirm within 5 minutes. Pause and resume both require the two-team confirmation.
 

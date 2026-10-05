@@ -16,6 +16,11 @@ export const LOCALE_FULL: Record<Locale, string> = {
   pt: 'Português',
 }
 
+export const LOCALE_HTML_LANG: Record<Locale, string> = {
+  en: 'en',
+  pt: 'pt-PT',
+}
+
 type MessageDict = Record<string, Record<Locale, string>>
 
 export const MESSAGES: MessageDict = {
@@ -153,11 +158,11 @@ export const MESSAGES: MessageDict = {
   'setup.intro_pt1': { en: 'You are Team', pt: 'Tu és da Equipa' },
   'setup.intro_pt2': {
     en: '. Walk to your home base with your team. When you are all there, decide together: 5 candidate landmarks — 1 real flag, 2 decoys, 2 empty.',
-    pt: '. Caminhem até à base da equipa. Quando estiverem todos lá, decidam em conjunto: 5 marcos candidatos — 1 bandeira real, 2 enganos, 2 vazios.',
+    pt: '. Caminhem até à base da equipa. Quando estiverem todos lá, decidam em conjunto: 5 locais candidatos — 1 bandeira verdadeira, 2 enganos, 2 vazios.',
   },
   'setup.counter': {
     en: 'Selected: {real} real (need 1) · {decoy} decoys (need 2) · {empty} empty (need 2) — {unused} unused',
-    pt: 'Selecionados: {real} real (precisas 1) · {decoy} enganos (precisas 2) · {empty} vazios (precisas 2) — {unused} por usar',
+    pt: 'Selecionados: {real} verdadeira (precisas de 1) · {decoy} enganos (precisas de 2) · {empty} vazios (precisas de 2) — {unused} por usar',
   },
   'setup.submit_assignment': { en: 'Submit assignment', pt: 'Submeter escolha' },
   'setup.role_none': { en: 'Clear', pt: 'Limpar' },
@@ -167,7 +172,7 @@ export const MESSAGES: MessageDict = {
   },
   'setup.surroundings_hint': {
     en: 'Take one photo within 30 m of the real flag without showing the marker. It stays private unless the other team buys Surroundings intel.',
-    pt: 'Tira uma foto a menos de 30 m da bandeira real sem mostrar o marcador. Fica privada, salvo se a outra equipa comprar a intel Arredores.',
+    pt: 'Tira uma foto a menos de 30 m da bandeira real sem mostrar o marcador. Fica privada, salvo se a outra equipa comprar a carta de intel «Arredores».',
   },
   'setup.surroundings_add': {
     en: '📷 Add surroundings photo',
@@ -261,8 +266,8 @@ export const MESSAGES: MessageDict = {
   'map.legend_you': { en: 'You', pt: 'Tu' },
   'map.you_outside': { en: 'You · {m} m outside', pt: 'Tu · {m} m fora' },
   'map.walking_directions': { en: 'Walking directions', pt: 'Direções a pé' },
-  'map.your_candidate': { en: 'your candidate', pt: 'tua candidata' },
-  'map.enemy_candidate': { en: 'enemy candidate', pt: 'candidata adversária' },
+  'map.your_candidate': { en: 'your candidate', pt: 'teu local candidato' },
+  'map.enemy_candidate': { en: 'enemy candidate', pt: 'local candidato adversário' },
   'map.your_home': { en: 'your home base', pt: 'tua base' },
   'map.enemy_home': { en: 'enemy home base', pt: 'base adversária' },
   'map.neutral_landmark': { en: 'Neutral landmark', pt: 'Marco neutro' },
@@ -276,7 +281,7 @@ export const MESSAGES: MessageDict = {
   'map.decoy': { en: 'Decoy', pt: 'Engano' },
   'map.empty': { en: 'Empty', pt: 'Vazio' },
   'map.home_base': { en: 'Home base', pt: 'Base' },
-  'map.safe_respawn': { en: 'Safe respawn point', pt: 'Ponto seguro de reaparecimento' },
+  'map.safe_respawn': { en: 'Safe respawn point', pt: 'Ponto seguro de regresso' },
   'map.your_home_status': {
     en: 'Your home base. Return here with the enemy flag to win.',
     pt: 'A tua base. Regressa aqui com a bandeira adversária para ganhar.',
@@ -313,12 +318,12 @@ export const MESSAGES: MessageDict = {
   },
   'tag.aria_disabled': { en: 'Tag button disabled', pt: 'Botão de captura desativado' },
   'tag.reason_no_gps': { en: 'Enable GPS to tag', pt: 'Ativa o GPS para apanhar' },
-  'tag.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
+  'tag.reason_respawning': { en: 'You are respawning', pt: 'Estás a regressar ao jogo' },
   'tag.reason_out_of_zone': { en: 'Not in your defense zone', pt: 'Fora da tua zona de defesa' },
   'tag.reason_no_enemies': { en: 'No enemies within 5 m', pt: 'Sem adversários a menos de 5 m' },
   'tag.reason_camping': {
     en: 'Camping locked — leave own landmark to reset',
-    pt: 'Bloqueado por camping — afasta-te do teu marco para reiniciar',
+    pt: 'Bloqueado por acampamento — afasta-te do teu local para reiniciar',
   },
   'tag.zone_ready': {
     en: 'Defense zone · Tag ready if a raider comes within 5 m',
@@ -334,19 +339,19 @@ export const MESSAGES: MessageDict = {
   // an app that is open, which the copy has to be honest about.
   'camping.warning': {
     en: 'Camping warning — {s}s until your Tag button switches off',
-    pt: 'Aviso de camping — {s}s até o teu botão de captura desligar',
+    pt: 'Aviso de acampamento — faltam {s}s para o teu botão de captura se desligar',
   },
   'camping.warning_imminent': {
     en: 'Camping — Tag switches off now. Leave your own landmark.',
-    pt: 'Camping — a captura desliga agora. Afasta-te do teu marco.',
+    pt: 'Acampamento — a captura desliga-se agora. Afasta-te do teu local.',
   },
   'camping.locked': {
     en: 'Camping locked — leave your own landmark for {s}s to reset',
-    pt: 'Bloqueado por camping — afasta-te do teu marco {s}s para reiniciar',
+    pt: 'Bloqueado por acampamento — afasta-te do teu local durante {s}s para reiniciar',
   },
   'camping.locked_progress': {
     en: 'Camping locked — {s}s more away from your own landmark',
-    pt: 'Bloqueado por camping — faltam {s}s longe do teu marco',
+    pt: 'Bloqueado por acampamento — permanece mais {s}s longe do teu local',
   },
   // Singular and plural spelled out rather than "player(s)" — this copy is read
   // by a player mid-walk and spoken by screen readers.
@@ -372,7 +377,7 @@ export const MESSAGES: MessageDict = {
   // Single target that was already down by the time the tap reached the server.
   'tag.reject_already_respawning': {
     en: 'They had already been tagged and are respawning — nothing to apply.',
-    pt: 'Já tinham sido apanhados e estão a reaparecer — não há nada para aplicar.',
+    pt: 'Já tinham sido apanhados e estão a regressar ao jogo — não há nada para aplicar.',
   },
   // Multi-target batch: someone else's tag landed first, so the whole batch was
   // rolled back. Nothing was applied, so retrying is the right move.
@@ -439,7 +444,10 @@ export const MESSAGES: MessageDict = {
   },
   'flag_attempt.button_disabled': { en: 'ATTEMPT FLAG', pt: 'TENTAR BANDEIRA' },
   'flag_attempt.reason_no_gps': { en: 'Enable GPS to attempt', pt: 'Ativa o GPS para tentar' },
-  'flag_attempt.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
+  'flag_attempt.reason_respawning': {
+    en: 'You are respawning',
+    pt: 'Estás a regressar ao jogo',
+  },
   'flag_attempt.reason_not_live': {
     en: 'Available during live game',
     pt: 'Disponível durante o jogo',
@@ -476,7 +484,7 @@ export const MESSAGES: MessageDict = {
   },
   'flag_attempt.toast_decoy': {
     en: 'Decoy! All intel lost.',
-    pt: 'Engano! Perdeste toda a intel.',
+    pt: 'Engano! Perdeste todas as cartas de intel.',
   },
   'flag_attempt.toast_empty': { en: 'Empty. Nothing here.', pt: 'Vazio. Nada aqui.' },
   'flag_carrier.title': { en: 'YOU HAVE THE FLAG', pt: 'TENS A BANDEIRA' },
@@ -519,8 +527,8 @@ export const MESSAGES: MessageDict = {
   'gameover.you_won': { en: 'Congratulations.', pt: 'Parabéns.' },
   'gameover.you_lost': { en: 'Better luck next round.', pt: 'Para a próxima.' },
   'gameover.row_real_flag': { en: 'Real flag photographed', pt: 'Bandeira fotografada' },
-  'gameover.row_challenges': { en: 'Challenges completed', pt: 'Desafios completados' },
-  'gameover.row_tags': { en: 'Tags made', pt: 'Apanhas' },
+  'gameover.row_challenges': { en: 'Challenges completed', pt: 'Desafios concluídos' },
+  'gameover.row_tags': { en: 'Tags made', pt: 'Capturas' },
   'gameover.row_curses': { en: 'Curses cast (stat)', pt: 'Maldições lançadas (estatística)' },
   'gameover.row_coins': { en: 'Coins (tiebreaker)', pt: 'Moedas (desempate)' },
   'gameover.row_total': { en: 'Total', pt: 'Total' },
@@ -531,22 +539,25 @@ export const MESSAGES: MessageDict = {
 
   // ---------- actions tab: intel ----------
   'intel.panel_title': { en: 'Buy Intel', pt: 'Comprar Intel' },
-  'intel.cap': { en: '{used}/{cap} cards used', pt: '{used}/{cap} cartas usadas' },
+  'intel.cap': { en: '{used}/{cap} cards held', pt: '{used}/{cap} cartas na mão' },
   'intel.buy': { en: 'Buy', pt: 'Comprar' },
   'intel.buying': { en: 'Buying…', pt: 'A comprar…' },
   'intel.confirm': { en: 'Buy {name} for {cost} coins?', pt: 'Comprar {name} por {cost} moedas?' },
   'intel.reason_not_live': { en: 'Available during live game', pt: 'Disponível durante o jogo' },
   'intel.reason_already_purchased': { en: 'Already purchased', pt: 'Já comprado' },
-  'intel.reason_cap_reached': { en: 'Intel cap reached (4)', pt: 'Limite de intel atingido (4)' },
+  'intel.reason_cap_reached': {
+    en: 'Intel hand limit reached (4)',
+    pt: 'Limite de 4 cartas de intel atingido',
+  },
   'intel.reason_insufficient': { en: 'Need {n} more coins', pt: 'Faltam {n} moedas' },
   'intel.reason_needs_gps': { en: 'Enable GPS to buy', pt: 'Ativa o GPS para comprar' },
   'intel.acquired': {
     en: 'Intel acquired — see Status tab',
-    pt: 'Intel adquirida — vê o separador Estado',
+    pt: 'Carta de intel adquirida — vê o separador Estado',
   },
   'intel.panel_hint': {
-    en: 'Each card reveals one clue about the enemy real flag. The 4-card cap applies to the whole game.',
-    pt: 'Cada carta revela uma pista sobre a bandeira verdadeira adversária. O limite de 4 cartas aplica-se ao jogo inteiro.',
+    en: 'Each card reveals one clue about the enemy real flag. Your team may hold 4 at once; a lost card frees a slot, but the same card cannot be bought twice.',
+    pt: 'Cada carta revela uma pista sobre a bandeira verdadeira adversária. A equipa pode ter 4 ao mesmo tempo; uma carta perdida liberta um espaço, mas a mesma carta não pode ser comprada duas vezes.',
   },
   'intel.owned': { en: 'Owned', pt: 'Comprada' },
 
@@ -571,9 +582,9 @@ export const MESSAGES: MessageDict = {
     en: 'Rolled: {rolls} = {total} ({tier})',
     pt: 'Lançamento: {rolls} = {total} ({tier})',
   },
-  'curse.tier_minor': { en: 'minor', pt: 'menor' },
+  'curse.tier_minor': { en: 'minor', pt: 'ligeira' },
   'curse.tier_medium': { en: 'medium', pt: 'média' },
-  'curse.tier_major': { en: 'major', pt: 'maior' },
+  'curse.tier_major': { en: 'major', pt: 'grave' },
   'curse.dismiss': { en: 'Dismiss', pt: 'Dispensar' },
   'curse.banner_title': { en: 'Curses on us', pt: 'Maldições em nós' },
   'curse.expired_hint': { en: '(expired — refreshing…)', pt: '(expirada — a atualizar…)' },
@@ -597,7 +608,7 @@ export const MESSAGES: MessageDict = {
   },
   'curse.ledger_check_in': {
     en: 'Affected players acknowledge in-app prompts every 2 minutes. Honour-based — nothing is recorded.',
-    pt: 'Os jogadores afetados confirmam avisos da app a cada 2 minutos. Por honra — nada fica registado.',
+    pt: 'Os jogadores afetados confirmam avisos da app a cada 2 minutos. Baseia-se na confiança — nada fica registado.',
   },
 
   // ---------- actions tab: challenges ----------
@@ -617,7 +628,10 @@ export const MESSAGES: MessageDict = {
     en: 'Available during live game',
     pt: 'Disponível durante o jogo',
   },
-  'challenge.reason_respawning': { en: 'You are respawning', pt: 'Estás a reaparecer' },
+  'challenge.reason_respawning': {
+    en: 'You are respawning',
+    pt: 'Estás a regressar ao jogo',
+  },
   'challenge.reason_no_gps': { en: 'Enable GPS', pt: 'Ativa o GPS' },
   'challenge.reason_too_far': {
     en: 'Get closer (currently {m})',
@@ -628,7 +642,7 @@ export const MESSAGES: MessageDict = {
   'challenge.history_title': { en: 'Challenge history', pt: 'Histórico de desafios' },
   'challenge.history_empty': {
     en: 'No challenges completed yet.',
-    pt: 'Nenhum desafio completado ainda.',
+    pt: 'Ainda não há desafios concluídos.',
   },
   'challenge.loading': { en: 'Loading challenges…', pt: 'A carregar desafios…' },
   'challenge.none_active': {
@@ -700,8 +714,11 @@ export const MESSAGES: MessageDict = {
   'status.curse_expired': { en: 'Curse expired: {name}', pt: 'Maldição terminada: {name}' },
   'status.coin_drain': { en: 'Coin drain: -{n} coins', pt: 'Dreno de moedas: -{n} moedas' },
   'status.coin_drain_applied': { en: 'Coin drain applied', pt: 'Dreno de moedas aplicado' },
-  'status.intel_lost': { en: 'Intel lost: {name}', pt: 'Intel perdida: {name}' },
-  'status.intel_lost_generic': { en: 'Intel lost', pt: 'Intel perdida' },
+  'status.intel_lost': {
+    en: 'Intel lost: {name}',
+    pt: 'Carta de intel perdida: {name}',
+  },
+  'status.intel_lost_generic': { en: 'Intel lost', pt: 'Carta de intel perdida' },
   'status.proof_submitted': {
     en: 'Proof submitted: {name}{index}',
     pt: 'Prova submetida: {name}{index}',
@@ -745,7 +762,7 @@ export const MESSAGES: MessageDict = {
     en: 'Bearing from city centre: {bearing}',
     pt: 'Direção a partir do centro da cidade: {bearing}',
   },
-  'status.unknown_intel': { en: '(unknown intel)', pt: '(intel desconhecida)' },
+  'status.unknown_intel': { en: '(unknown intel)', pt: '(carta de intel desconhecida)' },
 
   // ---------- curse enforcement (banner + prompts) ----------
   // (reuses existing curse.banner_title / curse.expired_hint above)
@@ -852,15 +869,15 @@ export const MESSAGES: MessageDict = {
   // ---------- flag attempt window / lockout (P2-1 / P2-3 / P2-4) ----------
   'attempt.locked_window': {
     en: 'Attempts unlock in {time}',
-    pt: 'Capturas abrem em {time}',
+    pt: 'Tentativas disponíveis dentro de {time}',
   },
   'attempt.window_header': {
     en: 'Flag attempts unlock in {time}',
-    pt: 'Capturas de bandeira abrem em {time}',
+    pt: 'Tentativas à bandeira disponíveis dentro de {time}',
   },
   'attempt.err_attempts_locked': {
     en: 'Flag attempts are locked for the first 30 minutes.',
-    pt: 'As capturas estão bloqueadas nos primeiros 30 minutos.',
+    pt: 'As tentativas à bandeira estão bloqueadas nos primeiros 30 minutos.',
   },
   'attempt.err_landmark_locked_out': {
     en: 'This landmark is locked for 15 min after a failed attempt.',
@@ -945,12 +962,12 @@ export const MESSAGES: MessageDict = {
     en: '{player} found your flag at {name} — intercept them!',
     pt: '{player} encontrou a tua bandeira em {name} — intercetem!',
   },
-  'moment.tag_made.title': { en: 'RAIDER TAGGED!', pt: 'RAIDER APANHADO!' },
+  'moment.tag_made.title': { en: 'RAIDER TAGGED!', pt: 'ATACANTE APANHADO!' },
   // 0058: a tag fines coins, it does NOT take intel. This subtitle said
   // "they lose intel" and was shown live, mid-game, to the whole team.
   'moment.tag_made.sub': {
     en: '{tagger} tagged {raider} — their team is fined and they must respawn',
-    pt: '{tagger} apanhou {raider} — a equipa deles é multada e tem de renascer',
+    pt: '{tagger} apanhou {raider} — a equipa adversária é multada e o jogador tem de regressar ao jogo',
   },
   'moment.tagged.title': { en: 'TAGGED!', pt: 'APANHADO!' },
   'moment.tagged.sub': {
@@ -1017,15 +1034,15 @@ export const MESSAGES: MessageDict = {
   'recap.title': { en: 'Match recap', pt: 'Resumo do jogo' },
   'recap.your_score': { en: 'Your score: {score}', pt: 'A tua pontuação: {score}' },
   'recap.mvp': { en: 'MVP', pt: 'Melhor jogador' },
-  'recap.mvp_tags': { en: '{count} tags made', pt: '{count} apanhados' },
-  'recap.no_mvp': { en: 'No tags this match', pt: 'Nenhum apanhado neste jogo' },
+  'recap.mvp_tags': { en: '{count} tags made', pt: '{count} capturas' },
+  'recap.no_mvp': { en: 'No tags this match', pt: 'Nenhuma captura neste jogo' },
   'recap.you': { en: 'you', pt: 'tu' },
   'recap.first_blood': { en: 'First blood', pt: 'Primeiro sangue' },
   'recap.no_first_blood': {
     en: 'No challenges completed',
     pt: 'Nenhum desafio concluído',
   },
-  'recap.stat_tags': { en: 'Tags', pt: 'Apanhados' },
+  'recap.stat_tags': { en: 'Tags', pt: 'Capturas' },
   'recap.stat_challenges': { en: 'Challenges', pt: 'Desafios' },
   'recap.stat_curses': { en: 'Curses', pt: 'Maldições' },
   'recap.stat_captures': { en: 'Captures', pt: 'Capturas' },
@@ -1116,7 +1133,7 @@ export const MESSAGES: MessageDict = {
   'respawn.tagged': { en: 'You were tagged.', pt: 'Foste apanhado.' },
   'respawn.gameplay_locked': {
     en: 'Respawn required — reach and leave your assigned neutral before using game actions.',
-    pt: 'Respawn obrigatório — chega ao ponto neutro atribuído e afasta-te antes de usar ações do jogo.',
+    pt: 'Regresso ao jogo obrigatório — chega ao ponto neutro atribuído e afasta-te antes de usar ações do jogo.',
   },
   'respawn.assigned_neutral': {
     en: 'the assigned neutral landmark',
@@ -1124,7 +1141,7 @@ export const MESSAGES: MessageDict = {
   },
   'respawn.target_hint': {
     en: 'Your required respawn point is {target}. Go there, then confirm your arrival.',
-    pt: 'O teu ponto de respawn obrigatório é {target}. Vai até lá e confirma a chegada.',
+    pt: 'O teu ponto de regresso obrigatório é {target}. Vai até lá e confirma a chegada.',
   },
   'respawn.arrived_hint': {
     en: 'Arrival confirmed at {target}. Walk at least 45 m away, then confirm to rejoin.',
@@ -1354,12 +1371,12 @@ export const MESSAGES: MessageDict = {
   'guide.where.nav': { en: 'The map', pt: 'O mapa' },
   'guide.where.heading': { en: 'Where you play', pt: 'Onde se joga' },
   'guide.where.body': {
-    en: 'Everything happens inside a {radius} m circle over Vila Real. Step outside it and you are out of bounds.',
-    pt: 'Tudo acontece dentro de um círculo de {radius} m sobre Vila Real. Sair dele é ficar fora dos limites.',
+    en: 'Everything happens inside a {radius} m circle centred on Vila Real. Step outside of it and you are out of bounds.',
+    pt: 'Tudo acontece dentro de um círculo de {radius} m centrado em Vila Real. Se saíres dele, ficas fora dos limites.',
   },
   'guide.where.pools': {
-    en: 'Each team gets a pool of {n} landmarks on their own side of the city and picks {pick} of them as candidates: {real} real flag, {decoy} decoys and {empty} empty.',
-    pt: 'Cada equipa recebe um conjunto de {n} locais no seu lado da cidade e escolhe {pick} como candidatos: {real} bandeira verdadeira, {decoy} enganos e {empty} vazios.',
+    en: 'Each team gets a pool of {n} landmarks on its own side of the city and picks {pick} as candidates: {real} for the real flag, {decoy} for decoys and {empty} empty locations.',
+    pt: 'Cada equipa recebe um conjunto de {n} locais no seu lado da cidade e escolhe {pick} como candidatos: {real} para a bandeira verdadeira, {decoy} para enganos e {empty} locais vazios.',
   },
   'guide.where.markers': {
     en: 'You place identical physical markers at the real flag and both decoys. The empty spots get nothing — so a marker you find could be either.',
@@ -1395,7 +1412,7 @@ export const MESSAGES: MessageDict = {
   },
   'guide.roles.overlap': {
     en: 'The zones overlap in the middle of town. An enemy who comes within {n} m of one of your candidates counts as a raider for you even there — so you can both be defenders of your own ground and raiders on theirs at the same time.',
-    pt: 'As zonas sobrepõem-se no centro da cidade. Um adversário que chegue a menos de {n} m de um dos teus candidatos conta como atacante para ti mesmo aí — podem ambos ser defensores do seu terreno e atacantes no do outro ao mesmo tempo.',
+    pt: 'As zonas sobrepõem-se no centro da cidade. Um adversário que chegue a menos de {n} m de um dos teus candidatos conta como atacante para ti mesmo aí — podes ser, ao mesmo tempo, defensor do teu terreno e atacante no terreno adversário.',
   },
   'guide.roles.diagram_alt': {
     en: 'Three overlapping 200-metre circles around Team West’s candidate landmarks form one lumpy defense zone, with a separate circle for Team East. Numbered pins show a teammate inside the zone, an enemy who has walked into it, and you standing outside it.',
@@ -1482,7 +1499,7 @@ export const MESSAGES: MessageDict = {
   'guide.flag.heading': { en: 'Attempting a flag', pt: 'Tentar uma bandeira' },
   'guide.flag.body': {
     en: 'Walk to an enemy candidate, get within about {range} m and tap Attempt. The app reveals a small photo task, you submit a real photo, and the server checks your GPS before telling you what you found.',
-    pt: 'Vai até um candidato adversário, chega a cerca de {range} m e toca em Tentar. A app revela uma pequena tarefa fotográfica, envias uma fotografia real e o servidor verifica o teu GPS antes de te dizer o que encontraste.',
+    pt: 'Vai até um candidato adversário, chega a cerca de {range} m e toca em Tentar. A app revela uma pequena tarefa fotográfica; envias uma fotografia tirada no local e o servidor verifica o teu GPS antes de te dizer o que encontraste.',
   },
   'guide.flag.protection': {
     en: 'No attempts in the first {n} minutes — use that time to earn coins and buy intel.',
@@ -1493,14 +1510,17 @@ export const MESSAGES: MessageDict = {
     pt: 'A tarefa fotográfica é pública e é igual esteja ou não lá a bandeira, por isso lê-la não te diz nada. É também por isso que reforçar aperta o raio de GPS em vez de mudar a tarefa — uma tarefa mais difícil denunciaria a bandeira verdadeira.',
   },
   'guide.flag.diagram_alt': {
-    en: 'One photographed marker branching into three outcomes: the real flag lets you walk home to win, a decoy costs all your intel plus a 15-minute lockout, and an empty spot only locks the landmark for 15 minutes.',
-    pt: 'Um marcador fotografado ramifica em três resultados: a bandeira verdadeira deixa-te ir para casa e ganhar, um engano custa todo o teu intel mais 15 minutos de bloqueio, e um local vazio apenas bloqueia o local durante 15 minutos.',
+    en: 'One photographed marker branching into three outcomes: the real flag lets you walk home to win, a decoy costs you all your intel plus a 15-minute lockout, and an empty spot only locks the landmark for 15 minutes.',
+    pt: 'A fotografia de um marcador pode dar três resultados: com a bandeira verdadeira, regressas à base para ganhar; um engano custa-te toda a informação e bloqueia o local durante 15 minutos; um local vazio apenas fica bloqueado durante 15 minutos.',
   },
   'guide.flag.label_start': { en: 'You photograph a marker', pt: 'Fotografas um marcador' },
   'guide.flag.label_real': { en: 'Real flag', pt: 'Verdadeira' },
-  'guide.flag.label_real_body': { en: 'Walk home to win', pt: 'Vai a casa e ganha' },
+  'guide.flag.label_real_body': { en: 'Walk home to win', pt: 'Regressa à base para ganhar' },
   'guide.flag.label_decoy': { en: 'Decoy', pt: 'Engano' },
-  'guide.flag.label_decoy_body': { en: 'Lose ALL intel', pt: 'Perdes TODO o intel' },
+  'guide.flag.label_decoy_body': {
+    en: 'Lose ALL intel',
+    pt: 'Perdes TODAS as cartas de intel',
+  },
   'guide.flag.label_empty': { en: 'Empty', pt: 'Vazio' },
   'guide.flag.label_empty_body': { en: 'Nothing lost', pt: 'Não perdes nada' },
   'guide.flag.lockout': {
@@ -1509,7 +1529,7 @@ export const MESSAGES: MessageDict = {
   },
   'guide.flag.carrier': {
     en: 'Find the real flag and the app tells everyone immediately — including the team you just robbed. They will come for you on the walk home.',
-    pt: 'Se encontrares a bandeira verdadeira, a app avisa todos de imediato — incluindo a equipa que acabaste de roubar. Vão atrás de ti no caminho de volta.',
+    pt: 'Se encontrares a bandeira verdadeira, a app avisa todos de imediato — incluindo a equipa cuja bandeira acabaste de roubar. Vão atrás de ti no caminho de volta.',
   },
 
   // -- 7. coins, intel and curses --
@@ -1517,7 +1537,7 @@ export const MESSAGES: MessageDict = {
   'guide.economy.heading': { en: 'Coins, intel and curses', pt: 'Moedas, intel e maldições' },
   'guide.economy.body': {
     en: 'You start with {start} coins and earn {bonus} more every {interval} minutes just for playing. Challenges are the real income: {min}–{max} coins each, three live at a time, and {first} extra for the first team to finish any of them.',
-    pt: 'Começas com {start} moedas e ganhas mais {bonus} a cada {interval} minutos só por jogares. Os desafios são a verdadeira receita: {min}–{max} moedas cada, três ativos ao mesmo tempo, e {first} extra para a primeira equipa que completar qualquer um.',
+    pt: 'Começas com {start} moedas e ganhas mais {bonus} a cada {interval} minutos só por jogares. Os desafios são a principal fonte de moedas: {min}–{max} moedas cada, três ativos ao mesmo tempo e mais {first} para a primeira equipa que completar um deles.',
   },
   'guide.economy.review': {
     en: 'Photo challenges go to the other team to check. If they don’t reject it within {n} seconds it passes automatically.',
@@ -1528,8 +1548,8 @@ export const MESSAGES: MessageDict = {
     pt: 'As moedas compram três coisas: intel para localizar a bandeira deles ({intelMin}–{intelMax}), dados de maldição para os atrasar ({die} cada, lança 1 a 3 de uma vez), e um reforço da tua própria bandeira por {harden} moedas.',
   },
   'guide.economy.diagram_alt': {
-    en: 'Challenges and a time bonus feed a pool of coins, which pays out into intel, curses and hardening your own flag.',
-    pt: 'Os desafios e o bónus de tempo alimentam um conjunto de moedas, que paga intel, maldições e o reforço da tua própria bandeira.',
+    en: 'Challenges and time bonuses add coins to your balance, which you can spend on intel, curses and hardening your own flag.',
+    pt: 'Os desafios e os bónus de tempo acrescentam moedas ao teu saldo, que podes gastar em informação, maldições e no reforço da tua própria bandeira.',
   },
   'guide.economy.label_challenges': { en: 'Challenges', pt: 'Desafios' },
   'guide.economy.label_coins': { en: 'Coins', pt: 'Moedas' },
@@ -1537,7 +1557,10 @@ export const MESSAGES: MessageDict = {
     en: '+{n} every {interval} min',
     pt: '+{n} a cada {interval} min',
   },
-  'guide.economy.label_intel': { en: 'Intel — find their flag', pt: 'Intel — achar a bandeira' },
+  'guide.economy.label_intel': {
+    en: 'Intel — find their flag',
+    pt: 'Intel — encontra a bandeira adversária',
+  },
   'guide.economy.label_curses': { en: 'Curses — slow them down', pt: 'Maldições — atrasá-los' },
   'guide.economy.label_harden': { en: 'Harden — guard yours', pt: 'Reforço — proteger a tua' },
 
@@ -1547,7 +1570,7 @@ export const MESSAGES: MessageDict = {
   },
   'guide.curses.body': {
     en: 'Roll one to three dice. The total sets the tier: 1–3 minor, 4–8 medium, 9 or more major. Curses never stack on the same effect.',
-    pt: 'Lança um a três dados. O total define o nível: 1–3 menor, 4–8 médio, 9 ou mais maior. As maldições nunca se acumulam no mesmo efeito.',
+    pt: 'Lança um a três dados. O total define o nível: 1–3 ligeiro, 4–8 médio, 9 ou mais grave. As maldições com o mesmo efeito nunca se acumulam.',
   },
   'guide.curses.legend_intro': {
     en: 'Each curse is tagged with how the app checks it:',
@@ -1563,15 +1586,15 @@ export const MESSAGES: MessageDict = {
   },
   'guide.curses.legend_c': {
     en: 'Honour system — the app reminds you, nothing checks you.',
-    pt: 'Por honra — a app lembra-te, mas nada te verifica.',
+    pt: 'Baseada na confiança — a app lembra-te, mas não faz qualquer verificação.',
   },
   'guide.curses.legend_l': {
     en: 'Ledger only — pure app effect on coins, intel or your buttons.',
-    pt: 'Só registo — efeito da app nas moedas, no intel ou nos teus botões.',
+    pt: 'Apenas registo — efeito da app nas moedas, na informação ou nos teus botões.',
   },
   'guide.curses.placed': {
     en: 'Placed curses are different: you arm one at a landmark and it waits, hidden, for an enemy to walk in. They cannot see it coming.',
-    pt: 'As maldições colocadas são diferentes: armas uma num local e ela fica à espera, escondida, que um adversário entre. Eles não a vêem chegar.',
+    pt: 'As maldições colocadas são diferentes: armas uma num local e ela fica escondida à espera que um adversário entre. O adversário não sabe que lá está.',
   },
   'guide.curses.team_size': {
     en: 'In a 1v1 game, curses and challenges that need a teammate are left out.',
@@ -1580,10 +1603,10 @@ export const MESSAGES: MessageDict = {
 
   // -- 8. reading intel --
   'guide.intel.nav': { en: 'Intel', pt: 'Intel' },
-  'guide.intel.heading': { en: 'Reading intel', pt: 'Ler o intel' },
+  'guide.intel.heading': { en: 'Reading intel', pt: 'Interpretar as cartas de intel' },
   'guide.intel.body': {
-    en: 'Intel does not point at the flag — it crosses candidates off. Your team may only ever buy {cap} cards in the whole game, so each one has to remove more of the map than the last.',
-    pt: 'O intel não aponta para a bandeira — risca candidatos. A tua equipa só pode comprar {cap} cartas em todo o jogo, por isso cada uma tem de eliminar mais mapa do que a anterior.',
+    en: 'Intel does not point at the flag — it crosses candidates off. Your team may hold at most {cap} cards at a time. If an enemy action destroys one, the slot reopens, but you can never buy the same card twice.',
+    pt: 'A informação não aponta para a bandeira — elimina candidatos. A tua equipa pode ter, no máximo, {cap} cartas ao mesmo tempo. Se uma ação adversária destruir uma delas, o espaço fica livre, mas nunca podes voltar a comprar a mesma carta.',
   },
   'guide.intel.sequence': {
     en: 'Sequence matters. A north/south split halves five candidates to two or three; an eliminate card then takes one of those away. Buying two cards that rule out the same ground wastes one.',
@@ -1594,11 +1617,11 @@ export const MESSAGES: MessageDict = {
   // of the warning.
   'guide.intel.loss': {
     en: 'Getting tagged never takes a card — it fines your team {c} coins. Photographing a decoy is the one thing that costs you intel: every card you own, which is why a guess is never free.',
-    pt: 'Ser capturado nunca te tira uma carta — multa a tua equipa em {c} moedas. Fotografar um engano é a única coisa que te custa intel: todas as cartas que tens, por isso adivinhar nunca é grátis.',
+    pt: 'Ser capturado nunca te tira uma carta — multa a tua equipa em {c} moedas. Fotografar um engano é a única coisa que te custa cartas de intel: perdes todas as que tens, por isso adivinhar nunca é grátis.',
   },
   'guide.intel.diagram_alt': {
     en: 'Five candidate markers, then a purchased north/south card, then the same five with two struck out and three still live.',
-    pt: 'Cinco marcadores candidatos, depois uma carta norte/sul comprada, e os mesmos cinco com dois riscados e três ainda em jogo.',
+    pt: 'Cinco locais candidatos, depois uma carta norte/sul comprada e os mesmos cinco com dois riscados e três ainda em jogo.',
   },
   'guide.intel.label_before': {
     en: 'Five candidates, any could hold it',
@@ -1615,8 +1638,8 @@ export const MESSAGES: MessageDict = {
   'guide.mistakes.nav': { en: 'Common mistakes', pt: 'Erros comuns' },
   'guide.mistakes.heading': { en: 'How to lose by accident', pt: 'Como perder sem querer' },
   'guide.mistakes.decoy': {
-    en: 'Photographing a decoy on a hunch. It wipes every intel card your team has bought, and you cannot buy them back past the cap.',
-    pt: 'Fotografar um engano por palpite. Apaga todas as cartas de intel que a tua equipa comprou, e não as podes recomprar depois do limite.',
+    en: 'Photographing a decoy on a hunch. It wipes every intel card your team holds. The empty slots can be filled with different cards, but you can never buy the same cards again.',
+    pt: 'Fotografar um engano por palpite. Apaga todas as cartas de informação que a tua equipa tem. Podes preencher os espaços vazios com cartas diferentes, mas nunca voltar a comprar as mesmas.',
   },
   'guide.mistakes.camping': {
     en: 'Guarding your own flag too closely. Past {n} seconds inside the inner circle your own Tag button stops working.',
@@ -1637,18 +1660,18 @@ export const MESSAGES: MessageDict = {
 
   // -- 10. endgame --
   'guide.endgame.nav': { en: 'Winning', pt: 'Ganhar' },
-  'guide.endgame.heading': { en: 'Winning, and the clock', pt: 'Ganhar, e o relógio' },
+  'guide.endgame.heading': { en: 'Winning and the clock', pt: 'Ganhar e o relógio' },
   'guide.endgame.body': {
     en: 'A game ends the moment a flag carrier crosses into their own home base — or when the {n}-minute clock runs out.',
     pt: 'O jogo acaba no momento em que quem leva a bandeira entra na sua própria base — ou quando os {n} minutos terminam.',
   },
   'guide.endgame.points': {
     en: 'If the clock wins, points decide: {flag} for photographing the enemy’s real flag, {challenge} per challenge completed, {tag} per successful tag. Curse casts and leftover coins score nothing.',
-    pt: 'Se o relógio ganhar, decidem os pontos: {flag} por fotografar a bandeira verdadeira do adversário, {challenge} por desafio completado, {tag} por captura bem-sucedida. As maldições lançadas e as moedas que sobram não valem pontos.',
+    pt: 'Se o relógio ganhar, decidem os pontos: {flag} por fotografar a bandeira verdadeira do adversário, {challenge} por desafio concluído, {tag} por captura bem-sucedida. As maldições lançadas e as moedas que sobram não valem pontos.',
   },
   'guide.endgame.tiebreak': {
     en: 'Still tied? Most challenges, then most coins, then a coin flip.',
-    pt: 'Continua empatado? Mais desafios, depois mais moedas, depois moeda ao ar.',
+    pt: 'Continua empatado? Mais desafios, depois mais moedas e, por fim, um lançamento de moeda ao ar.',
   },
   'guide.endgame.weather': {
     en: 'If the weather turns, either team can propose a pause; the other has {n} minutes to confirm. Resuming needs both teams too.',
@@ -1676,7 +1699,7 @@ export const MESSAGES: MessageDict = {
   'guide.endgame.label_end': { en: 'Win', pt: 'Vitória' },
   'guide.endgame.label_end_body': {
     en: 'Carry the photo home, or win on points',
-    pt: 'Leva a fotografia a casa, ou ganha por pontos',
+    pt: 'Leva a fotografia até à base ou ganha por pontos',
   },
   'guide.endgame.label_protection': {
     en: 'No flag attempts for the first {n} min',

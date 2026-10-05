@@ -5,7 +5,7 @@
 //
 // Rules enforced in the UI (server is authoritative for everything):
 //  - Game must be in 'live' or 'flag_found'
-//  - Team has a 4-card cap (any intel state counts; both in_hand and expired)
+//  - Team may hold at most 4 in-hand cards; a destroyed card reopens its slot
 //  - The same intel_ref cannot be bought twice by the same team
 //  - Team coins must cover the cost
 //  - intel.hot-cold needs a live GPS reading (server uses it to compute bucket)

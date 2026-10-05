@@ -30,8 +30,8 @@ export function getFlagAttemptText(
   if (entry) return entry[locale] ?? entry.en
   return locale === 'pt'
     ? {
-        title: 'Captura a bandeira',
-        task: 'Fotografa-te no marco com a equipa. Marcador visível.',
+        title: 'Tenta a bandeira',
+        task: 'Fotografa-te no local com a equipa e o marcador visível.',
       }
     : {
         title: 'Capture the flag',

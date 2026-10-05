@@ -11,6 +11,7 @@ import {
 } from 'react'
 import {
   DEFAULT_LOCALE,
+  LOCALE_HTML_LANG,
   LOCALES,
   translate,
   type Locale,
@@ -47,15 +48,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    document.documentElement.lang = LOCALE_HTML_LANG[locale]
+  }, [locale])
+
   const setLocale = useCallback((next: Locale) => {
     setLocaleState(next)
     try {
       window.localStorage.setItem(STORAGE_KEY, next)
-      // Optional: reflect in <html lang>. Not critical for the app but nice
-      // for accessibility tools.
-      if (typeof document !== 'undefined') {
-        document.documentElement.lang = next
-      }
     } catch {
       /* localStorage unavailable */
     }

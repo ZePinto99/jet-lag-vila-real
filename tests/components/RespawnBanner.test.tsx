@@ -145,7 +145,7 @@ describe('RespawnBanner', () => {
     )
 
     expect(screen.getByText('Foste apanhado.')).toBeVisible()
-    expect(screen.getByText(/ponto de respawn obrigatório é Largo do Pelourinho/)).toBeVisible()
+    expect(screen.getByText(/ponto de regresso obrigatório é Largo do Pelourinho/)).toBeVisible()
     expect(screen.getByRole('button', { name: 'Cheguei a Largo do Pelourinho' })).toBeEnabled()
   })
 
