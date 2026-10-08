@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { TAG_COIN_PENALTY } from '@/lib/gameConstants'
+import { DECOY_COIN_PENALTY, TAG_COIN_PENALTY } from '@/lib/gameConstants'
 
 function migration(name: string): string {
   return readFileSync(join(process.cwd(), 'supabase', 'migrations', name), 'utf8')
@@ -69,6 +69,40 @@ describe('balance migration contracts', () => {
     it('agrees with the TAG_COIN_PENALTY constant the guide quotes', () => {
       expect(TAG_COIN_PENALTY).toBe(40)
       expect(sql()).toContain(`least(${TAG_COIN_PENALTY},`)
+    })
+  })
+
+  describe('0059 — a decoy fines coins while preserving intel', () => {
+    const sql = () => migration('0059_decoy_coin_penalty.sql')
+    const decoyBranch = () =>
+      sql().split("elsif p_result = 'decoy' then")[1].split("elsif p_result = 'empty' then")[0]
+
+    it('charges the entire fine even when the team has fewer coins', () => {
+      const branch = decoyBranch()
+      expect(branch).toContain('update public.teams set coins = coins - v_decoy_penalty')
+      expect(branch).not.toMatch(/\bleast\s*\(|\bgreatest\s*\(/)
+      expect(sql()).toContain(`v_decoy_penalty constant integer := ${DECOY_COIN_PENALTY};`)
+    })
+
+    it('records the full deduction before changing the team balance', () => {
+      const branch = decoyBranch()
+      expect(branch).toContain("'coins_deducted'")
+      expect(branch).toContain("'team_id', p_team_id")
+      expect(branch).toContain("'amount', v_decoy_penalty")
+      expect(branch).toContain("'reason', 'decoy_penalty'")
+      expect(branch.indexOf("'reason', 'decoy_penalty'")).toBeLessThan(
+        branch.indexOf('update public.teams set coins = coins - v_decoy_penalty'),
+      )
+    })
+
+    it('keeps the intel cards and the existing lockout and respawn', () => {
+      const branch = decoyBranch()
+      expect(branch).not.toContain('public.cards')
+      expect(branch).not.toContain("state = 'expired'")
+      expect(sql()).toContain("created_at >= now() - interval '15 minutes'")
+      expect(branch).toContain('respawning = true')
+      expect(branch).toContain('respawn_target_ref = p_respawn_target_ref')
+      expect(branch).toContain("'player_respawning_set'")
     })
   })
 

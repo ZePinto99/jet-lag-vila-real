@@ -146,10 +146,9 @@ describe('P1/P16 — intel cap counts only cards not lost to an enemy action', (
     expect(INTEL_CAP).toBe(4)
   })
 
-  // The fix: the cap query filters to in_hand, so a card destroyed by a tag,
-  // an Intel Loss curse, or a decoy wipe frees its slot. For intel, in_hand is
-  // exactly "not lost to an enemy action" because intel is never consumed by
-  // its owner.
+  // The cap query filters to in_hand, so a card destroyed by an Intel Loss
+  // curse frees its slot. Tags and decoy attempts now fine coins and leave
+  // intel in hand. Intel is never consumed by its owner.
   it('counts only in_hand cards against the cap', () => {
     expect(route).toContain("teamIntelCards.filter((c) => c.state === 'in_hand')")
     expect(route).toContain('heldIntelCards.length >= INTEL_CAP')

@@ -483,8 +483,8 @@ export const MESSAGES: MessageDict = {
     pt: 'BANDEIRA REAL — CORRE PARA CASA!',
   },
   'flag_attempt.toast_decoy': {
-    en: 'Decoy! All intel lost.',
-    pt: 'Engano! Perdeste todas as cartas de intel.',
+    en: 'Decoy! Team fined {c} coins; intel kept.',
+    pt: 'Engano! A equipa perde {c} moedas; mantém a informação.',
   },
   'flag_attempt.toast_empty': { en: 'Empty. Nothing here.', pt: 'Vazio. Nada aqui.' },
   'flag_carrier.title': { en: 'YOU HAVE THE FLAG', pt: 'TENS A BANDEIRA' },
@@ -686,6 +686,10 @@ export const MESSAGES: MessageDict = {
   },
   'status.hardening': { en: 'Hardening…', pt: 'A reforçar…' },
   'status.team_balance': { en: 'Team {side} balance', pt: 'Saldo da Equipa {side}' },
+  'status.coins_debt': {
+    en: 'Your team is in debt. Coins earned will reduce it; purchases need enough balance.',
+    pt: 'A tua equipa está em dívida. As moedas ganhas abatem-na; para comprar, precisas de saldo suficiente.',
+  },
   'status.none': { en: 'None.', pt: 'Nenhuma.' },
   'status.timeline_short': { en: 'Timeline', pt: 'Cronologia' },
   'status.event_by': { en: 'by {actor}', pt: 'por {actor}' },
@@ -924,6 +928,10 @@ export const MESSAGES: MessageDict = {
   'toast.teammate_attempt_failed': {
     en: 'Flag attempt at {name} failed',
     pt: 'Tentativa em {name} falhou',
+  },
+  'toast.teammate_hit_decoy': {
+    en: 'Decoy at {name} — your team was fined {c} coins. Intel kept.',
+    pt: 'Engano em {name} — a tua equipa perdeu {c} moedas. Mantém a informação.',
   },
   'toast.enemy_near': {
     en: 'Enemy near {name}',
@@ -1414,6 +1422,14 @@ export const MESSAGES: MessageDict = {
     en: 'The zones overlap in the middle of town. An enemy who comes within {n} m of one of your candidates counts as a raider for you even there — so you can both be defenders of your own ground and raiders on theirs at the same time.',
     pt: 'As zonas sobrepõem-se no centro da cidade. Um adversário que chegue a menos de {n} m de um dos teus candidatos conta como atacante para ti mesmo aí — podes ser, ao mesmo tempo, defensor do teu terreno e atacante no terreno adversário.',
   },
+  'guide.roles.radar': {
+    en: 'When an opponent with the app open and GPS active enters any of your team’s {radius} m candidate zones, every teammate viewing the map sees their position as a radar blip. During unpaused play, the blip appears for {on} s, disappears for {off} s, and repeats. After an updated position arrives, the next blip can be up to {off} s away; GPS and network delay can add to this.',
+    pt: 'Quando um adversário com a app aberta e o GPS ativo entra numa das zonas de {radius} m à volta dos candidatos da tua equipa, todos os colegas com o mapa aberto veem a posição dele como um ponto de radar. Durante o jogo sem pausa, o ponto aparece durante {on} s, desaparece durante {off} s e repete o ciclo. Depois de chegar uma posição atualizada, o próximo ponto pode demorar até {off} s; o GPS e a rede podem acrescentar mais tempo.',
+  },
+  'guide.roles.radar_tag': {
+    en: 'A radar blip only shows that an opponent is in your zone. A legal Tag still requires you to be inside your zone, close enough, and able to tag that opponent under the raider rules.',
+    pt: 'O ponto de radar só mostra que há um adversário na tua zona. Para o capturares, tens de estar dentro da tua zona, suficientemente perto e cumprir as regras que determinam se esse adversário pode ser capturado.',
+  },
   'guide.roles.diagram_alt': {
     en: 'Three overlapping 200-metre circles around Team West’s candidate landmarks form one lumpy defense zone, with a separate circle for Team East. Numbered pins show a teammate inside the zone, an enemy who has walked into it, and you standing outside it.',
     pt: 'Três círculos de 200 metros sobrepostos em volta dos locais candidatos da Equipa Oeste formam uma zona de defesa irregular, com um círculo separado para a Equipa Este. Pinos numerados mostram um colega dentro da zona, um adversário que entrou nela e tu fora dela.',
@@ -1440,8 +1456,8 @@ export const MESSAGES: MessageDict = {
     pt: 'Chega a menos de {radius} m de um atacante adversário enquanto estás dentro da tua zona de defesa e o botão de captura acende sozinho. Não há nada para escrever.',
   },
   'guide.tag.bunching': {
-    en: 'One tap catches every raider inside that circle at once — but it only ever costs them {c} coins in total, however many are caught. Bunching up is cheap for raiders. Their intel cards are never taken.',
-    pt: 'Um toque apanha todos os atacantes dentro desse círculo ao mesmo tempo — mas só lhes custa {c} moedas no total, independentemente de quantos sejam apanhados. Andar em grupo é barato para os atacantes. As cartas de intel deles nunca são retiradas.',
+    en: 'One tap catches every raider inside that circle at once — but it costs their team up to {c} coins in total, however many are caught. The fine is limited by their balance. Their intel cards are never taken.',
+    pt: 'Um toque apanha todos os atacantes dentro desse círculo ao mesmo tempo — mas custa à equipa deles até {c} moedas no total, independentemente de quantos sejam apanhados. A multa fica limitada ao saldo disponível. As cartas de intel deles nunca são retiradas.',
   },
   'guide.tag.tolerance': {
     en: 'Your phone lights the button at {client} m; the server allows up to {server} m, because two phones in a narrow street rarely agree. The server’s number is the one that counts.',
@@ -1455,8 +1471,8 @@ export const MESSAGES: MessageDict = {
   'guide.tag.label_defender': { en: 'You', pt: 'Tu' },
   'guide.tag.label_raiders': { en: 'Both caught in one tap', pt: 'Ambos apanhados num toque' },
   'guide.tag.label_cost': {
-    en: 'Their team is fined {c} coins',
-    pt: 'A equipa deles é multada em {c} moedas',
+    en: 'Team fine: up to {c} coins',
+    pt: 'Equipa: multa até {c} moedas',
   },
   'guide.tag.label_step1': {
     en: 'Walk to the assigned neutral landmark',
@@ -1510,19 +1526,19 @@ export const MESSAGES: MessageDict = {
     pt: 'A tarefa fotográfica é pública e é igual esteja ou não lá a bandeira, por isso lê-la não te diz nada. É também por isso que reforçar aperta o raio de GPS em vez de mudar a tarefa — uma tarefa mais difícil denunciaria a bandeira verdadeira.',
   },
   'guide.flag.diagram_alt': {
-    en: 'One photographed marker branching into three outcomes: the real flag lets you walk home to win, a decoy costs you all your intel plus a 15-minute lockout, and an empty spot only locks the landmark for 15 minutes.',
-    pt: 'A fotografia de um marcador pode dar três resultados: com a bandeira verdadeira, regressas à base para ganhar; um engano custa-te toda a informação e bloqueia o local durante 15 minutos; um local vazio apenas fica bloqueado durante 15 minutos.',
+    en: 'One photographed marker branching into three outcomes: the real flag lets you walk home to win, a decoy fines your team {c} coins and locks the landmark for {n} minutes, and an empty spot only locks the landmark for {n} minutes.',
+    pt: 'A fotografia de um marcador pode dar três resultados: com a bandeira verdadeira, regressas à base para ganhar; um engano multa a tua equipa em {c} moedas e bloqueia o local durante {n} minutos; um local vazio apenas bloqueia o local durante {n} minutos.',
   },
   'guide.flag.label_start': { en: 'You photograph a marker', pt: 'Fotografas um marcador' },
   'guide.flag.label_real': { en: 'Real flag', pt: 'Verdadeira' },
   'guide.flag.label_real_body': { en: 'Walk home to win', pt: 'Regressa à base para ganhar' },
   'guide.flag.label_decoy': { en: 'Decoy', pt: 'Engano' },
   'guide.flag.label_decoy_body': {
-    en: 'Lose ALL intel',
-    pt: 'Perdes TODAS as cartas de intel',
+    en: '−{c} team coins',
+    pt: '−{c} moedas à equipa',
   },
   'guide.flag.label_empty': { en: 'Empty', pt: 'Vazio' },
-  'guide.flag.label_empty_body': { en: 'Nothing lost', pt: 'Não perdes nada' },
+  'guide.flag.label_empty_body': { en: 'No coin fine', pt: 'Sem multa' },
   'guide.flag.lockout': {
     en: 'A decoy or an empty spot locks that landmark for your team for {n} minutes.',
     pt: 'Um engano ou um local vazio bloqueia esse local para a tua equipa durante {n} minutos.',
@@ -1546,6 +1562,10 @@ export const MESSAGES: MessageDict = {
   'guide.economy.spending': {
     en: 'Coins buy three things: intel to narrow down their flag ({intelMin}–{intelMax}), curse dice to slow them down ({die} each, roll 1–3 at once), and one {harden}-coin hardening of your own real flag.',
     pt: 'As moedas compram três coisas: intel para localizar a bandeira deles ({intelMin}–{intelMax}), dados de maldição para os atrasar ({die} cada, lança 1 a 3 de uma vez), e um reforço da tua própria bandeira por {harden} moedas.',
+  },
+  'guide.economy.debt': {
+    en: 'A decoy fine can take the shared team balance below zero. Coins earned pay off that debt first; you can buy again once your balance covers the price.',
+    pt: 'A multa por um engano pode deixar o saldo partilhado da equipa negativo. As moedas ganhas abatem primeiro essa dívida; podes voltar a comprar quando o saldo chegar para o preço.',
   },
   'guide.economy.diagram_alt': {
     en: 'Challenges and time bonuses add coins to your balance, which you can spend on intel, curses and hardening your own flag.',
@@ -1605,19 +1625,16 @@ export const MESSAGES: MessageDict = {
   'guide.intel.nav': { en: 'Intel', pt: 'Intel' },
   'guide.intel.heading': { en: 'Reading intel', pt: 'Interpretar as cartas de intel' },
   'guide.intel.body': {
-    en: 'Intel does not point at the flag — it crosses candidates off. Your team may hold at most {cap} cards at a time. If an enemy action destroys one, the slot reopens, but you can never buy the same card twice.',
-    pt: 'A informação não aponta para a bandeira — elimina candidatos. A tua equipa pode ter, no máximo, {cap} cartas ao mesmo tempo. Se uma ação adversária destruir uma delas, o espaço fica livre, mas nunca podes voltar a comprar a mesma carta.',
+    en: 'Intel does not point at the flag — it crosses candidates off. Your team may hold at most {cap} cards at a time. Cards stay visible after tags and decoys. If an Intel Loss curse destroys one, the slot reopens, but you can never buy the same card twice.',
+    pt: 'A informação não aponta para a bandeira — elimina candidatos. A tua equipa pode ter, no máximo, {cap} cartas ao mesmo tempo. As cartas continuam visíveis depois de capturas e enganos. Se uma maldição Perda de Intel destruir uma delas, o espaço fica livre, mas nunca podes voltar a comprar a mesma carta.',
   },
   'guide.intel.sequence': {
     en: 'Sequence matters. A north/south split halves five candidates to two or three; an eliminate card then takes one of those away. Buying two cards that rule out the same ground wastes one.',
     pt: 'A ordem importa. Uma divisão norte/sul reduz cinco candidatos a dois ou três; uma carta de eliminação tira depois um deles. Comprar duas cartas que excluem o mesmo terreno desperdiça uma.',
   },
-  // 0058: a tag no longer takes a card — it fines {c} coins. The decoy wipe is
-  // unchanged and is now the ONLY thing that costs you intel, which is the point
-  // of the warning.
   'guide.intel.loss': {
-    en: 'Getting tagged never takes a card — it fines your team {c} coins. Photographing a decoy is the one thing that costs you intel: every card you own, which is why a guess is never free.',
-    pt: 'Ser capturado nunca te tira uma carta — multa a tua equipa em {c} moedas. Fotografar um engano é a única coisa que te custa cartas de intel: perdes todas as que tens, por isso adivinhar nunca é grátis.',
+    en: 'A tag fines your team up to {tag} coins; a decoy fines it {decoy} coins, even into debt. Neither removes intel. An Intel Loss curse can still discard one card.',
+    pt: 'Uma captura aplica à tua equipa uma multa até {tag} moedas; um engano multa-a em {decoy}, mesmo que fique em dívida. Nenhum dos dois retira informação. Uma maldição Perda de Intel ainda pode descartar uma carta.',
   },
   'guide.intel.diagram_alt': {
     en: 'Five candidate markers, then a purchased north/south card, then the same five with two struck out and three still live.',
@@ -1638,8 +1655,8 @@ export const MESSAGES: MessageDict = {
   'guide.mistakes.nav': { en: 'Common mistakes', pt: 'Erros comuns' },
   'guide.mistakes.heading': { en: 'How to lose by accident', pt: 'Como perder sem querer' },
   'guide.mistakes.decoy': {
-    en: 'Photographing a decoy on a hunch. It wipes every intel card your team holds. The empty slots can be filled with different cards, but you can never buy the same cards again.',
-    pt: 'Fotografar um engano por palpite. Apaga todas as cartas de informação que a tua equipa tem. Podes preencher os espaços vazios com cartas diferentes, mas nunca voltar a comprar as mesmas.',
+    en: 'Photographing a decoy on a hunch. Your team pays a {c}-coin fine and cannot retry that landmark for {n} minutes. The fine applies even if it puts your team in debt.',
+    pt: 'Fotografar um engano por palpite. A tua equipa paga uma multa de {c} moedas e não pode voltar a tentar nesse local durante {n} minutos. A multa aplica-se mesmo que a equipa fique em dívida.',
   },
   'guide.mistakes.camping': {
     en: 'Guarding your own flag too closely. Past {n} seconds inside the inner circle your own Tag button stops working.',

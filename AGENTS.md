@@ -113,7 +113,9 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
     ├── 0001–0010                 ← base schema, events, realtime, RLS, flag photos, placed curses
     ├── 0011–0014                 ← push, challenge proof/review, private I7 surroundings photo
     ├── 0015–0024                 ← atomic economy/adjudication/phase/curse/challenge functions
-    └── 0025–0035                 ← pause/respawn, private proofs, authoritative locks, camping, bulk tag
+    ├── 0025–0035                 ← pause/respawn, private proofs, authoritative locks, camping, bulk tag
+    ├── 0036–0058                 ← later balance, curse, timeout, respawn, and tag fixes
+    └── 0059                      ← decoy coin fine (may create team debt; intel kept)
 ```
 
 > ⚠️ Apply **every** checked-in migration locally and on hosted Supabase. Missing later migrations breaks private photo proof, atomic actions, weather pause, or two-stage respawn.
@@ -130,12 +132,12 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | **Raider** | Player physically outside their own defense zone |
 | **Defender** | Player physically inside their own defense zone (within 200 m of any own candidate) |
 | **Defense zone** | 200 m radius around each own candidate landmark; union defines where you can tag |
-| **Tag** | Defender within 5 m of a raider AND inside own defense zone → tagged raiders lose 1 intel card, reach their assigned nearest neutral, then leave its 45 m radius |
+| **Tag** | Defender within 5 m of a raider AND inside own defense zone → raiding team pays up to 40 coins per Tag action (zero if already in debt); tagged raiders reach their assigned nearest neutral, then leave its 45 m radius |
 | **Intel card** | Purchased clue about enemy flag location; max 4 per team per game |
 | **Curse** | Purchased handicap applied to enemy team; 3 tiers (minor/medium/major) rolled with dice |
 | **Enforcement tier** | [A] GPS-verified, [B] photo-verified, [C] honor system, [L] ledger-only |
 | **Challenge** | Location-based task that earns coins; 3 active at a time, refreshed on completion |
-| **Decoy** | Fake marker at a candidate landmark; photographing it loses all intel |
+| **Decoy** | Fake marker at a candidate landmark; photographing it fines the raiding team 50 coins even into a negative balance, without removing intel |
 | **Harden** | Team spends 150 coins to make their own flag challenge harder; once per game |
 | **Camping rule** | Defenders cannot stay within 50 m of own candidate landmarks for > 2 min |
 

@@ -53,6 +53,14 @@ export const COIN_COST_PER_DIE = 50
 export const TAG_COIN_PENALTY = 40
 
 /**
+ * Fixed fine for photographing an enemy decoy (RULEBOOK §5.2).
+ * Unlike a tag fine, the full amount is charged even if the shared team
+ * balance is too low; later earnings repay the debt before purchases resume.
+ * Keep in sync with the authoritative attempt RPC in migration 0059.
+ */
+export const DECOY_COIN_PENALTY = 50
+
+/**
  * Cost to harden your own real flag's challenge, once per game
  * (RULEBOOK §5.3 / §7.3).
  */
@@ -70,25 +78,20 @@ export const HARDEN_COST = 150
  * made it a lifetime purchase budget rather than a hand size. That
  * double-penalised a single enemy action, because every intel expiry in the
  * codebase is an enemy action:
- *   - a tag (0039:155-164, one card per Tag action)
  *   - `curse.intel-loss` (0046:112-124, one card)
- *   - a decoy flag attempt (0026:130-133, ALL in_hand intel, no `limit 1`)
- * A team holding 4 cards that raided a decoy was then locked out of intel for
- * the rest of the game: 0 usable cards, 0 purchases, at any balance. Worse, the
- * map ignores non-`in_hand` cards (lib/intel/narrowing.ts:58), so an expired
- * card contributed nothing while fully consuming a slot. It also made
- * `curse.intel-loss` exceed its catalogue text ("discard 1 random intel card")
- * by silently burning a purchase slot too (SIM_EVALUATION P1 / P16).
+ * Tags (0058) and decoy attempts (0059) now fine coins rather than remove
+ * intel. Earlier versions removed cards and could leave a team with 0 usable
+ * intel and 0 purchase slots. The map ignores non-`in_hand` cards
+ * (lib/intel/narrowing.ts), so only a card actually held should use a slot.
  *
  * Intel is never consumed by its owner — no code path writes `consumed` for
  * `kind = 'intel'` (0015:110, the only writer, filters `kind = 'challenge'`).
- * So for intel, `state = 'in_hand'` is exactly "not lost to an enemy action",
- * and a tag now costs a card rather than a card AND a slot.
+ * So for intel, `state = 'in_hand'` is exactly "not lost to an enemy action".
  *
  * Anti-farm is preserved by the SEPARATE duplicate guard, which is deliberately
  * state-agnostic: `intel_already_purchased` rejects a ref the team has ever
  * bought, in any state. A team therefore cannot churn a lost card by rebuying
- * it, and with 8 catalogue refs the lifetime ceiling stays bounded.
+ * it, and with 7 catalogue refs the lifetime ceiling stays bounded.
  */
 export const INTEL_CAP = 4
 

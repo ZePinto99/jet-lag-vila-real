@@ -58,7 +58,7 @@ One row per game session.
 ### `teams`
 Two rows per game (West / East).
 - `home_landmark_id`: references the seed landmark ref (e.g. `"landmark.miradouro-vila-velha"`).
-- `coins`: **mutable counter**. The events table is append-only; coins are the one exception — updated by API handlers as a derived materialization to avoid re-scanning the entire event log on every request. Kept consistent by always writing an event first, then updating this column in the same transaction.
+- `coins`: **mutable, signed team counter**. A decoy fine may make it negative; later earnings pay down the debt, while purchases still require the full positive cost. The events table is append-only; coins are the one exception — updated by API handlers as a derived materialization to avoid re-scanning the entire event log on every request. Kept consistent by always writing an event first, then updating this column in the same transaction.
 
 ### `players`
 One row per phone in the game.
@@ -135,6 +135,10 @@ channel.track({
 ```
 
 Every phone receives the presence state (connected players + their latest position). Clients prune entries older than 30 seconds. Tag requests include the relevant snapshot, but the server independently validates player identity, team, GPS freshness, defense-zone/raider eligibility, and the 10 m tolerance.
+
+**Enemy radar:** `GameMap.tsx` uses Presence and the caller's five candidate landmarks to show an opponent's reported position to every team member while that position is inside the team's 200 m defense-zone union. `radarPingVisible` (`lib/geo/radar.ts`) gates the map marker for 5 seconds on / 15 seconds off during live play. This is a shared clock cycle, not an entry-triggered timer: after the client's fresh position arrives, the next visible window can be up to 15 seconds away, plus GPS and network delay. The opposing phone must publish fresh GPS and the viewing phone must stay connected to Realtime; stale positions are pruned after 30 seconds. This marker uses zone membership, not the Tag raider predicate, so it does not promise that a Tag is legal. During a weather pause, `gameClockNow` freezes the radar phase with the rest of the game clock.
+
+This is **client-side display filtering**, not location privacy: the Presence channel delivers every connected player's coordinates to all subscribers, including positions the map hides outside the zone or between pings. A modified client can read them. Team-scoped server Broadcast would be needed to make radar visibility a privacy boundary.
 
 Cadence / battery trade-off: 5 s interval, low-accuracy GPS mode between updates, high-accuracy burst only when Tag button computation is needed. Screen wake lock (`navigator.wakeLock.request('screen')`) required — show a banner if not granted.
 
@@ -214,11 +218,12 @@ If flag_real:
   - return { result: 'real', message: 'Return to home base!' }
 
 If flag_decoy:
-  - expire all intel cards for this team (UPDATE cards SET state='expired'
-    WHERE team_id = X AND kind = 'intel' AND state = 'in_hand')
+  - insert coins_deducted { team_id, amount: 50, reason: 'decoy_penalty' }
+    and subtract the full 50 from teams.coins in the same transaction,
+    even if the resulting team balance is negative; leave intel cards untouched
   - insert event: flag_attempt { result: 'decoy' }
   - assign nearest-neutral two-stage respawn and 15-minute landmark lockout
-  - return { result: 'decoy' }
+  - return { result: 'decoy', message, game }
 
 If flag_empty:
   - insert event: flag_attempt { result: 'empty' }
@@ -253,8 +258,9 @@ For each valid tagged raider:
   - persist the nearest neutral target and two-stage respawn state
 
 After the batch succeeds, fine the raiding team TAG_COIN_PENALTY (40) coins for the
-whole Tag action — once per tap, not per raider — clamped at their balance so it can
-never go negative, and recorded as `coins_deducted { reason: 'tag_penalty' }`. Intel
+whole Tag action — once per tap, not per raider — clamped at their nonnegative
+balance, so a team already in debt pays zero, and recorded as
+`coins_deducted { reason: 'tag_penalty' }` when positive. Intel
 cards are NOT touched (migration 0058; the old rule expired one random card, but
 `/live-state` had already sent the client that card's answer, so it confiscated a map
 overlay rather than the knowledge).
@@ -452,7 +458,8 @@ Defender taps Tag:
   5. Server validates (10 m GPS tolerance), writes tag + events
   6. events INSERT → Realtime broadcast → all phones
   7. Tagged raiders: Zustand update shows the exact assigned nearest neutral
-  8. Raiding team's intel: at most 1 random card set to 'expired' for the whole tap
+  8. Raiding team pays one 40-coin fine for the whole tap, clamped at its balance;
+     intel cards remain in hand
   9. Raider confirms arrival, remains immune, walks 45 m away, then confirms departure to clear respawn
 ```
 
@@ -468,7 +475,8 @@ Raider at candidate landmark after the 30-minute protection window (within 28 m,
      a. real → game status = 'flag_found', raider.flag_carrier = true
               → INSERT events: flag_found
               → ALL phones receive event: "Team X found the flag!"
-     b. decoy → intel cards expired, 15-minute lock, two-stage respawn
+     b. decoy → deduct 50 team coins even into debt (intel unchanged),
+                15-minute lock, two-stage respawn
      c. empty → 15-minute landmark lock, no inventory penalty
 
 Flag found → return home:

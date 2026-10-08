@@ -109,7 +109,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 │
 ├── data/                  ← static seed JSON (see above)
 │
-└── supabase/migrations/   ← 49 migrations (0001–0049). Early ones, for orientation:
+└── supabase/migrations/   ← append-only migrations (0001–0059). Early ones, for orientation:
     ├── 0001_init.sql              ← initial schema (9 tables, append-only events trigger)
     ├── 0002_adjustments.sql       ← game_code, flag_carrier, captain→host, setup status
     ├── 0003_realtime_publication.sql
@@ -125,7 +125,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
     └── 0013_challenge_pending_state.sql ← add 'pending' to cards_state_check (D14 review state)
 ```
 
-> ℹ️ **All 49 migrations are applied locally and should be applied to hosted Supabase** (`supabase db push`). Most rule enforcement now lives in the atomic RPCs added by `0015`–`0049`, not in the route handlers — when a rule looks wrong, grep the migrations before the route. See `ARCHITECTURE.md §9` for the current operational remainder.
+> ℹ️ **Apply every checked-in migration locally and to hosted Supabase** (`supabase db push`). Most rule enforcement now lives in atomic RPCs, not in route handlers — when a rule looks wrong, check the latest migrations before the route. See `ARCHITECTURE.md §9` for the current operational remainder.
 
 ---
 
@@ -144,7 +144,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 | **Curse** | Purchased handicap applied to enemy team; 3 tiers (minor/medium/major) rolled with dice |
 | **Enforcement tier** | [A] GPS-verified, [B] photo-verified, [C] honor system, [L] ledger-only |
 | **Challenge** | Location-based task that earns coins; 3 active at a time, refreshed on completion |
-| **Decoy** | Fake marker at a candidate landmark; photographing it loses all intel |
+| **Decoy** | Fake marker at a candidate landmark; photographing it fines the raiding team 50 coins even into a negative balance, without removing intel |
 | **Harden** | Team spends 150 coins to make their own flag challenge harder; once per game |
 | **Camping rule** | Defenders cannot stay within 50 m of own candidate landmarks for > 2 min |
 
@@ -186,7 +186,7 @@ A self-serve referee PWA for a walking-only Capture the Flag game played in Vila
 ### Done
 - Game rules fully documented (`RULEBOOK.md`, `PLAYER_GUIDE.md`)
 - Architecture fully documented (`ARCHITECTURE.md`)
-- Database migrations `0001`–`0049` — 16 tables (9 from 0001, plus placed_curses, push_subscriptions, flag_surroundings, frozen_player_anchors, frozen_violation_seconds, curse_proofs, player_camping_state), append-only events trigger, host role, two-stage respawn, RLS baseline, Storage buckets, and the atomic-RPC layer that now holds most rule enforcement
+- Database migrations `0001`–`0059` — 16 tables (9 from 0001, plus placed_curses, push_subscriptions, flag_surroundings, frozen_player_anchors, frozen_violation_seconds, curse_proofs, player_camping_state), append-only events trigger, host role, two-stage respawn, RLS baseline, Storage buckets, and the atomic-RPC layer that now holds most rule enforcement
 - Static seed data (`data/`)
 - Next.js scaffold (config, Tailwind, Supabase clients, PWA manifest)
 - **Full game flow** — lobby → setup → live → results (see backlog steps 1–11 below)

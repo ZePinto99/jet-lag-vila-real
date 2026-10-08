@@ -198,7 +198,7 @@ export async function POST(
   // 5. Intel-cap and duplicate-purchase checks. They scope differently on
   // purpose:
   //   - the CAP counts only `in_hand` cards, so a card destroyed by an enemy
-  //     action (tag / intel-loss curse / decoy wipe) frees its slot. See
+  //     action (currently the intel-loss curse) frees its slot. See
   //     INTEL_CAP in lib/gameConstants.ts for why, and note that intel is never
   //     self-consumed, so `in_hand` is exactly "not lost to an enemy action".
   //   - the DUPLICATE guard stays state-agnostic: once a team has bought a ref

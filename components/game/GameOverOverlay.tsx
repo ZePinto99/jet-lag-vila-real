@@ -106,6 +106,9 @@ function eventOneLiner(e: GameEvent, teams: Team[], players: Player[]): string {
     case 'coins_credited':
       return `${teamLabel(teamOf(p.team_id as string))} +${p.amount}c (${p.reason})`
     case 'coins_deducted':
+      if (p.reason === 'decoy_penalty') {
+        return `${teamLabel(teamOf(p.team_id as string))} hit a decoy (−${p.amount} coins)`
+      }
       return `${teamLabel(teamOf(p.team_id as string))} -${p.amount}c (${p.reason})`
     case 'flag_hardened':
       return `${teamLabel(teamOf(p.team_id as string))} hardened their flag`
@@ -194,7 +197,14 @@ function ScoreColumn({
         </span>
 
         <span className="text-neutral-400">{t('gameover.row_coins')}</span>
-        <span className="text-neutral-300 tabular-nums">{score.coins_remaining}</span>
+        <span
+          className={cn(
+            'tabular-nums',
+            score.coins_remaining < 0 ? 'text-red-300' : 'text-neutral-300',
+          )}
+        >
+          {score.coins_remaining}
+        </span>
         <span className="text-right tabular-nums text-neutral-100">
           {score.coin_points.toFixed(1)}
         </span>

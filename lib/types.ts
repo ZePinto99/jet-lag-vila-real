@@ -483,7 +483,8 @@ export type FlagAttemptResult = 'real' | 'decoy' | 'empty'
 //  - landmark.team_id is the OPPOSING team
 // Result:
 //  - real:  player.flag_carrier=true; game.status='flag_found'
-//  - decoy: all of caller's team's in_hand intel cards → 'expired'
+//  - decoy: fixed coin fine against the shared team balance, which may go negative;
+//           intel cards remain in hand; player respawns at the assigned neutral
 //  - empty: no penalty
 // Event: 'flag_attempt' with payload { landmark_ref, result, team_id }.
 export interface AttemptFlagRequest {

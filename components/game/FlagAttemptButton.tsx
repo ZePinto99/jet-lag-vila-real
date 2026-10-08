@@ -10,8 +10,8 @@
 //
 // On 'real', the realtime games update will flip status to 'flag_found' and
 // the parent will swap in the FlagCarrierBanner.
-// On 'decoy', the team's intel cards are expired server-side; the realtime
-// card updates propagate that.
+// On 'decoy', the team pays a fixed coin fine, which can put its shared
+// balance in debt. Intel cards remain visible.
 
 import { useRef, useState } from 'react'
 import seedLandmarks from '@/data/landmarks.json'
@@ -22,6 +22,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useI18n } from '@/lib/i18n/context'
 import { localizeCatalogField } from '@/lib/i18n/gameCatalog'
 import { getFlagAttemptText } from '@/lib/flagChallenges'
+import { DECOY_COIN_PENALTY } from '@/lib/gameConstants'
 import type {
   AttemptFlagRequest,
   AttemptFlagResponse,
@@ -95,7 +96,10 @@ function resultMessage(
     case 'real':
       return { text: t('flag_attempt.toast_real'), tone: 'real' }
     case 'decoy':
-      return { text: t('flag_attempt.toast_decoy'), tone: 'decoy' }
+      return {
+        text: t('flag_attempt.toast_decoy', { c: DECOY_COIN_PENALTY }),
+        tone: 'decoy',
+      }
     case 'empty':
       return { text: t('flag_attempt.toast_empty'), tone: 'empty' }
   }

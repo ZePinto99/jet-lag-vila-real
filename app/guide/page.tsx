@@ -39,6 +39,7 @@ import { IntelNarrowingDiagram } from '@/components/guide/IntelNarrowingDiagram'
 import { GameArcDiagram } from '@/components/guide/GameArcDiagram'
 import { getSeedLandmarksByPool } from '@/lib/landmarks'
 import { DEFENSE_ZONE_RADIUS_M, ENEMY_CANDIDATE_RAID_RADIUS_M } from '@/lib/geo/zones'
+import { RADAR_CONFIG } from '@/lib/geo/radar'
 import { PLAY_AREA_RADIUS_M } from '@/lib/geo/playArea'
 import { TAG_RADIUS_M } from '@/lib/hooks/useTagButton'
 import {
@@ -54,6 +55,7 @@ import {
   CHALLENGE_PTS,
   COIN_COST_PER_DIE,
   DEFAULT_DURATION_MIN,
+  DECOY_COIN_PENALTY,
   FLAG_PTS,
   HARDEN_COST,
   INTEL_CAP,
@@ -200,6 +202,14 @@ export default function GuidePage() {
           <Bullet>{t('guide.roles.raider')}</Bullet>
         </ul>
         <p>{t('guide.roles.overlap', { n: ENEMY_CANDIDATE_RAID_RADIUS_M })}</p>
+        <GuideNote>
+          {t('guide.roles.radar', {
+            radius: DEFENSE_ZONE_RADIUS_M,
+            on: RADAR_CONFIG.onMs / 1000,
+            off: RADAR_CONFIG.offMs / 1000,
+          })}
+        </GuideNote>
+        <p>{t('guide.roles.radar_tag')}</p>
       </GuideSection>
 
       {/* ---------- 4. tagging ---------- */}
@@ -248,12 +258,15 @@ export default function GuidePage() {
         <GuideFigure>
           <FlagOutcomeDiagram
             labels={{
-              alt: t('guide.flag.diagram_alt'),
+              alt: t('guide.flag.diagram_alt', {
+                c: DECOY_COIN_PENALTY,
+                n: LANDMARK_LOCKOUT_MS / 60_000,
+              }),
               start: t('guide.flag.label_start'),
               realTitle: t('guide.flag.label_real'),
               realBody: t('guide.flag.label_real_body'),
               decoyTitle: t('guide.flag.label_decoy'),
-              decoyBody: t('guide.flag.label_decoy_body'),
+              decoyBody: t('guide.flag.label_decoy_body', { c: DECOY_COIN_PENALTY }),
               emptyTitle: t('guide.flag.label_empty'),
               emptyBody: t('guide.flag.label_empty_body'),
             }}
@@ -303,6 +316,7 @@ export default function GuidePage() {
             harden: HARDEN_COST,
           })}
         </p>
+        <GuideNote>{t('guide.economy.debt')}</GuideNote>
         <p>{t('guide.economy.review', { n: CHALLENGE_REVIEW_AUTO_ACCEPT_S })}</p>
 
         <h3 className="mt-2 text-sm font-semibold text-neutral-200">
@@ -336,12 +350,22 @@ export default function GuidePage() {
           />
         </GuideFigure>
         <p>{t('guide.intel.sequence')}</p>
-        <GuideWarning>{t('guide.intel.loss', { c: TAG_COIN_PENALTY })}</GuideWarning>
+        <GuideWarning>
+          {t('guide.intel.loss', {
+            tag: TAG_COIN_PENALTY,
+            decoy: DECOY_COIN_PENALTY,
+          })}
+        </GuideWarning>
       </GuideSection>
 
       {/* ---------- 9. how to lose by accident ---------- */}
       <GuideSection id="mistakes" heading={t('guide.mistakes.heading')}>
-        <GuideWarning>{t('guide.mistakes.decoy')}</GuideWarning>
+        <GuideWarning>
+          {t('guide.mistakes.decoy', {
+            c: DECOY_COIN_PENALTY,
+            n: LANDMARK_LOCKOUT_MS / 60_000,
+          })}
+        </GuideWarning>
         <GuideWarning>{t('guide.mistakes.camping', { n: CAMPING_LOCK_S })}</GuideWarning>
         <ul className="flex flex-col gap-1.5">
           <Bullet>{t('guide.mistakes.bounds')}</Bullet>

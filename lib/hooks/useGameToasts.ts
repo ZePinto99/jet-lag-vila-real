@@ -14,6 +14,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { haversineMeters } from '@/lib/geo/haversine'
 import { DEFENSE_ZONE_RADIUS_M } from '@/lib/geo/zones'
+import { DECOY_COIN_PENALTY } from '@/lib/gameConstants'
 import { getSeedLandmarkByRef } from '@/lib/landmarks'
 import type {
   GameEvent,
@@ -185,7 +186,12 @@ export function useGameToasts({
       if (result !== 'decoy' && result !== 'empty') return // 'real' → flag_found
       if (iAmAttacker) {
         if (e.actor_player_id !== myPlayerId) {
-          pushRef.current(t('toast.teammate_attempt_failed', { name }), 'info')
+          pushRef.current(
+            result === 'decoy'
+              ? t('toast.teammate_hit_decoy', { name, c: DECOY_COIN_PENALTY })
+              : t('toast.teammate_attempt_failed', { name }),
+            result === 'decoy' ? 'warn' : 'info',
+          )
         }
       } else {
         pushRef.current(t('toast.defender_failed', { name }), 'info')

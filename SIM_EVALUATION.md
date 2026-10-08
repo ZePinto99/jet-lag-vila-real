@@ -1,5 +1,10 @@
 # Simulation evaluation — Jet Lag: Vila Real
 
+> **Historical snapshot.** The tag and decoy intel-loss examples below describe
+> the rules at the time of that simulation. Under the current `RULEBOOK.md`, tags
+> fine up to 40 team coins and validated decoy attempts fine 50 team coins,
+> which may take the shared balance below zero; neither removes intel.
+
 A critical evaluation of whether the game **plays well** — correctness *and* player
 experience — driven by an upgraded simulation harness that removes the GPS and
 wall-clock constraints that make field testing expensive.

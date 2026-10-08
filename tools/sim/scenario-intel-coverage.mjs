@@ -12,14 +12,14 @@
 //
 // Sources of truth under test:
 //   catalogue + costs          data/intel.json
-//   cap = 4 (any state)        lib/gameConstants.ts:52 + 0015:247
+//   cap = 4 in-hand cards      lib/gameConstants.ts + 0054 migration
 //   duplicate ref rejection    0015:251
 //   narrowing semantics        lib/intel/narrowing.ts
 //   hot/cold buckets           lib/intel/answers.ts
 //   N/S pivot per defender     lib/intel/northSouth.ts
 //   direction origin           lib/geo/playArea.ts PLAY_AREA_CENTRE
-//   decoy wipes ALL in_hand    0026_two_stage_respawn.sql:130-133
-//   tag expires 1 random       0039_one_intel_loss_per_tag_action.sql:155-164
+//   decoy fine, intel kept     0059_decoy_coin_penalty.sql
+//   tag fine, intel kept       0058_tag_drains_coins_not_intel.sql
 //
 // Because the cap is 4 per team per game and each ref may be bought once, the
 // 7-card tour is split across two games (4 + 3); East buys in both, so every
@@ -535,7 +535,7 @@ await strictStep(rec, 'intel cap = 4', async () => {
     `status=${rDup.status} error=${rDup.body.error} (re-buying ${victim.ref})`,
   )
   rec.note(
-    'P1 (fixed, migration 0054): the cap now counts only in_hand intel, so a tag / intel-loss curse / decoy wipe costs the CARD but not the purchase slot. Sound because intel is never self-consumed — the only writer of state=consumed (0015:110) filters kind=challenge at 0015:117, so for intel `expired` means exactly "the enemy destroyed it". The duplicate-ref guard is deliberately left state-agnostic and is now the whole anti-farm mechanism. P16 resolves with it: Intel Loss costs exactly the one card its catalogue text promises.',
+    'P1 (fixed, migration 0054): the cap counts only in_hand intel, so an Intel Loss curse costs the CARD but not the purchase slot. Tags (0058) and decoys (0059) now charge coins and leave intel intact. The duplicate-ref guard remains state-agnostic, preventing a lost card from being re-bought.',
   )
 })
 
@@ -877,13 +877,14 @@ await strictStep(rec, 'purchase guards: precedence, respawn, unknown ref, wrong 
 })
 
 // ---------------------------------------------------------------------------
-// DECOY WIPE — the headline economy measurement
+// DECOY FINE — cards persist, the full fine can put the team in debt
 // ---------------------------------------------------------------------------
 
 const gD = await makeGameN(2, 2, `intelD-${seed}`)
-await strictStep(rec, 'decoy attempt expires ALL in-hand intel', async () => {
+await strictStep(rec, 'decoy fines 50 coins, even into debt, and keeps intel', async () => {
   setCoins(gD.gid, gD.eTeam, 900)
   const east = gD.east[0]
+  const teammate = gD.east[1]
   await post(`/api/games/${gD.gid}/buy-intel`, {
     device_id: east.device,
     player_id: east.player,
@@ -903,6 +904,7 @@ await strictStep(rec, 'decoy attempt expires ALL in-hand intel', async () => {
 
   advanceClockMinutes(gD.gid, 31)
   rec.clockJump({ minutes: 31, reason: 'clear the 30-min protection window' })
+  setCoins(gD.gid, gD.eTeam, 49)
 
   const decoyRef = WEST_DECOY_REFS[0]
   const site = coord(decoyRef)
@@ -925,56 +927,82 @@ await strictStep(rec, 'decoy attempt expires ALL in-hand intel', async () => {
   const inHand = post0.filter((c) => c.state === 'in_hand')
   const expired = post0.filter((c) => c.state === 'expired')
   rec.check(
-    'decoy expired BOTH cards (no 1-card limit, unlike a tag)',
-    post0.length === 2 && inHand.length === 0 && expired.length === 2,
+    'decoy keeps BOTH intel cards available to the team',
+    post0.length === 2 && inHand.length === 2 && expired.length === 0,
     `total=${post0.length} in_hand=${inHand.length} expired=${expired.length}`,
   )
-  rec.note(
-    `after one decoy raid: total=${post0.length} in_hand=${inHand.length} expired=${expired.length}; purchases remaining = 4 - ${post0.length} = ${4 - post0.length}`,
+  rec.check(
+    'full 50-coin fine overdraws the shared team balance from 49 to -1',
+    coinsOf(gD.eTeam) === -1,
+    `coins=${coinsOf(gD.eTeam)}`,
+  )
+  const retry = await post(`/api/games/${gD.gid}/attempt-flag`, {
+    device_id: east.device,
+    player_id: east.player,
+    landmark_ref: decoyRef,
+    pos: freshPos(standing),
+    photo_url: proof,
+  })
+  rec.check(
+    'retry while respawning cannot charge a second decoy fine',
+    retry.status === 409 && coinsOf(gD.eTeam) === -1,
+    `status=${retry.status} error=${retry.body.error} coins=${coinsOf(gD.eTeam)}`,
+  )
+  const fines = jsonRows(
+    `select json_build_object('amount', (payload->>'amount')::int, 'team_id', payload->>'team_id')::text from events where game_id='${gD.gid}' and type='coins_deducted' and payload->>'reason'='decoy_penalty';`,
+  )
+  rec.check(
+    'decoy records one 50-coin debit in the append-only ledger',
+    fines.length === 1 && fines[0].amount === 50 && fines[0].team_id === gD.eTeam,
+    `events=${JSON.stringify(fines)}`,
   )
 
-  // Can the team rebuild? Only into the 2 slots the wiped cards still occupy.
-  clearRespawn(east.player)
-  const r3 = await post(`/api/games/${gD.gid}/buy-intel`, {
-    device_id: east.device,
-    player_id: east.player,
+  // A teammate is free to act while the raider completes the neutral respawn;
+  // the negative balance still blocks a purchase for the whole team.
+  const blocked = await post(`/api/games/${gD.gid}/buy-intel`, {
+    device_id: teammate.device,
+    player_id: teammate.player,
     intel_ref: 'intel.decoy-reveal',
   })
-  const r4 = await post(`/api/games/${gD.gid}/buy-intel`, {
-    device_id: east.device,
-    player_id: east.player,
-    intel_ref: 'intel.direction',
+  rec.check(
+    'negative team balance blocks spending for a teammate',
+    blocked.status === 409 && blocked.body.error === 'insufficient_coins',
+    `status=${blocked.status} error=${blocked.body.error}`,
+  )
+
+  const firstTick = await post(`/api/games/${gD.gid}/time-tick`, {
+    device_id: teammate.device,
   })
   rec.check(
-    'after the wipe the team may still buy into the 2 unused slots',
-    r3.status < 400 && r4.status < 400,
-    `3rd=${r3.status}${r3.body.error ? ` ${r3.body.error}` : ''} 4th=${r4.status}${r4.body.error ? ` ${r4.body.error}` : ''}`,
+    'the first earned 20-coin time bonus repays the debt before buying resumes',
+    firstTick.status < 400 && coinsOf(gD.eTeam) === 19,
+    `status=${firstTick.status} coins=${coinsOf(gD.eTeam)}`,
   )
-  const r5 = await post(`/api/games/${gD.gid}/buy-intel`, {
-    device_id: east.device,
-    player_id: east.player,
-    intel_ref: 'intel.surroundings',
+  advanceClockMinutes(gD.gid, 60)
+  rec.clockJump({ minutes: 60, reason: 'earn two more time bonuses' })
+  const laterTick = await post(`/api/games/${gD.gid}/time-tick`, {
+    device_id: teammate.device,
+  })
+  rec.check(
+    'later earnings lift the team balance to 59 coins',
+    laterTick.status < 400 && coinsOf(gD.eTeam) === 59,
+    `status=${laterTick.status} coins=${coinsOf(gD.eTeam)}`,
+  )
+  const bought = await post(`/api/games/${gD.gid}/buy-intel`, {
+    device_id: teammate.device,
+    player_id: teammate.player,
+    intel_ref: 'intel.decoy-reveal',
   })
   const final = intelCards(gD.gid, gD.eTeam)
-  const finalInHand = final.filter((c) => c.state === 'in_hand').length
   rec.check(
-    'P1 FIXED (0054): a 5th purchase after a decoy wipe is allowed — the wiped cards freed their slots',
-    r5.status === 200 && r5.body.error === undefined,
-    `status=${r5.status} error=${r5.body.error} total=${final.length} in_hand=${finalInHand}`,
-  )
-  rec.check(
-    'a wiped team can rebuild a usable hand rather than being locked out for the game',
-    finalInHand >= 3,
-    `total=${final.length} purchased over the game, in_hand=${finalInHand} usable now`,
-  )
-  rec.note(
-    `P1 (fixed, migration 0054): before the fix, one decoy raid while holding 4 cards permanently locked a team out of intel — 0 usable, 0 purchases, any balance. Now the wipe costs the cards but not the slots: the team purchased ${final.length} over the game and holds ${finalInHand}. The decoy raid is still expensive (every card lost, coins spent again to rebuild) but it is no longer terminal. Re-buying a destroyed ref is still refused, so the rebuild must be new information.`,
+    'earned coins can buy new intel while the two pre-decoy cards remain in hand',
+    bought.status === 200 && final.length === 3 && final.every((c) => c.state === 'in_hand'),
+    `purchase=${bought.status} cards=${final.length} states=${final.map((c) => c.state).join(',')}`,
   )
 })
 
 // ---------------------------------------------------------------------------
-// REAL TAG-DRIVEN LOSS — the production path for losing intel, so the cap
-// finding above does not rest on a hand-written UPDATE.
+// REAL TAG FINE — a tag also leaves intel alone, while clamping its debit.
 // ---------------------------------------------------------------------------
 
 await strictStep(rec, 'a real tag fines coins and leaves intel alone (0058)', async () => {

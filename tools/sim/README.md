@@ -79,7 +79,8 @@ Plays a complete game with N players per team (valid values: 1–4) and asserts 
 (15 checks): lobby+setup, time bonus, intel + cap, curse cast, placed curse,
 challenge peer review, live chat, enemy radar (N blips), multi-raider tag in a
 single tap + respawn, Buddy-Up team-spread readout (N≥2), flag attempts
-(decoy → intel wiped + lockout, empty → lockout, real → carrier), and the win
+(decoy → 50-coin team fine, possibly into debt, with intel retained + lockout;
+empty → lockout; real → carrier), and the win
 (carrier returns to home base → game over + scoreboard). Uses the DB to
 backdate `started_at` (opens the 30-min attempt window) and fund spends.
 

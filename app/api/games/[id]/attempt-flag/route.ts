@@ -8,6 +8,7 @@ import { validatePublicProofPhoto } from '@/lib/server/storageProof'
 import { nearestNeutralLandmark } from '@/lib/geo/nearestNeutral'
 import {
   ATTEMPT_RANGE_M,
+  DECOY_COIN_PENALTY,
   HARDENED_RANGE_M,
   LANDMARK_LOCKOUT_MS,
   PROTECTION_WINDOW_MS,
@@ -55,7 +56,7 @@ const KIND_TO_RESULT: Partial<Record<LandmarkKind, FlagAttemptResult>> = {
 
 const RESULT_MESSAGES: Record<FlagAttemptResult, string> = {
   real: 'You found the real flag. Return to your home base to win!',
-  decoy: 'Decoy! All your intel cards have been expired.',
+  decoy: `Decoy! Your team was fined ${DECOY_COIN_PENALTY} coins.`,
   empty: 'Empty. No marker here.',
 }
 

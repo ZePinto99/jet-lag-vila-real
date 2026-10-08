@@ -423,7 +423,11 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-neutral-500">{label}</span>
-      <span className="font-medium tabular-nums text-neutral-200">{value}</span>
+      <span
+        className={`font-medium tabular-nums ${typeof value === 'number' && value < 0 ? 'text-red-300' : 'text-neutral-200'}`}
+      >
+        {value}
+      </span>
     </div>
   )
 }
@@ -577,6 +581,14 @@ function summariseEvent(
     case 'intel_purchased': {
       const side = teamSide(payload.team_id)
       return `${side ?? actor} bought intel`
+    }
+    case 'coins_deducted': {
+      if (payload.reason === 'decoy_penalty') {
+        const side = teamSide(payload.team_id)
+        return `${side ?? actor} fined ${payload.amount} coins for a decoy`
+      }
+      const scalars = scalarSummary(payload)
+      return `by ${actor}${scalars ? ' · ' + scalars : ''}`
     }
     case 'game_won': {
       const side = teamSide(payload.winner_team_id)

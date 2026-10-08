@@ -402,15 +402,22 @@ async function attempt(idx, ref) {
   })
 }
 await step('attempt-decoy', async () => {
+  const coinsBefore = await teamCoins(g.code, 'east')
+  const intelBefore = Number(
+    db(
+      `select count(*) from cards where team_id='${g.eTeam}' and kind='intel' and state='in_hand';`,
+    )[0],
+  )
   const r = await attempt(0, 'landmark.miradouro-meia-laranja')
   const intelLeft = Number(
     db(
       `select count(*) from cards where team_id='${g.eTeam}' and kind='intel' and state='in_hand';`,
     )[0],
   )
-  r.result === 'decoy'
-    ? ok(`decoy attempt → result=decoy, intel wiped (in_hand=${intelLeft}), 15-min lockout`)
-    : warn(`decoy result=${r.result}`)
+  const coinsAfter = await teamCoins(g.code, 'east')
+  r.result === 'decoy' && coinsAfter === coinsBefore - 50 && intelLeft === intelBefore
+    ? ok(`decoy attempt → -50 team coins, ${intelLeft} intel cards kept, 15-min lockout`)
+    : warn(`decoy result=${r.result}, coins=${coinsBefore}→${coinsAfter}, intel=${intelBefore}→${intelLeft}`)
 })
 await step('attempt-empty', async () => {
   const r = await attempt(0, 'landmark.mercado-municipal')

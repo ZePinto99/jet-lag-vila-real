@@ -10,7 +10,7 @@ export interface FlagOutcomeDiagramLabels {
   /** e.g. "Walk home to win" */
   realBody: string
   decoyTitle: string
-  /** e.g. "Lose ALL intel + 15 min lockout" */
+  /** e.g. "−50 team coins" */
   decoyBody: string
   emptyTitle: string
   /** e.g. "15 min lockout, nothing lost" */
@@ -22,8 +22,8 @@ export interface FlagOutcomeDiagramLabels {
  *
  * This is the guide's most important *warning*. Every candidate looks identical
  * from the outside — the markers are deliberately indistinguishable — so the
- * player is always taking a one-in-three gamble, and the decoy branch wipes the
- * team's entire intel inventory. A table buries that asymmetry; three coloured
+ * player is always taking a one-in-three gamble, and the decoy branch fines the
+ * team even when its balance is zero. A table buries that asymmetry; three coloured
  * branches of visibly different weight do not.
  */
 export function FlagOutcomeDiagram({

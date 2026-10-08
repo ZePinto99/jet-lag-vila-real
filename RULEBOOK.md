@@ -155,7 +155,7 @@ No flag attempts are allowed in the **first 30 minutes** (the protection window,
 4. The server validates **GPS proximity + that a photo was submitted**, then resolves by the landmark's hidden kind. The photo is stored for the opposing team to eyeball/dispute; the answer is flavour, not a hard gate. (No EXIF/hash auto-validation — humans eyeball.)
 5. Result:
    - **Real flag:** raider becomes flag carrier; must return to home base to win.
-   - **Decoy:** raider **loses all intel cards**; team is **locked out of that landmark for 15 min**; must return to a neutral landmark before raiding again.
+   - **Decoy:** the raiding team pays a **50-coin fine**, even if this takes its shared balance below zero; it keeps all intel cards. The team is **locked out of that landmark for 15 min**; the raider must return to a neutral landmark before raiding again.
    - **Empty:** no marker; team is **locked out of that landmark for 15 min**, no other penalty.
 
 ### 5.3 Challenge content & hardening
@@ -175,10 +175,11 @@ Vila Real's compact ridge-and-valley geography makes a strict east/west midline 
 - A team's **defense zone** is the union of **200 m circles** around each of the team's 5 candidate landmarks.
 - A **defender** is any player currently inside their own defense zone.
 - A **raider** is any player currently outside their own defense zone. An enemy within **50 m of one of your candidates** also counts as a raider for your team, even if overlapping 200 m zones place them inside their own union; attackers cannot gain immunity while standing on your objective.
+- **Enemy radar:** when an opponent's reported GPS position is inside one of your team's 200 m defense circles, everyone on your team can see a blip at that position on their map, even if they are elsewhere. During live play, the blip appears for **5 seconds**, disappears for **15 seconds**, then repeats while the opponent remains in the zone. All phones share the same cycle, so entering a zone does not trigger an immediate ping: after a fresh position arrives, the next blip may be up to 15 seconds away, with GPS and network delay on top. The radar needs a fresh GPS position and an online app on both sides. A blip alone does not mean the opponent is eligible for a Tag.
 - When a defender comes within **5 m** of any enemy raider, a **Tag button activates automatically** in the app. Tapping it tags **every adversary currently within that 5 m radius** simultaneously — a single tap catches an entire raiding party if they're bunched together. The app enables the button only when GPS confirms (a) the defender is inside their own defense zone and (b) the proximity threshold is met. The tag is recorded server-side against both players' coordinates at that timestamp.
 - **Camping rule:** defenders cannot stand within 50 m of any of their own candidate landmarks for more than 2 consecutive minutes. The app warns at 90 s and disables the Tag button at 120 s. They must leave the radius for at least 60 s to reset. (The 50 m no-stand zone sits inside the 200 m defense zone — you can patrol the donut between them freely.) Both the 90 s warning and the 120 s lock are counted by the server, so they survive a reload — but the timer only advances while the app is sending your position, and the warning can only be *shown* to an app that is open. Keep it open while you defend: if you close it, the warning is the part you lose, and the lock is still waiting when you come back.
 - A Tag action:
-  - Fines the raiding team **40 coins in total**, whether it catches one raider or a whole bunched party. The fine is clamped at their balance, so a team with nothing left pays nothing — the walk and any dropped flag are still real costs.
+  - Fines the raiding team **40 coins in total**, whether it catches one raider or a whole bunched party. The fine is clamped at their nonnegative balance, so a team with zero coins or debt pays nothing — the walk and any dropped flag are still real costs.
 - Each tagged raider:
   - Is assigned the nearest **neutral landmark** from the verified tag position
   - Must confirm arrival at that exact geofence, then walk at least **45 m away** before respawn clears; they remain immune and action-locked during both stages
@@ -210,7 +211,10 @@ Vila Real's compact ridge-and-valley geography makes a strict east/west midline 
 | Buy 1 curse die | 50 |
 | Roll up to 3 dice combined | 50 × number of dice |
 | Harden own flag challenge (one-time) | 150 |
-| **Penalty — being tagged** | **−40** (once per Tag action, clamped at your balance) |
+| **Penalty — being tagged** | **Up to −40** (once per Tag action; zero if already in debt) |
+| **Penalty — photographing a decoy** | **−50** (per attempt; may take the team balance below zero) |
+
+Coins belong to the **team**, not to individual players. A decoy fine is charged in full even when the team has fewer than 50 coins: for example, 20 coins becomes −30. Future challenge rewards, first-blood rewards, and time bonuses reduce that debt before the balance becomes positive again. Purchases still require enough coins to cover their full cost.
 
 ---
 
@@ -242,9 +246,9 @@ Three decks live in the app. Drawing/buying from a deck is a server action that 
 ### 8.3 Intel (find the real flag)
 
 - Any player buys intel cards. Each card reveals partial info about the enemy team's flag assignment.
-- Intel is **persistent**: once bought, a card stays in the team's view for the rest of the game. A tag does **not** take it away.
+- Intel survives tags and decoy attempts. An **Intel Loss curse** can still discard one random card.
 
-> ℹ️ **Why a tag costs coins, not a card.** Earlier editions discarded a random intel card on a tag. It read well but did almost nothing: the app had already shown the team the answer, so confiscating the card removed a map overlay and left the knowledge intact — and a player who had written it down or screenshotted it lost nothing at all. The real cost was simply re-buying the card, so the rule now charges that directly and honestly. Memory is not something the app can take back.
+> ℹ️ **Why tags and decoys cost coins, not cards.** Earlier editions discarded intel after a tag or decoy attempt. It read well but did almost nothing: the app had already shown the team the answers, so confiscating the cards removed map overlays and left the knowledge intact — and a team that had written the answers down or screenshotted them lost nothing at all. Coins impose a cost the app can enforce. Memory is not something the app can take back.
 
 ---
 
@@ -340,7 +344,7 @@ I1 uses fixed full-pool pivots so both sides have the same exhaustive clue distr
 
 > **Anti-spam:** a team may **hold at most 4 intel cards**, and may never buy the same card twice. Forces commitment and prevents the rich-get-richer spiral.
 >
-> A card destroyed by an **enemy action** — a tag, an Intel Loss curse, or photographing a decoy — frees its slot, so the team may buy a *different* card to replace it. Losing a card costs you the card, not the slot. Because a card can never be re-bought, the whole catalogue is still only 7 cards deep, so no team can churn intel by deliberately losing it.
+> A card discarded by an **Intel Loss curse** frees its slot, so the team may buy a *different* card to replace it. Losing a card costs you the card, not the slot. Because a card can never be re-bought, the whole catalogue is still only 7 cards deep, so no team can churn intel by deliberately losing it. Tags and decoy attempts do not discard cards.
 
 ---
 
@@ -353,7 +357,7 @@ The app is the single source of truth. It must:
 3. **Adjudicate flag attempts:** validate current GPS plus a real image object stored under the submitting player/game path, then return the hidden real/decoy/empty result. The other team can inspect the proof.
 4. **Enforce curses:** push notifications, run timers, prompt for compliance photos when required.
 5. **Enforce camping limits:** detect a defender within 50 m of own landmark, warn at 90 s, lock tag at 120 s. Both thresholds are counted server-side from position heartbeats, so they survive a reload; the clock only advances while a phone is reporting, and the warning is only *displayed* to an open app.
-6. **Prevent retries on intel:** once bought, cannot refund; tagged player loses 1 random intel.
+6. **Prevent retries on intel:** once bought, a card cannot be refunded or bought again; a tag or decoy attempt does not erase its answer.
 7. **Hide secret state:** real flag assignments are omitted from enemy-facing API snapshots; the owning team can see its setup.
 8. **Log every action** so the wrap-up can show a full timeline.
 

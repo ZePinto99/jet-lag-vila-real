@@ -580,7 +580,9 @@ export function Live() {
           </span>
         </div>
         <div className="flex items-center gap-3 text-xs text-neutral-400">
-          <span>
+          <span
+            className={cn('tabular-nums', myTeam.coins < 0 && 'font-semibold text-red-300')}
+          >
             {myTeam.coins} {t('common.coins')}
           </span>
           <Countdown endsAtMs={endsAtMs} nowMs={clockNowMs} />
@@ -1357,8 +1359,13 @@ function ActionsTab({
         <p className="text-xs uppercase tracking-wider text-neutral-500">
           {t('status.team_balance', { side: sideLabel })}
         </p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums">{coins}</p>
+        <p
+          className={cn('mt-1 text-3xl font-semibold tabular-nums', coins < 0 && 'text-red-300')}
+        >
+          {coins}
+        </p>
         <p className="text-xs text-neutral-500">{t('common.coins')}</p>
+        {coins < 0 && <p className="mt-2 text-xs text-red-300">{t('status.coins_debt')}</p>}
       </div>
 
       <IntelPurchasePanel
@@ -1448,8 +1455,18 @@ function StatusTab({
         <p className="text-xs uppercase tracking-wider text-neutral-500">
           {t('common.team')} {t(myTeam.side === 'east' ? 'common.east' : 'common.west')}
         </p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums">{myTeam.coins}</p>
+        <p
+          className={cn(
+            'mt-1 text-3xl font-semibold tabular-nums',
+            myTeam.coins < 0 && 'text-red-300',
+          )}
+        >
+          {myTeam.coins}
+        </p>
         <p className="text-xs text-neutral-500">{t('common.coins')}</p>
+        {myTeam.coins < 0 && (
+          <p className="mt-2 text-xs text-red-300">{t('status.coins_debt')}</p>
+        )}
       </div>
 
       <HardenFlagButton
@@ -1524,7 +1541,7 @@ function StatusTab({
                     {formatClock(e.created_at)}
                   </span>
                   <span className="font-medium text-neutral-200">
-                    {eventTypeLabel(e.type, locale)}
+                    {eventTypeLabel(e, locale)}
                   </span>
                   <span className="text-neutral-400">
                     {summariseEvent(e, players, t)}
@@ -1581,7 +1598,12 @@ function summariseEvent(
   return t('status.event_by', { actor })
 }
 
-function eventTypeLabel(type: string, locale: Locale): string {
+function eventTypeLabel(event: GameEvent, locale: Locale): string {
+  const { type, payload } = event
+  if (type === 'coins_deducted' && payload.reason === 'decoy_penalty') {
+    const amount = typeof payload.amount === 'number' ? ` (−${payload.amount})` : ''
+    return `${locale === 'pt' ? 'Multa por engano' : 'Decoy fine'}${amount}`
+  }
   const labelsPt: Record<string, string> = {
     player_joined: 'Jogador entrou',
     player_left: 'Jogador saiu',

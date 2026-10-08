@@ -692,7 +692,7 @@ await strictStep(rec, 'race: tag vs flag attempt on the same player', async () =
   await warmRoutes(g.gid)
   const attacker = g.east[0]
   const defender = g.west[0]
-  // Give the attacking team an intel card so the decoy penalty is observable.
+  // Give the attacking team an intel card to verify race outcomes preserve it.
   const buy = await post(`/api/games/${g.gid}/buy-intel`, {
     device_id: attacker.device,
     player_id: attacker.player,

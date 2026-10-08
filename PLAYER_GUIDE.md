@@ -34,6 +34,10 @@ Each team places identical-looking markers at the 1 real and 2 decoy spots. The 
 
 Every player can buy intel and cast curses in the app at any time — there is no dedicated captain role.
 
+### Enemy radar
+
+If an opponent enters one of the **200 m circles around your team's candidates**, everyone on your team can see a blip at their reported position on the map, even from outside the zone. During live play, it shows for **5 s**, hides for **15 s**, then repeats. The phones share a cycle, so after an updated position arrives, the next blip may be up to **15 s** away; GPS and network delay can add to this. Both sides need an online app and fresh GPS from the opponent. A blip does not by itself enable Tag.
+
 ---
 
 ## Tag rules
@@ -82,6 +86,9 @@ Both counters live on the server, so they survive a reload — but they only tic
 | Intel card | 30–80 |
 | Curse die (roll 1–3 dice) | 50 each |
 | Harden own flag challenge (once) | 150 |
+| Decoy fine (per attempt) | 50, even if the team balance goes negative |
+
+Coins are shared by the team. If a decoy takes the balance below zero, rewards first pay off the debt. You can buy something again once the balance covers its full cost.
 
 Cap: a team may hold at most **4 intel cards** at a time. If an enemy action
 destroys a card, the slot reopens, but that same card cannot be bought again.
@@ -114,7 +121,7 @@ Photo challenges auto-accept after **120 seconds** unless the other team rejects
 | Result | Consequence |
 |---|---|
 | **Real flag** | Photo validated on the spot. App immediately notifies **both teams**. You must now **reach your home base geofence** — that crossing triggers the win. |
-| **Decoy** | **Lose ALL intel cards**, get a 15-minute lockout on that landmark, and complete the assigned two-stage neutral respawn. |
+| **Decoy** | Your team loses **50 coins** (the balance may go negative), but keeps its intel. You get a 15-minute lockout on that landmark and complete the assigned two-stage neutral respawn. |
 | **Empty** | No inventory penalty, but that landmark is locked for 15 minutes. |
 
 ---
@@ -122,7 +129,7 @@ Photo challenges auto-accept after **120 seconds** unless the other team rejects
 ## Endgame
 
 - **You found the real flag:** photo is submitted and validated right there at the landmark. App announces it to everyone — the defending team now knows and can try to intercept you on the way home. Walk back to your home base; when you cross the geofence, you win.
-- **You hit a decoy:** all intel gone, regroup at a neutral landmark, try again.
+- **You hit a decoy:** your team pays 50 coins, even into debt. Keep your intel, regroup at the assigned neutral landmark, and try again.
 - **Timer expires (3 h):** game ends, points decide.
 
 ### Tiebreaker headline

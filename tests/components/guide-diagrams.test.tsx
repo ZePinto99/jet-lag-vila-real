@@ -40,7 +40,7 @@ describe('guide diagrams', () => {
             radius: '5 m',
             defender: 'You',
             raiders: 'Both tagged at once',
-            cost: 'They lose 1 intel card',
+            cost: 'Team fine: up to 40 coins',
             step1: 'Walk to the neutral landmark',
             step2: 'Confirm, then walk 45 m away',
           }}
@@ -58,7 +58,7 @@ describe('guide diagrams', () => {
             realTitle: 'Real flag',
             realBody: 'Walk home to win',
             decoyTitle: 'Decoy',
-            decoyBody: 'Lose all intel',
+            decoyBody: '−50 team coins',
             emptyTitle: 'Empty',
             emptyBody: 'Locked for 15 min',
           }}
